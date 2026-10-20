@@ -1197,6 +1197,28 @@ that was not happening: **both builders now take `custom: &Schema`**, every exis
 `&gallery_custom_schema()`, and a scene with another schema can now say so. The proof that it changed
 nothing else is the audit: **15 of 15 plates unmoved, 31 005 identity rows unmoved**.
 
+### The street becomes a lane
+
+A row of houses facing nothing is a terrace, not a street. The 西南 old street is a **space between two
+walls**: shops on both sides, a 骑楼 over each walk, and the hill carried down the lane between them.
+
+`crates/gallery/src/street.rs` now builds **two frontages across a seven-metre lane**. The second frontage
+is the same line mirrored (`side = -1`), so its plots come out wound the other way without being told to,
+and the same seating, floor and opening loops walk both rows.
+
+**The 骑楼 is derived from each plot and not from a plan line**, which is what makes one function serve both
+rows: the canopy's outward direction is `front − back` of the plot it belongs to, so the mirrored row gets a
+walk facing its own street. Its posts stand at the grade under them, because the lane climbs.
+
+| number | value |
+| --- | --- |
+| `street` document | `07E1337D733A0725` |
+| `street_arcade` document | `0AAED8AD9C1EE823` |
+| identity rows | the street **4 805 → 9 610**, sixteen scenes **36 275 → 45 885** |
+
+The lane is *not* paved, and that is deliberate: a paving slab's ends have to be authored where the hill is
+not level, and the terrain is already the floor of a lane that climbs.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

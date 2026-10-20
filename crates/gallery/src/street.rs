@@ -1,26 +1,29 @@
-//! A street: five plots on a frontage, one house on each, and the street rising under them.
+//! A street: two rows of five plots across a lane, a house on every plot, and the hill under them all.
 //!
 //! # What this scene is for
 //!
-//! The building arcs end at one building per scene. This is the **settlement's first row**: a frontage
-//! turns a line into plots (`building::frontage`), and the plots that touch are party walls because the
-//! masses that stand on them touch. What the scene adds is not a new construct — it is the layer above
-//! them: **a street with a slope**, so the row steps up the hill plot by plot exactly as the stilt house
-//! steps up its own bank.
+//! The building arcs end at one building per scene. This is the **settlement's first street**: a frontage
+//! turns a line into plots (`building::frontage`), the plots that touch are party walls because the masses
+//! that stand on them touch, and **two frontages across a lane** make the street a space between two walls
+//! rather than a wall with a void in front of it. What the scene adds is not a new construct — it is the
+//! layer above them: **a lane with a slope**, so each row steps up the hill plot by plot exactly as the
+//! stilt house steps up its own bank.
 //!
-//! # The two facts the row has to have
+//! # The three facts the street has to have
 //!
-//! - **The eaves face the street.** Every house's ridge runs along its frontage, which is why the plots
+//! - **The eaves face the lane.** Every house's ridge runs along its own frontage, which is why the plots
 //!   are wider than they are deep: `derive::gable_roof` reads the ridge off the longer plan axis, so a
-//!   6 x 5 plot gets its ridge down the street and its eaves over the pavement.
-//! - **The ground steps.** The street rises along its own length and each house is seated on the highest
+//!   6 x 5 plot gets its ridge down the street and its eaves over the walk.
+//! - **The ground steps.** The lane rises along its own length and each house is seated on the highest
 //!   ground under its own outline, so the terrace of roofs climbs instead of one long level.
+//! - **Each row has its 骑楼.** A lean-to canopy stands out over the walk from every plot's own front, on
+//!   two posts at the grade under them. It is derived from the plot and not from a plan line, which is
+//!   what lets the mirrored row on the far side of the lane get a walk facing its own street.
 //!
 //! # What it does not draw
 //!
-//! - **no street surface but the ground**: no pavement, no gutter, no arcade (the 骑楼 needs a first
-//!   floor standing out over the walk, which is the 挑廊's plate again);
-//! - **no openings** — every house is a closed ring, as the compound's ranges are;
+//! - **no street surface but the ground**: the lane's floor is the terrain, and a paved lane would be a
+//!   slab whose ends have to be authored where the hill is not level;
 //! - **no blind party walls** — a party wall is drawn where the two masses meet, and the crate's joint is
 //!   two walls touching rather than one wall shared.
 
@@ -49,6 +52,9 @@ use document::shaders::{Projection, post_shader};
 const PLOTS: usize = 5;
 const WIDTH: f32 = 6.0;
 const DEPTH: f32 = 5.0;
+
+/// The lane the two rows stand across, in metres: two walks and a cart's width between them.
+const LANE: f32 = 7.0;
 
 /// How fast the street climbs, and how much of the hill each house's floor sits on.
 const SLOPE: f32 = 0.055;
@@ -99,7 +105,6 @@ const SHADOW_EXTENT: f64 = 34.0;
 /// The image, and the lens.
 const FRAME_WIDTH: i64 = 1280;
 const FRAME_HEIGHT: i64 = 800;
-const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// How the ground is drawn: one-metre cells over 140 metres.
 const GROUND_DIVISIONS: usize = 140;
@@ -107,12 +112,7 @@ const GROUND_EXTENT: f64 = 70.0;
 
 /// Builds the scene from outside the row, on the street, looking up it.
 pub fn street() -> Value {
-    scene(
-        [-13.0, 8.5, -24.0],
-        [16.0, 3.0, 3.0],
-        FIELD_OF_VIEW,
-        "street",
-    )
+    scene([-2.5, 2.4, -3.5], [34.0, 1.9, -3.5], 1.0, "street")
 }
 
 /// Builds **the same street** from under the 骑楼, which is where a street is walked.
@@ -122,12 +122,7 @@ pub fn street() -> Value {
 /// **One document and two cameras.** The eyes differ and nothing else: the arcade is the same set of
 /// canopies and posts the other view sees from outside, and the rows are the same rows.
 pub fn street_arcade() -> Value {
-    scene(
-        [2.4, 1.65, -1.15],
-        [26.0, 2.45, -1.15],
-        1.25,
-        "street_arcade",
-    )
+    scene([2.4, 1.65, -1.5], [34.0, 2.1, -3.2], 1.25, "street_arcade")
 }
 
 /// Builds the scene from one camera.
@@ -312,38 +307,48 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
 /// opening in it would be that far below its own wall. Seating first is the whole of the order.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
-    let frontage = Frontage::new(
-        vec![[0.0, 0.0], [WIDTH * PLOTS as f32, 0.0]],
-        // The plots are on the walk's **left**, so the houses stand at positive `z` and the street runs
-        // along their fronts at `z = 0`.
-        1.0,
-        DEPTH,
-        vec![WIDTH; PLOTS],
-        // A party wall is a gap of zero: the masses touch, which is what the joint is.
-        0.0,
-    );
-    let plots = frontage
-        .plots()
-        .expect("five six-metre plots fit a thirty-metre line");
-    for plot in &plots {
-        let mut mass = Mass::new(
-            plot.corners()
-                .into_iter()
-                // **Authored at one level and seated after**, which is what `site::seat` is for: a base
-                // band drawn on a slope is a warped band, and the street's step belongs to the mass's
-                // elevation rather than to its outline.
-                .map(|at| PlanNode::new(at, 0.0))
-                .collect::<Vec<_>>(),
-            HEIGHT,
+    // **Two rows, one lane.** Each frontage is a line, the plots on its own side, and the plots that
+    // touch are party walls; putting the second frontage across the lane makes the street a space
+    // between two walls instead of a wall with a void in front of it, which is what a 西南 old street
+    // is: the 骑楼 on both sides and the lane carrying the hill down between them.
+    let lanes = [0.0_f32, -LANE];
+    let mut plot_of: Vec<(building::MassId, building::frontage::Plot)> = Vec::new();
+    for (row, at) in lanes.iter().enumerate() {
+        // The first row is on the walk's left and the second on its right, so both face the lane:
+        // `side` is the frontage's own fact and the plots come out mirrored without being told to.
+        let side = if row == 0 { 1.0 } else { -1.0 };
+        let frontage = Frontage::new(
+            vec![[0.0, *at], [WIDTH * PLOTS as f32, *at]],
+            side,
+            DEPTH,
+            vec![WIDTH; PLOTS],
+            // A party wall is a gap of zero: the masses touch, which is what the joint is.
+            0.0,
         );
-        mass.wall = WALL;
-        mass.slab = PLATE;
-        let mass_id = building::MassId(skeleton.masses.len());
-        skeleton.masses.push(mass);
-        skeleton
-            .roofs
-            .push(roof_over(mass_id, &skeleton.masses[mass_id.0]));
+        let plots = frontage
+            .plots()
+            .expect("five six-metre plots fit a thirty-metre line");
+        for plot in plots {
+            let mut mass = Mass::new(
+                plot.corners()
+                    .into_iter()
+                    // **Authored at one level and seated after**: a base band drawn on a slope is a warped
+                    // band, and the street's step belongs to the mass's elevation rather than to its outline.
+                    .map(|at| PlanNode::new(at, 0.0))
+                    .collect::<Vec<_>>(),
+                HEIGHT,
+            );
+            mass.wall = WALL;
+            mass.slab = PLATE;
+            let mass_id = building::MassId(skeleton.masses.len());
+            skeleton.masses.push(mass);
+            skeleton
+                .roofs
+                .push(roof_over(mass_id, &skeleton.masses[mass_id.0]));
+            plot_of.push((mass_id, plot));
+        }
     }
+
     // **The row is seated as one street**, so the houses take the hill's own levels rather than each
     // one's private average: `site::seat` moves every node of every mass to the highest ground it stands
     // on, and the roofs follow their masses.
@@ -352,10 +357,10 @@ pub fn document() -> Building {
     // **The 骑楼 goes up after the seat**, because a walk is at the street's own level and the street
     // is what the seat reads: five canopies, one to a plot, each shedding away from the shop, and the
     // posts that hold their outer edges at the grade under them.
-    arcade(&mut skeleton);
+    arcade(&mut skeleton, &plot_of);
     // The floors are derived from the seated masses, so their elevation is the storey's own.
-    for plot in &plots {
-        let mass_id = building::MassId(plot.index);
+    for (mass_id, _plot) in &plot_of {
+        let mass_id = *mass_id;
         let mass = &skeleton.masses[mass_id.0];
         if let Some(storey) = derive::floor_slab(mass, mass_id, mass.lowest() + FLOOR, PLATE * 0.8)
         {
@@ -364,8 +369,8 @@ pub fn document() -> Building {
     }
     // **The facades are cut last**, and the front is found by matching the plot's own two corners against
     // the mass's outline: one door and two windows on the street side, in a three-bay two-storey rhythm.
-    for plot in &plots {
-        let mass_id = building::MassId(plot.index);
+    for (mass_id, plot) in &plot_of {
+        let mass_id = *mass_id;
         let Some(edge) = front_edge(&skeleton.masses[mass_id.0], plot) else {
             continue;
         };
@@ -403,40 +408,57 @@ pub fn document() -> Building {
 ///
 /// **The canopy is hosted by the mass it covers.** A roof is authorized to touch the mass its `host`
 /// names, so a single canopy spanning the row would have to claim one of the five and lie about it.
-fn arcade(skeleton: &mut BuildingSkeleton) {
-    const DEPTH: f32 = 2.2;
+fn arcade(skeleton: &mut BuildingSkeleton, plots: &[(building::MassId, building::frontage::Plot)]) {
+    const OUT: f32 = 2.2;
     const LOW: f32 = 2.95;
     const HIGH: f32 = 3.55;
     const POST: f32 = 0.16;
-    for index in 0..skeleton.masses.len() {
-        let mass_id = building::MassId(index);
-        let Some(mass) = skeleton.masses.get(index) else {
+    for (mass_id, plot) in plots {
+        let Some(mass) = skeleton.masses.get(mass_id.0) else {
             continue;
         };
-        let (x0, x1, front) = extents(mass);
+        // **The canopy grows out of the plot's own front**, and that is what makes two rows one
+        // function: the outward direction is read from the plot (front minus back) rather than assumed
+        // to be -z, so the mirrored row on the other side of the lane gets a walk facing its own street.
+        let outward = [
+            (plot.front[0][0] + plot.front[1][0]) * 0.5 - (plot.back[0][0] + plot.back[1][0]) * 0.5,
+            (plot.front[0][1] + plot.front[1][1]) * 0.5 - (plot.back[0][1] + plot.back[1][1]) * 0.5,
+        ];
+        let length = (outward[0] * outward[0] + outward[1] * outward[1]).sqrt();
+        if length <= 1.0e-4 {
+            continue;
+        }
+        let step = [outward[0] / length * OUT, outward[1] / length * OUT];
         // Half a metre in from the party wall at each end, so two neighbouring canopies are two
         // canopies rather than one with a seam in it.
-        let left = x0 + 0.5;
-        let right = x1 - 0.5;
+        let (a, b) = (plot.front[0], plot.front[1]);
+        let along = [b[0] - a[0], b[1] - a[1]];
+        let span = (along[0] * along[0] + along[1] * along[1]).sqrt();
+        if span <= 1.1 {
+            continue;
+        }
+        let unit = [along[0] / span, along[1] / span];
+        let inner = [a[0] + unit[0] * 0.5, a[1] + unit[1] * 0.5];
+        let outer = [b[0] - unit[0] * 0.5, b[1] - unit[1] * 0.5];
         let base = mass.lowest();
         let plan = [
-            [left, front - DEPTH],
-            [right, front - DEPTH],
-            [right, front],
-            [left, front],
+            [inner[0] + step[0], inner[1] + step[1]],
+            [outer[0] + step[0], outer[1] + step[1]],
+            [outer[0], outer[1]],
+            [inner[0], inner[1]],
         ];
-        let Some(roof) = derive::lean_to(mass_id, plan, base + LOW, base + HIGH, 0.08) else {
+        let Some(roof) = derive::lean_to(*mass_id, plan, base + LOW, base + HIGH, 0.08) else {
             continue;
         };
         skeleton.roofs.push(roof.with_covering(COVERING));
-        for x in [left, right] {
-            let ground = grade(x);
+        for at in [inner, outer] {
+            let foot = [at[0] + step[0], at[1] + step[1]];
             skeleton.members.push(building::Member::new(
                 building::Anchor::Free {
-                    at: [x, ground, front - DEPTH + POST],
+                    at: [foot[0], grade(foot[0]), foot[1]],
                 },
                 building::Anchor::Free {
-                    at: [x, base + LOW - 0.04, front - DEPTH + POST],
+                    at: [foot[0], base + LOW - 0.04, foot[1]],
                 },
                 [1.0, 0.0],
                 POST,
@@ -444,19 +466,6 @@ fn arcade(skeleton: &mut BuildingSkeleton) {
             ));
         }
     }
-}
-
-/// Returns a mass's plan extents along the street and its front line, which is its lowest `z`.
-fn extents(mass: &Mass) -> (f32, f32, f32) {
-    let mut x0 = f32::MAX;
-    let mut x1 = f32::MIN;
-    let mut front = f32::MAX;
-    for node in &mass.outline {
-        x0 = x0.min(node.position[0]);
-        x1 = x1.max(node.position[0]);
-        front = front.min(node.position[1]);
-    }
-    (x0, x1, front)
 }
 
 fn roof_over(mass_id: building::MassId, mass: &Mass) -> building::roof::Roof {
