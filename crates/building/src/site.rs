@@ -160,6 +160,24 @@ pub fn seat(
             *top += delta;
         }
         let host = MassId(index);
+        // **A rhythm is authored against a face, and a face that moves takes its rhythm with it.** A grid's
+        // `levels` are the face's own elevations, so a mass that the seat moves keeps its bays and its storeys
+        // only if they move by the same `delta`. Without this, seating a house *after* it has been authored
+        // leaves its grid spanning the elevation it had before the move, which `validate` names
+        // `GridOutsideFace` — measured on the village's four houses, whose documents were cut at the origin and
+        // then put on a slope.
+        for face in skeleton.grids.faces() {
+            if face.mass != host {
+                continue;
+            }
+            if let Some(grid) = skeleton.grids.get(face).cloned() {
+                let levels = grid.levels.iter().map(|level| level + delta).collect();
+                skeleton.grids.replace(
+                    face,
+                    crate::grid::FaceGrid::new(levels, grid.divisions.clone()),
+                );
+            }
+        }
         for roof in skeleton.roofs.iter_mut() {
             if roof.host != host {
                 continue;

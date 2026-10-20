@@ -27,6 +27,8 @@
 //! - **no lanes**: the square is bounded by the four buildings and open at its two ends, and the streets that
 //!   run out of it belong to the settlement scene that does not exist yet.
 
+use building::math::Vec2;
+use building::site;
 use building::{Building, BuildingSkeleton, derive, ops};
 use definition::Value;
 use document::air::Atmosphere;
@@ -45,6 +47,28 @@ use crate::ground;
 /// The square: sixteen metres by twelve, and the grating at its middle.
 const SQUARE: [f32; 4] = [-8.0, -6.0, 8.0, 6.0];
 const GRATE: f32 = 0.7;
+
+/// How steeply the ground falls away outside the square, in metres of drop per metre, and how far it is
+/// allowed to fall.
+///
+/// **The square is a terrace cut into a hillside**: its own plan is level, and the ground outside it falls away
+/// on all four sides. That is what a village square is in this country — the one piece of flat ground a slope
+/// can be made to give — and it is also what lets the four types stand at four different heights without any of
+/// them being moved by hand.
+const SLOPE: f64 = 0.12;
+const DROP_LIMIT: f64 = 2.4;
+
+/// Returns the ground's own elevation at a plan point: level inside the square, falling away outside it.
+fn grade(x: f64, z: f64) -> f64 {
+    let beyond = [
+        (x - SQUARE[2] as f64).max(0.0),
+        (SQUARE[0] as f64 - x).max(0.0),
+        (z - SQUARE[3] as f64).max(0.0),
+        (SQUARE[1] as f64 - z).max(0.0),
+    ];
+    let out = beyond.iter().copied().fold(0.0, f64::max);
+    -(out * SLOPE).min(DROP_LIMIT)
+}
 
 /// Where each building stands, as the offset its own document is moved by.
 const TOWER_AT: [f32; 2] = [0.0, -13.0];
@@ -193,7 +217,9 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
     let extras = building_extras();
     let point = extras.point_schema();
     let plain = not_authored_extras();
-    let ground = ground::mesh(&building, GROUND_DIVISIONS, GROUND_EXTENT, |_, _| 0.0);
+    // **The ground is the terrace's own grade**, not a level plane: the same function the houses were seated
+    // on, so a house cannot float and the hill cannot disagree with the building standing on it.
+    let ground = ground::mesh(&building, GROUND_DIVISIONS, GROUND_EXTENT, grade);
 
     Value::structure([
         ("name".to_owned(), Value::String(name.to_owned())),
@@ -283,18 +309,60 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
 /// own offset, which is the only thing this function says about where anything stands.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
-    for (mut part, at) in [
-        (crate::drum_tower::document().skeleton, TOWER_AT),
-        (crate::earthen::document().skeleton, EARTHEN_WEST),
-        (crate::earthen::document().skeleton, EARTHEN_EAST),
-        (crate::log_house::document().skeleton, LOG_WEST),
-        (crate::log_house::document().skeleton, LOG_EAST),
+    let ground = |at: Vec2| grade(at[0] as f64, at[1] as f64) as f32;
+    // **The tower stands on the terrace and the houses stand on the hill.** A seat moves every mass's nodes to
+    // the ground under them, which is exactly what a house needs and exactly what a tower of stacked storeys
+    // must not have: seating the tower would flatten its seven floors onto one elevation. So the tower is
+    // translated and merged as it is, and the four houses are seated on their own ground before they are merged
+    // — which is the same `site::seat` every single-building scene calls, read once per building.
+    for (mut part, at, seated) in [
+        (crate::drum_tower::document().skeleton, TOWER_AT, false),
+        (crate::earthen::document().skeleton, EARTHEN_WEST, true),
+        (crate::earthen::document().skeleton, EARTHEN_EAST, true),
+        (crate::log_house::document().skeleton, LOG_WEST, true),
+        (crate::log_house::document().skeleton, LOG_EAST, true),
     ] {
         ops::translate(&mut part, at);
+        if seated {
+            let report = site::seat(&mut part, ground, 0.0);
+            assert!(
+                report.len() == part.masses.len(),
+                "every mass of a house is seated on the ground this grade reads"
+            );
+        }
         assert!(
             ops::merge(&mut skeleton, part),
             "a building of the village places no parts, so the merge always happens"
         );
+    }
+    // **The terrace is held up by a wall**, one run to a side, standing on the ground at the foot of each drop:
+    // a plateau cut into a hill is a cut face, and the village's own edge is what a person on the square sees
+    // when they look over it. The wall is the site's, not a mass's — it is not a building.
+    for (from, to) in [
+        (
+            [SQUARE[0] - 0.3, SQUARE[1] - 0.3],
+            [SQUARE[2] + 0.3, SQUARE[1] - 0.3],
+        ),
+        (
+            [SQUARE[2] + 0.3, SQUARE[1] - 0.3],
+            [SQUARE[2] + 0.3, SQUARE[3] + 0.3],
+        ),
+        (
+            [SQUARE[2] + 0.3, SQUARE[3] + 0.3],
+            [SQUARE[0] - 0.3, SQUARE[3] + 0.3],
+        ),
+        (
+            [SQUARE[0] - 0.3, SQUARE[3] + 0.3],
+            [SQUARE[0] - 0.3, SQUARE[1] - 0.3],
+        ),
+    ] {
+        let foot = grade(from[0] as f64, from[1] as f64) as f32;
+        skeleton.walls.push(building::wall::Wall::new(
+            building::PlanNode::new([from[0], from[1]], foot),
+            building::PlanNode::new([to[0], to[1]], foot),
+            0.45,
+            0.0,
+        ));
     }
     // **The square is paved, with one grating at its middle**: the piece of ground the four types share, and
     // the hole the village's water leaves by.
