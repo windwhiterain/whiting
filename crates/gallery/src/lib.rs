@@ -90,6 +90,7 @@ pub mod house;
 /// authoring loop is the only way to iterate on it.
 pub mod landscape;
 mod lanterns;
+pub mod log_house;
 mod monoliths;
 /// The shed scene: the facade — a rhythm, holes cut in it, and parts standing in the bays.
 pub mod shed;
@@ -205,6 +206,7 @@ impl Gallery {
             "stilt",
             "drum_tower",
             "earthen_house",
+            "log_house",
             "stilt_gallery",
             "street",
             "street_arcade",
@@ -310,6 +312,7 @@ impl Gallery {
             "stilt" => stilt::stilt(),
             "drum_tower" => drum_tower::drum_tower(),
             "earthen_house" => earthen::earthen_house(),
+            "log_house" => log_house::log_house(),
             "stilt_gallery" => stilt::stilt_gallery(),
             "terrace" => terrace::terrace(),
             "wing" => wing::wing(),
