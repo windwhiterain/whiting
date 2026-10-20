@@ -23,6 +23,7 @@
 //! shader that had summed the map onto an ambient of its own would leave a lit frame behind, and
 //! that is what the second half of the first test here is for.
 
+use super::support::{NO_ADAPTER, renderer};
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use device::{Frame, Renderer};
 use document::geometry::plane_facing;
@@ -38,11 +39,8 @@ use scene::standard::Stage;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
 use whiting_device_rasterize::WgpuRenderer;
 
-/// A note printed when there is nothing to test on.
-const NO_ADAPTER: &str = "skipped: no gpu adapter is present";
-
 /// How far the two surfaces reach either side of the origin.
-const EXTENT: f64 = 12.0;
+const ENVIRONMENT_EXTENT: f64 = 12.0;
 
 /// How far above the ground the down-facing surface stands.
 ///
@@ -77,7 +75,7 @@ const BLURRED: f64 = 1.0;
 const SEPARATION: u32 = 100;
 
 /// Where the ground is probed, as a fraction down the frame.
-const GROUND: f64 = 0.88;
+const ENVIRONMENT_GROUND: f64 = 0.88;
 
 /// Where the ceiling is probed, as a fraction down the frame.
 const CEILING_PROBE: f64 = 0.12;
@@ -90,9 +88,10 @@ fn the_two_directions_differ_and_the_environment_is_what_makes_them() {
         println!("{NO_ADAPTER}");
         return;
     };
-    let lit = render(&renderer, &scene(true, SHARP)).expect("the lit scene renders");
-    let unlit =
-        render(&renderer, &scene(false, SHARP)).expect("the same scene without one renders");
+    let lit = environment_render(&renderer, &environment_scene(true, SHARP))
+        .expect("the lit scene renders");
+    let unlit = environment_render(&renderer, &environment_scene(false, SHARP))
+        .expect("the same scene without one renders");
 
     // The bottom of the frame is the ground, which faces up and so faces the map's brightest
     // direction; the top of the frame is the ceiling, which faces down and faces its darkest.
@@ -103,7 +102,7 @@ fn the_two_directions_differ_and_the_environment_is_what_makes_them() {
     // turns that into the last texel, and the last texel is black because the map's bottom row
     // is. A shader without the clamp reads out of bounds here and returns whatever the backend
     // had, which is the whole reason this probe is the ceiling and not the ground.
-    let up = probe(&lit, GROUND);
+    let up = probe(&lit, ENVIRONMENT_GROUND);
     let down = probe(&lit, CEILING_PROBE);
     assert!(
         up > down + SEPARATION,
@@ -119,7 +118,10 @@ fn the_two_directions_differ_and_the_environment_is_what_makes_them() {
     // A scene naming no `Environment` light is given no ambient at all rather than a dimmer one,
     // so the frame without the environment is black in both directions instead of being lifted
     // in one of them. That states the replacement as a measurement rather than as a claim.
-    let (up_without, down_without) = (probe(&unlit, GROUND), probe(&unlit, CEILING_PROBE));
+    let (up_without, down_without) = (
+        probe(&unlit, ENVIRONMENT_GROUND),
+        probe(&unlit, CEILING_PROBE),
+    );
     assert_eq!(
         (up_without, down_without),
         (0, 0),
@@ -138,15 +140,20 @@ fn a_rougher_surface_reads_a_coarser_level_of_the_map() {
         println!("{NO_ADAPTER}");
         return;
     };
-    let sharp = render(&renderer, &scene(true, SHARP)).expect("the sharp scene renders");
-    let blurred = render(&renderer, &scene(true, BLURRED)).expect("the rough scene renders");
+    let sharp = environment_render(&renderer, &environment_scene(true, SHARP))
+        .expect("the sharp scene renders");
+    let blurred = environment_render(&renderer, &environment_scene(true, BLURRED))
+        .expect("the rough scene renders");
 
     // The ground, which is the strongest place to look for this. At the coarsest level the
     // whole map has been averaged into a **single** texel, so every direction reads the same
     // number and the ground comes back at the map's mean rather than at its top row. That is a
     // difference of most of the range on a surface that is in the frame either way, where a
     // probe at the horizon would have been a probe of the empty space between the two planes.
-    let (sharp_ground, blurred_ground) = (probe(&sharp, GROUND), probe(&blurred, GROUND));
+    let (sharp_ground, blurred_ground) = (
+        probe(&sharp, ENVIRONMENT_GROUND),
+        probe(&blurred, ENVIRONMENT_GROUND),
+    );
     assert!(
         sharp_ground > blurred_ground + SEPARATION,
         "a material's roughness is the level the map is read at. At the sharpest level the ground \
@@ -166,9 +173,12 @@ fn a_scene_naming_no_environment_still_renders_and_is_black() {
     // Rendered rather than borrowed from the first test, so this one fails on its own if a
     // scene with no environment light stops compiling — which is the failure a reader would look
     // for first, and the one a shared frame would hide.
-    let frame = render(&renderer, &scene(false, SHARP))
+    let frame = environment_render(&renderer, &environment_scene(false, SHARP))
         .expect("a scene with no environment light compiles");
-    let (up, down) = (probe(&frame, GROUND), probe(&frame, CEILING_PROBE));
+    let (up, down) = (
+        probe(&frame, ENVIRONMENT_GROUND),
+        probe(&frame, CEILING_PROBE),
+    );
     assert_eq!(
         (up, down),
         (0, 0),
@@ -211,7 +221,7 @@ fn probe(frame: &Frame, down: f64) -> u32 {
 /// `environment` says whether the scene names an `Environment` light and `roughness` is the
 /// material's own. Everything else is the same in every frame these tests render, so the only
 /// thing that differs between them is the thing being tested.
-fn scene(environment: bool, roughness: f64) -> Value {
+fn environment_scene(environment: bool, roughness: f64) -> Value {
     let point = shaded_point_schema();
     let custom = gallery_custom_schema();
     let inputs = document::attributes::gallery_vertex_inputs(&point);
@@ -222,13 +232,13 @@ fn scene(environment: bool, roughness: f64) -> Value {
             "ground",
             "Triangles",
             point.clone(),
-            plane_facing(EXTENT, 0.0, true),
+            plane_facing(ENVIRONMENT_EXTENT, 0.0, true),
         ),
         mesh(
             "ceiling",
             "Triangles",
             point,
-            plane_facing(EXTENT, CEILING, false),
+            plane_facing(ENVIRONMENT_EXTENT, CEILING, false),
         ),
     ]);
 
@@ -368,19 +378,8 @@ fn scene(environment: bool, roughness: f64) -> Value {
     ])
 }
 
-/// Returns a renderer, or nothing when the machine has no adapter.
-fn renderer() -> Option<WgpuRenderer> {
-    let runtime = tokio::runtime::Runtime::new().expect("a runtime");
-    runtime.block_on(async {
-        if !WgpuRenderer::probe().await {
-            return None;
-        }
-        WgpuRenderer::new().await.ok()
-    })
-}
-
 /// Compiles a scene the way a host would and renders it.
-fn render(renderer: &WgpuRenderer, scene: &Value) -> Result<Frame, String> {
+fn environment_render(renderer: &WgpuRenderer, scene: &Value) -> Result<Frame, String> {
     let mut registry = Registry::new();
     scene::register_standard_scene_schema(&mut registry);
     registry.put_schema(

@@ -32,6 +32,10 @@
 //! same rule `texture_channel_render.rs` follows, for the same reason: a silent pass would make
 //! this file worthless on a machine with no gpu.
 
+use super::support::{
+    FRAME, INSTANCE_ROW_BYTES, NO_ADAPTER, TRIANGLE_BYTES, buffer_declaration, declared,
+    instance_row, renderer, target_payload, texture_declaration, triangle_vertices,
+};
 use std::sync::OnceLock;
 
 use definition::{
@@ -51,9 +55,6 @@ use scene::standard::{Bounds, Camera, Projection, Stage};
 use scene::{CompileContext, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene};
 use whiting_device_rasterize::WgpuRenderer;
 
-/// The size of the frame.
-const FRAME: u32 = 64;
-
 /// The value the first attachment carries, deliberately a value eight bits can hold exactly.
 ///
 /// 0.25, 0.5 and 0.75 are all exactly representable in `rgba8unorm`, so the eight bit readback
@@ -65,10 +66,7 @@ const FIRST: [f32; 4] = [0.25, 0.5, 0.75, 1.0];
 ///
 /// −2.75 in an `rgba8unorm` target would clamp to zero, so an attachment whose values came back
 /// as `0.0` in that channel is a value that was never written where it was read from.
-const SECOND: [f32; 4] = [1.5, -2.75, 3.25, 1.0];
-
-/// A note printed when there is nothing to test on.
-const NO_ADAPTER: &str = "skipped: no gpu adapter is present";
+const ATTACHMENT_SECOND: [f32; 4] = [1.5, -2.75, 3.25, 1.0];
 
 #[test]
 fn both_colour_attachments_come_back_in_the_format_each_was_drawn_in() {
@@ -77,7 +75,7 @@ fn both_colour_attachments_come_back_in_the_format_each_was_drawn_in() {
         return;
     };
     let images = renderer
-        .render_outputs(&graphics(true), &instance(true))
+        .render_outputs(&attachment_graphics(true), &attachment_instance(true))
         .expect("a pass with two colour attachments renders");
 
     let names: Vec<&str> = images.iter().map(|image| image.name.as_str()).collect();
@@ -117,7 +115,7 @@ fn the_two_attachments_hold_their_own_values_and_not_each_others() {
         return;
     };
     let images = renderer
-        .render_outputs(&graphics(true), &instance(true))
+        .render_outputs(&attachment_graphics(true), &attachment_instance(true))
         .expect("a pass with two colour attachments renders");
     let read = |name: &str| {
         images
@@ -138,7 +136,7 @@ fn the_two_attachments_hold_their_own_values_and_not_each_others() {
             first
         );
     }
-    for (axis, expected) in SECOND.iter().enumerate() {
+    for (axis, expected) in ATTACHMENT_SECOND.iter().enumerate() {
         assert!(
             (second[axis] - expected).abs() < 0.01,
             "`@location(1)` holds the second value's axis {axis}: {:?} is not {expected}. A value \
@@ -160,7 +158,7 @@ fn a_pass_with_one_attachment_is_answered_as_it_was_before() {
     // colour attachment and build exactly one `ColorTargetState`; this is the case that change
     // had to leave alone, and it is the one every scene in the workspace depends on.
     let frame = renderer
-        .render(&graphics(false), &instance(false))
+        .render(&attachment_graphics(false), &attachment_instance(false))
         .expect("a pass with one colour attachment renders");
     assert_eq!((frame.width, frame.height), (FRAME, FRAME));
     // 0.5 over 255 is 127.5 and the backend rounds it down, so the expectation is 127 rather than
@@ -419,7 +417,7 @@ const FAR: f64 = 200.0;
 /// frame would make every assertion about an empty pixel pass without a single empty pixel in
 /// it.
 const PLANE: f64 = 0.0;
-const EXTENT: f64 = 40.0;
+const ATTACHMENT_EXTENT: f64 = 40.0;
 
 /// How many cells a side the plane is built from.
 ///
@@ -525,7 +523,7 @@ fn build_channels() -> Option<Channels> {
         let camera = Camera::read(
             Some(&camera_value()),
             &Path::root(),
-            &Bounds::around(TARGET, EXTENT),
+            &Bounds::around(TARGET, ATTACHMENT_EXTENT),
             1.0,
         )
         .expect("the test camera reads")
@@ -586,7 +584,7 @@ fn plane_scene() -> Value {
                 [0.4, -1.0, 0.3],
                 [1.0, 0.97, 0.92],
                 3.0,
-                2.0 * EXTENT,
+                2.0 * ATTACHMENT_EXTENT,
             )]),
         ),
         ("shaders".to_owned(), Value::List(mesh_shaders("", ""))),
@@ -596,7 +594,7 @@ fn plane_scene() -> Value {
                 "plane",
                 "Triangles",
                 shaded_point_schema(),
-                heightfield(DIVISIONS, EXTENT, |_, _| PLANE),
+                heightfield(DIVISIONS, ATTACHMENT_EXTENT, |_, _| PLANE),
             )]),
         ),
         (
@@ -727,26 +725,15 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-/// Returns a renderer, or nothing when the machine has no adapter.
-fn renderer() -> Option<WgpuRenderer> {
-    let runtime = tokio::runtime::Runtime::new().expect("a runtime");
-    runtime.block_on(async {
-        if !WgpuRenderer::probe().await {
-            return None;
-        }
-        WgpuRenderer::new().await.ok()
-    })
-}
-
 /// The shader a multi attachment pass is drawn with.
 ///
 /// It declares nothing but the uniform, because the two targets are the only other binders the
 /// pass has and **a target takes a binding number with no entry behind it** — so there is nothing
 /// for a shader to declare. Both values are written to a named `@location`, and the test reads
 /// them back per attachment rather than per draw.
-fn source() -> String {
+fn attachment_source() -> String {
     let [fr, fg, fb, fa] = wgsl_vec(&FIRST);
-    let [sr, sg, sb, sa] = wgsl_vec(&SECOND);
+    let [sr, sg, sb, sa] = wgsl_vec(&ATTACHMENT_SECOND);
     format!(
         r#"
 struct Uniforms {{
@@ -791,7 +778,7 @@ fn wgsl_vec(value: &[f32; 4]) -> [String; 4] {
 ///
 /// With a single attachment the document declares one output, which is the shape every document
 /// in the workspace has and the one the "declared outputs" machinery already answered.
-fn graphics(second_attachment: bool) -> Value {
+fn attachment_graphics(second_attachment: bool) -> Value {
     let mut binders = vec![
         (
             "first".to_owned(),
@@ -870,13 +857,13 @@ fn graphics(second_attachment: bool) -> Value {
 }
 
 /// Builds the instance the pass draws from.
-fn instance(second_attachment: bool) -> Value {
+fn attachment_instance(second_attachment: bool) -> Value {
     let mut entries = vec![
         ("row".to_owned(), instance_row()),
         // Both targets are written rather than uploaded, so neither carries pixels: giving a
         // target pixels would be uploading into a map the clear is about to overwrite.
         ("first".to_owned(), target_payload("rgba8unorm")),
-        ("shader".to_owned(), shader(second_attachment)),
+        ("shader".to_owned(), attachment_shader(second_attachment)),
         ("triangle".to_owned(), triangle_vertices()),
     ];
     if second_attachment {
@@ -891,77 +878,13 @@ fn instance(second_attachment: bool) -> Value {
     ])
 }
 
-/// The bytes three two dimensional points of three floats each occupy.
-const TRIANGLE_BYTES: i64 = 3 * 3 * 4;
-
-/// The bytes one instance row of three floats occupies.
-const INSTANCE_ROW_BYTES: i64 = 3 * 4;
-
-/// Builds a vertex buffer of three points that cover the whole viewport.
-///
-/// The third point is at three in both axes, so the triangle a rasteriser clips out of it covers
-/// every pixel of the target rather than half of it — which is what makes every texel of both
-/// attachments the value the shader wrote.
-fn triangle_vertices() -> Value {
-    packed_buffer(
-        &[-1.0, -1.0, 0.0, 3.0, -1.0, 0.0, -1.0, 3.0, 0.0],
-        "position",
-        "vertex",
-    )
-}
-
-/// Builds the single instance row, which carries nothing but has to exist to be counted.
-fn instance_row() -> Value {
-    packed_buffer(&[0.0, 0.0, 0.0], "filler", "instance")
-}
-
-/// Builds a buffer payload of three component points packed as floats.
-fn packed_buffer(values: &[f32], field: &str, usage: &str) -> Value {
-    let bytes: Vec<u8> = values
-        .iter()
-        .flat_map(|value| value.to_le_bytes())
-        .collect();
-    Value::variant(
-        "Buffer",
-        [
-            ("size_bytes".to_owned(), Value::Int(bytes.len() as i64)),
-            (
-                "usage".to_owned(),
-                Value::List(vec![Value::String(usage.to_owned())]),
-            ),
-            ("data".to_owned(), Value::Bytes(bytes)),
-            ("topology".to_owned(), Value::variant("Triangles", [])),
-            (
-                "schema".to_owned(),
-                Schema::new(SchemaKind::structure([(
-                    field.to_owned(),
-                    graphics::layout::components_schema(3),
-                )]))
-                .to_value(),
-            ),
-        ],
-    )
-}
-
-/// Builds the payload of a target, which is written by the pass and carries no pixels.
-fn target_payload(format: &str) -> Value {
-    Value::variant(
-        "Texture",
-        [
-            ("width".to_owned(), Value::Int(FRAME as i64)),
-            ("height".to_owned(), Value::Int(FRAME as i64)),
-            ("format".to_owned(), Value::String(format.to_owned())),
-        ],
-    )
-}
-
 /// Builds the instance entry the pass names as its shader.
-fn shader(second_attachment: bool) -> Value {
+fn attachment_shader(second_attachment: bool) -> Value {
     Value::variant(
         "Shader",
         [
-            ("source".to_owned(), Value::String(source())),
-            ("schema".to_owned(), interface(second_attachment)),
+            ("source".to_owned(), Value::String(attachment_source())),
+            ("schema".to_owned(), attachment_interface(second_attachment)),
         ],
     )
 }
@@ -973,7 +896,7 @@ fn shader(second_attachment: bool) -> Value {
 /// with no entries behind them. The list follows the pass, so the one attachment case declares
 /// one and the two attachment case declares two — a schema naming a binder the pass does not
 /// have would be a disagreement this file is not here to introduce.
-fn interface(second_attachment: bool) -> Value {
+fn attachment_interface(second_attachment: bool) -> Value {
     let mut binders = vec![
         ("first".to_owned(), graphics::texture_binding_schema()),
         ("row".to_owned(), graphics::buffer_binding_schema()),
@@ -996,53 +919,4 @@ fn interface(second_attachment: bool) -> Value {
         ),
     ]))
     .to_value()
-}
-
-/// Builds one `outputs` entry: the point, the location and the type of a texel.
-///
-/// It is written through the shared helper rather than spelled out here, so that a document this
-/// test builds and one the emitter builds are the same shape — the reader in `graphics` is the
-/// only thing that has an opinion about it, and there is one.
-fn declared(point: &str, location: u32, ty: &str) -> Value {
-    Value::structure([
-        ("point".to_owned(), Value::String(point.to_owned())),
-        ("location".to_owned(), Value::Int(i64::from(location))),
-        ("type".to_owned(), Value::String(ty.to_owned())),
-    ])
-}
-
-/// Builds a texture declaration naming an entry of the instance.
-fn texture_declaration(source: &str, format: &str) -> Value {
-    Value::variant(
-        "Resource",
-        [(
-            "resource".to_owned(),
-            Value::variant(
-                "Texture",
-                [
-                    ("source".to_owned(), Value::String(source.to_owned())),
-                    ("width".to_owned(), Value::Int(FRAME as i64)),
-                    ("height".to_owned(), Value::Int(FRAME as i64)),
-                    ("format".to_owned(), Value::String(format.to_owned())),
-                ],
-            ),
-        )],
-    )
-}
-
-/// Builds a buffer declaration of the given size.
-fn buffer_declaration(source: &str, size: i64) -> Value {
-    Value::variant(
-        "Resource",
-        [(
-            "resource".to_owned(),
-            Value::variant(
-                "Buffer",
-                [
-                    ("source".to_owned(), Value::String(source.to_owned())),
-                    ("size_bytes".to_owned(), Value::Int(size)),
-                ],
-            ),
-        )],
-    )
 }

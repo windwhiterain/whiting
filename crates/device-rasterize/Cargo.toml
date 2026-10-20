@@ -34,40 +34,17 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 document = { workspace = true }
 
 # Everything below draws on a real gpu and reads the pixels back, which is a question only an
-# adapter can answer. They are named here rather than auto-discovered so that a plain
-# `cargo test --workspace` on a machine with no gpu skips them by name instead of failing to
-# resolve `wgpu` at all.
+# adapter can answer. The harness that does it is an example, and it is named here rather than
+# auto-discovered so that a plain `cargo test --workspace` on a machine with no gpu skips it by
+# name instead of failing to resolve `wgpu` at all.
 [[example]]
 name = "render"
 
+# The crate's tests are gathered in one binary, `tests/device-rasterize.rs`, with a separate file
+# for each subject under `tests/device-rasterize/`. One binary is one link, and the subjects that
+# need no adapter run on a machine with no gpu alongside the ones that do: they check a parsed
+# module's shape against a binding layout, and they still live here because the check itself
+# belongs to the backend, and a check that could only run where a driver exists would go
+# unchecked exactly where a scene's shader is written.
 [[test]]
-name = "texture_channel_render"
-
-[[test]]
-name = "clustered_shadow_render"
-
-[[test]]
-name = "environment_map_render"
-
-[[test]]
-name = "r32float_attachment"
-
-# These two check a parsed module's shape against a binding layout and need no adapter, so they
-# run on a machine with no gpu. They still live here because the check itself belongs to the
-# backend, and a check that could only run where a driver exists would go unchecked exactly where
-# a scene's shader is written.
-[[test]]
-name = "texture_array_interface"
-
-[[test]]
-name = "texture_array_shape"
-
-# A debug channel and a pass with more than one colour target are both claims about what a
-# fragment writes, and neither is checkable without an adapter to read the pixels back.
-[[test]]
-name = "multi_attachment_render"
-
-# The declared output is checked against the shader that writes it, and the check itself is a
-# parse and a comparison over three small WGSL strings.
-[[test]]
-name = "typed_outputs"
+name = "device-rasterize"

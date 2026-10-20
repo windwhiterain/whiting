@@ -18,12 +18,15 @@
 //! without a feature the device does not request. A pipeline that failed here would not be a
 //! defect in this file; it would be the measurement saying the blend has to become per-attachment.
 
+use super::support::{
+    INSTANCE_ROW_BYTES, NO_ADAPTER, TRIANGLE_BYTES, buffer_declaration, declared, packed_buffer,
+    renderer, target_payload, texture_declaration,
+};
 use definition::Value;
 use device::Renderer;
-use whiting_device_rasterize::WgpuRenderer;
 
 /// The size of the frame.
-const FRAME: u32 = 16;
+const R32FLOAT_FRAME: u32 = 16;
 
 /// The id written into the second attachment.
 ///
@@ -34,9 +37,6 @@ const FRAME: u32 = 16;
 /// is the assertion.
 const ID: f32 = 4093.0;
 
-/// A note printed when there is nothing to test on.
-const NO_ADAPTER: &str = "skipped: no gpu adapter is present";
-
 #[test]
 fn an_r32float_attachment_is_drawn_and_reads_an_integer_back_exactly() {
     let Some(renderer) = renderer() else {
@@ -44,7 +44,7 @@ fn an_r32float_attachment_is_drawn_and_reads_an_integer_back_exactly() {
         return;
     };
 
-    let images = match renderer.render_outputs(&graphics(), &instance()) {
+    let images = match renderer.render_outputs(&r32float_graphics(), &r32float_instance()) {
         Ok(images) => images,
         Err(error) => {
             // A pipeline that would not build is a result, not a skip: it is the reason the
@@ -63,8 +63,8 @@ fn an_r32float_attachment_is_drawn_and_reads_an_integer_back_exactly() {
     );
 
     let mut checked = 0usize;
-    for y in 0..FRAME {
-        for x in 0..FRAME {
+    for y in 0..R32FLOAT_FRAME {
+        for x in 0..R32FLOAT_FRAME {
             let Some(texel) = image.texel(x, y) else {
                 continue;
             };
@@ -79,21 +79,10 @@ fn an_r32float_attachment_is_drawn_and_reads_an_integer_back_exactly() {
         }
     }
     assert!(
-        checked == (FRAME * FRAME) as usize,
-        "the triangle covers the whole target, so all {FRAME}² texels hold the value and only \
+        checked == (R32FLOAT_FRAME * R32FLOAT_FRAME) as usize,
+        "the triangle covers the whole target, so all {R32FLOAT_FRAME}² texels hold the value and only \
          {checked} do — the attachment is not being read where it was drawn"
     );
-}
-
-/// Returns a renderer, or nothing when the machine has no adapter.
-fn renderer() -> Option<WgpuRenderer> {
-    let runtime = tokio::runtime::Runtime::new().expect("a runtime");
-    runtime.block_on(async {
-        if !WgpuRenderer::probe().await {
-            return None;
-        }
-        WgpuRenderer::new().await.ok()
-    })
 }
 
 /// Builds the graphics document: one rasterize pass writing two colour attachments.
@@ -102,7 +91,7 @@ fn renderer() -> Option<WgpuRenderer> {
 /// and the first is the shape every document in the workspace already has. They are declared in
 /// name order, so the second target is the second attachment and `@location(1)` is the one it was
 /// built as.
-fn graphics() -> Value {
+fn r32float_graphics() -> Value {
     let pass = Value::variant(
         "Rasterize",
         [
@@ -170,7 +159,7 @@ fn graphics() -> Value {
 }
 
 /// Builds the instance the pass draws from.
-fn instance() -> Value {
+fn r32float_instance() -> Value {
     Value::structure([
         (
             "referencing_graphics".to_owned(),
@@ -185,7 +174,7 @@ fn instance() -> Value {
                 ),
                 ("frame".to_owned(), target_payload("rgba8unorm")),
                 ("identity".to_owned(), target_payload("r32float")),
-                ("shader".to_owned(), shader()),
+                ("shader".to_owned(), r32float_shader()),
                 (
                     "triangle".to_owned(),
                     packed_buffer(
@@ -199,18 +188,12 @@ fn instance() -> Value {
     ])
 }
 
-/// The bytes three two dimensional points of three floats each occupy.
-const TRIANGLE_BYTES: i64 = 3 * 3 * 4;
-
-/// The bytes one instance row of three floats occupies.
-const INSTANCE_ROW_BYTES: i64 = 3 * 4;
-
 /// The shader the pass is drawn with.
 ///
 /// The identity is written as a **bare `f32`**, not a `vec4` of a normalised integer: a single
 /// channel is a single channel, and this is the spelling `TexelType::Float` resolves to
 /// `r32float`.
-fn shader() -> Value {
+fn r32float_shader() -> Value {
     Value::variant(
         "Shader",
         [
@@ -269,89 +252,4 @@ fn fragment_main() -> Written {
             ),
         ],
     )
-}
-
-/// Builds a buffer payload of three component points packed as floats.
-fn packed_buffer(values: &[f32], field: &str, usage: &str) -> Value {
-    let bytes: Vec<u8> = values
-        .iter()
-        .flat_map(|value| value.to_le_bytes())
-        .collect();
-    Value::variant(
-        "Buffer",
-        [
-            ("size_bytes".to_owned(), Value::Int(bytes.len() as i64)),
-            (
-                "usage".to_owned(),
-                Value::List(vec![Value::String(usage.to_owned())]),
-            ),
-            ("data".to_owned(), Value::Bytes(bytes)),
-            ("topology".to_owned(), Value::variant("Triangles", [])),
-            (
-                "schema".to_owned(),
-                definition::Schema::new(definition::SchemaKind::structure([(
-                    field.to_owned(),
-                    graphics::layout::components_schema(3),
-                )]))
-                .to_value(),
-            ),
-        ],
-    )
-}
-
-/// Builds the payload of a target, which is written by the pass and carries no pixels.
-fn target_payload(format: &str) -> Value {
-    Value::variant(
-        "Texture",
-        [
-            ("width".to_owned(), Value::Int(FRAME as i64)),
-            ("height".to_owned(), Value::Int(FRAME as i64)),
-            ("format".to_owned(), Value::String(format.to_owned())),
-        ],
-    )
-}
-
-/// Builds a texture declaration naming an entry of the instance.
-fn texture_declaration(source: &str, format: &str) -> Value {
-    Value::variant(
-        "Resource",
-        [(
-            "resource".to_owned(),
-            Value::variant(
-                "Texture",
-                [
-                    ("source".to_owned(), Value::String(source.to_owned())),
-                    ("width".to_owned(), Value::Int(FRAME as i64)),
-                    ("height".to_owned(), Value::Int(FRAME as i64)),
-                    ("format".to_owned(), Value::String(format.to_owned())),
-                ],
-            ),
-        )],
-    )
-}
-
-/// Builds a buffer declaration of the given size.
-fn buffer_declaration(source: &str, size: i64) -> Value {
-    Value::variant(
-        "Resource",
-        [(
-            "resource".to_owned(),
-            Value::variant(
-                "Buffer",
-                [
-                    ("source".to_owned(), Value::String(source.to_owned())),
-                    ("size_bytes".to_owned(), Value::Int(size)),
-                ],
-            ),
-        )],
-    )
-}
-
-/// Builds one `outputs` entry: the point, the location and the type of a texel.
-fn declared(point: &str, location: u32, ty: &str) -> Value {
-    Value::structure([
-        ("point".to_owned(), Value::String(point.to_owned())),
-        ("location".to_owned(), Value::Int(i64::from(location))),
-        ("type".to_owned(), Value::String(ty.to_owned())),
-    ])
 }

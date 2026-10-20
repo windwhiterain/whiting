@@ -20,20 +20,19 @@
 //! silent pass would make this file worthless on a machine with no gpu, which is where it is
 //! most likely to be run.
 
+use super::support::{
+    FRAME, INSTANCE_ROW_BYTES, NO_ADAPTER, TRIANGLE_BYTES, buffer_declaration, instance_row,
+    renderer, triangle_vertices,
+};
 use definition::{Schema, SchemaKind, Value};
 use device::Renderer;
 use graphics::binders::SAMPLED;
-use whiting_device_rasterize::WgpuRenderer;
 
 /// The colour one texel of the sampled texture carries.
 ///
 /// Deliberately neither white nor a channel at its limit: a value that survives being read
 /// back through the wrong format or the wrong bytes would pass by accident.
 const TEXEL: [u8; 4] = [0x40, 0x80, 0xC0, 0xFF];
-
-/// The size of the frame. Large enough that the centre of the viewport is well inside one
-/// texel of a one texel texture.
-const FRAME: u32 = 64;
 
 /// The binding the sampler takes when the payload declares `sampled`.
 ///
@@ -49,17 +48,8 @@ const FRAME: u32 = 64;
 /// a shader's number depends on something other than the declaration list.
 const SAMPLER_BINDING: u32 = 4;
 
-/// The bytes three two dimensional points of three floats each occupy.
-const TRIANGLE_BYTES: i64 = 3 * 3 * 4;
-
-/// The bytes one instance row of three floats occupies.
-const INSTANCE_ROW_BYTES: i64 = 3 * 4;
-
 /// The bytes the bound buffer carries, which the shader does not read.
 const PADDING_BYTES: i64 = 16;
-
-/// A note printed when there is nothing to test on.
-const NO_ADAPTER: &str = "skipped: no gpu adapter is present";
 
 #[test]
 fn a_sampled_texture_reaches_the_fragment_stage() {
@@ -70,8 +60,8 @@ fn a_sampled_texture_reaches_the_fragment_stage() {
     let stage = Stage::sampling(SAMPLER_BINDING);
     let frame = renderer
         .render(
-            &graphics(1, 1),
-            &instance(texture_payload(1, 1, &TEXEL), true, &source(&stage)),
+            &channel_graphics(1, 1),
+            &channel_instance(texture_payload(1, 1, &TEXEL), true, &channel_source(&stage)),
         )
         .expect("a sampled texture renders");
     assert_eq!((frame.width, frame.height), (FRAME, FRAME));
@@ -97,8 +87,12 @@ fn a_texture_that_is_not_sampled_still_renders() {
     let stage = Stage::loading();
     let frame = renderer
         .render(
-            &graphics(1, 1),
-            &instance(texture_payload(1, 1, &TEXEL), false, &source(&stage)),
+            &channel_graphics(1, 1),
+            &channel_instance(
+                texture_payload(1, 1, &TEXEL),
+                false,
+                &channel_source(&stage),
+            ),
         )
         .expect("a read texture renders without a sampler");
     assert_eq!(frame.rgba[0..4], TEXEL, "the first pixel is the texel");
@@ -127,11 +121,11 @@ fn an_uploaded_texture_carries_the_levels_a_box_filter_derives() {
     // The frame is 64 texels a side, so a fully averaged level is the sixth one down.
     let frame = renderer
         .render(
-            &graphics(FRAME as i64, FRAME as i64),
-            &instance(
+            &channel_graphics(FRAME as i64, FRAME as i64),
+            &channel_instance(
                 texture_payload(FRAME as i64, FRAME as i64, &checkerboard),
                 true,
-                &source(&Stage::a_known_average(SAMPLER_BINDING, 6)),
+                &channel_source(&Stage::a_known_average(SAMPLER_BINDING, 6)),
             ),
         )
         .expect("an uploaded texture renders");
@@ -169,11 +163,11 @@ fn an_srgb_texture_is_averaged_in_linear_light() {
         .collect();
     let frame = renderer
         .render(
-            &graphics(2, 2),
-            &instance(
+            &channel_graphics(2, 2),
+            &channel_instance(
                 texture_payload_in(2, 2, "rgba8unorm-srgb", &pixels),
                 true,
-                &source(&Stage::a_known_average(SAMPLER_BINDING, 1)),
+                &channel_source(&Stage::a_known_average(SAMPLER_BINDING, 1)),
             ),
         )
         .expect("an sRGB texture renders");
@@ -199,11 +193,11 @@ fn a_linear_texture_is_averaged_as_stored() {
         .collect();
     let frame = renderer
         .render(
-            &graphics(2, 2),
-            &instance(
+            &channel_graphics(2, 2),
+            &channel_instance(
                 texture_payload(2, 2, &pixels),
                 true,
-                &source(&Stage::a_known_average(SAMPLER_BINDING, 1)),
+                &channel_source(&Stage::a_known_average(SAMPLER_BINDING, 1)),
             ),
         )
         .expect("a linear texture renders");
@@ -227,8 +221,8 @@ fn a_shader_that_names_the_wrong_binding_is_reported_as_that() {
     let stage = Stage::sampling(PADDING_BINDING);
     let failure = renderer
         .render(
-            &graphics(1, 1),
-            &instance(texture_payload(1, 1, &TEXEL), true, &source(&stage)),
+            &channel_graphics(1, 1),
+            &channel_instance(texture_payload(1, 1, &TEXEL), true, &channel_source(&stage)),
         )
         .expect_err("a shader reading the wrong binding is refused");
     let message = failure.to_string();
@@ -298,17 +292,6 @@ impl Stage {
     }
 }
 
-/// Returns a renderer, or nothing when the machine has no adapter.
-fn renderer() -> Option<WgpuRenderer> {
-    let runtime = tokio::runtime::Runtime::new().expect("a runtime");
-    runtime.block_on(async {
-        if !WgpuRenderer::probe().await {
-            return None;
-        }
-        WgpuRenderer::new().await.ok()
-    })
-}
-
 /// Builds a texture payload of the given pixels, one texel per four bytes.
 fn texture_payload(width: i64, height: i64, pixels: &[u8]) -> Value {
     texture_payload_in(width, height, "rgba8unorm", pixels)
@@ -333,7 +316,7 @@ fn texture_payload_in(width: i64, height: i64, format: &str, pixels: &[u8]) -> V
 ///
 /// `sampling` decides whether the texture payload declares that it is sampled. The key is a
 /// unit, so what it holds is nothing and its presence is the whole declaration.
-fn instance(texture: Value, sampling: bool, source: &str) -> Value {
+fn channel_instance(texture: Value, sampling: bool, source: &str) -> Value {
     let texture = match texture {
         Value::Enum { tag, mut fields } => {
             if sampling {
@@ -356,9 +339,9 @@ fn instance(texture: Value, sampling: bool, source: &str) -> Value {
                 // The pass renders into this, so it carries no pixels: a target is written
                 // rather than uploaded, and giving it pixels would be uploading into a map
                 // the clear is about to overwrite.
-                ("frame".to_owned(), target_payload()),
+                ("frame".to_owned(), channel_target_payload()),
                 ("sampled_image".to_owned(), texture),
-                ("shader".to_owned(), shader(source)),
+                ("shader".to_owned(), channel_shader(source)),
                 ("triangle".to_owned(), triangle_vertices()),
             ]),
         ),
@@ -366,7 +349,7 @@ fn instance(texture: Value, sampling: bool, source: &str) -> Value {
 }
 
 /// Builds the payload of the texture the frame is rendered into.
-fn target_payload() -> Value {
+fn channel_target_payload() -> Value {
     Value::variant(
         "Texture",
         [
@@ -375,23 +358,6 @@ fn target_payload() -> Value {
             ("format".to_owned(), Value::String("rgba8unorm".to_owned())),
         ],
     )
-}
-
-/// Builds a vertex buffer of three points that cover the whole viewport.
-///
-/// The third point is at three in both axes, so the triangle a rasteriser clips out of it
-/// covers every pixel of the target rather than half of it.
-fn triangle_vertices() -> Value {
-    packed_buffer(
-        &[-1.0, -1.0, 0.0, 3.0, -1.0, 0.0, -1.0, 3.0, 0.0],
-        "position",
-        "vertex",
-    )
-}
-
-/// Builds the single instance row, which carries nothing but has to exist to be counted.
-fn instance_row() -> Value {
-    packed_buffer(&[0.0, 0.0, 0.0], "filler", "instance")
 }
 
 /// Builds a buffer the shader binds and does not read.
@@ -415,41 +381,13 @@ fn padding_buffer() -> Value {
     )
 }
 
-/// Builds a buffer payload of three component points packed as floats.
-fn packed_buffer(values: &[f32], field: &str, usage: &str) -> Value {
-    let bytes: Vec<u8> = values
-        .iter()
-        .flat_map(|value| value.to_le_bytes())
-        .collect();
-    Value::variant(
-        "Buffer",
-        [
-            ("size_bytes".to_owned(), Value::Int(bytes.len() as i64)),
-            (
-                "usage".to_owned(),
-                Value::List(vec![Value::String(usage.to_owned())]),
-            ),
-            ("data".to_owned(), Value::Bytes(bytes)),
-            ("topology".to_owned(), Value::variant("Triangles", [])),
-            (
-                "schema".to_owned(),
-                Schema::new(SchemaKind::structure([(
-                    field.to_owned(),
-                    graphics::layout::components_schema(3),
-                )]))
-                .to_value(),
-            ),
-        ],
-    )
-}
-
 /// Builds the instance entry the pass names as its shader.
-fn shader(source: &str) -> Value {
+fn channel_shader(source: &str) -> Value {
     Value::variant(
         "Shader",
         [
             ("source".to_owned(), Value::String(source.to_owned())),
-            ("schema".to_owned(), interface()),
+            ("schema".to_owned(), channel_interface()),
         ],
     )
 }
@@ -468,7 +406,7 @@ const IMAGE_BINDING: u32 = 3;
 /// The uniform is `time` alone: a pass always carries one, and what it holds is not what
 /// these tests are about, so the shader declares the smallest interface that satisfies the
 /// check and the pass supplies exactly that.
-fn source(stage: &Stage) -> String {
+fn channel_source(stage: &Stage) -> String {
     let image_binding = IMAGE_BINDING;
     let padding_binding = PADDING_BINDING;
     let body = stage.body;
@@ -517,7 +455,7 @@ fn fragment_main() -> @location(0) vec4<f32> {{
 /// declares, not only the one the fragment stage reads. What it is *not* required to do is
 /// read them: the shader's body samples one image and ignores the two buffers, which is
 /// legal and is what makes an interface a statement about what a pass offers.
-fn interface() -> Value {
+fn channel_interface() -> Value {
     Schema::new(SchemaKind::structure([
         (
             "uniform".to_owned(),
@@ -544,7 +482,7 @@ fn interface() -> Value {
 }
 
 /// Builds a graphics document of one rasterize pass that renders into the texture it reads.
-fn graphics(width: i64, height: i64) -> Value {
+fn channel_graphics(width: i64, height: i64) -> Value {
     let pass = Value::variant(
         "Rasterize",
         [
@@ -568,7 +506,7 @@ fn graphics(width: i64, height: i64) -> Value {
                     ),
                     (
                         "sampled_image".to_owned(),
-                        texture_declaration("sampled_image", width, height),
+                        channel_texture_declaration("sampled_image", width, height),
                     ),
                     (
                         "triangle".to_owned(),
@@ -622,7 +560,7 @@ fn target_declaration() -> Value {
 }
 
 /// Builds a texture declaration naming an entry of the instance.
-fn texture_declaration(source: &str, width: i64, height: i64) -> Value {
+fn channel_texture_declaration(source: &str, width: i64, height: i64) -> Value {
     Value::variant(
         "Resource",
         [(
@@ -634,23 +572,6 @@ fn texture_declaration(source: &str, width: i64, height: i64) -> Value {
                     ("width".to_owned(), Value::Int(width)),
                     ("height".to_owned(), Value::Int(height)),
                     ("format".to_owned(), Value::String("rgba8unorm".to_owned())),
-                ],
-            ),
-        )],
-    )
-}
-
-/// Builds a buffer declaration of the given size.
-fn buffer_declaration(source: &str, size: i64) -> Value {
-    Value::variant(
-        "Resource",
-        [(
-            "resource".to_owned(),
-            Value::variant(
-                "Buffer",
-                [
-                    ("source".to_owned(), Value::String(source.to_owned())),
-                    ("size_bytes".to_owned(), Value::Int(size)),
                 ],
             ),
         )],

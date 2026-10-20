@@ -27,6 +27,7 @@
 //! where on the frame anything lands, which is what lets them be about the mechanism rather
 //! than about a picture.
 
+use super::support::{NO_ADAPTER, renderer};
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use device::{Frame, Renderer};
 use document::geometry::heightfield;
@@ -40,11 +41,8 @@ use scene::standard::Stage;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
 use whiting_device_rasterize::WgpuRenderer;
 
-/// A note printed when there is nothing to test on.
-const NO_ADAPTER: &str = "skipped: no gpu adapter is present";
-
 /// How far the ground reaches either side of the origin.
-const GROUND: f64 = 10.0;
+const SHADOW_GROUND: f64 = 10.0;
 
 /// How high the occluder stands above the ground, which is what makes a shadow at all.
 const BLOCK_HEIGHT: f64 = 3.0;
@@ -53,7 +51,7 @@ const BLOCK_HEIGHT: f64 = 3.0;
 const KEY: [f64; 3] = [-30.0, 20.0, -24.0];
 
 /// Where the second lamp stands, on the same far side and to the other hand.
-const SECOND: [f64; 3] = [26.0, 18.0, -20.0];
+const SHADOW_SECOND: [f64; 3] = [26.0, 18.0, -20.0];
 
 /// The radiance each lamp is calibrated to put on the ground directly below it.
 ///
@@ -93,8 +91,10 @@ fn an_occluder_darkens_the_ground_it_falls_on() {
         println!("{NO_ADAPTER}");
         return;
     };
-    let with = render(&renderer, &scene(true)).expect("the scene with an occluder renders");
-    let without = render(&renderer, &scene(false)).expect("the same scene without one renders");
+    let with =
+        shadow_render(&renderer, &shadow_scene(true)).expect("the scene with an occluder renders");
+    let without =
+        shadow_render(&renderer, &shadow_scene(false)).expect("the same scene without one renders");
 
     let (darker, brighter) = compare(&with.rgba, &without.rgba);
     assert!(
@@ -103,7 +103,7 @@ fn an_occluder_darkens_the_ground_it_falls_on() {
          part of the frame, and this pair of frames differs in only {darker} darker pixels and \
          {brighter} brighter ones",
         BLOCK_HEIGHT,
-        GROUND * 2.0,
+        SHADOW_GROUND * 2.0,
     );
     assert_eq!(
         brighter, 0,
@@ -123,8 +123,9 @@ fn a_light_with_no_page_lights_the_frame_rather_than_shadowing_it() {
     // carries minus one and is lit unshadowed. If the sentinel were read as page zero, that
     // light would take the *first* light's shadow map and its light would be cut by shadows
     // cast for something else — which shows up here as pixels that got darker.
-    let one = render(&renderer, &scene_of(1, 1, true)).expect("the single light scene renders");
-    let two = render(&renderer, &scene_of(2, 1, true)).expect("the two light scene renders");
+    let one =
+        shadow_render(&renderer, &scene_of(1, 1, true)).expect("the single light scene renders");
+    let two = shadow_render(&renderer, &scene_of(2, 1, true)).expect("the two light scene renders");
 
     let (darker, brighter) = compare(&two.rgba, &one.rgba);
     assert!(
@@ -169,7 +170,7 @@ fn compare(after: &[u8], before: &[u8]) -> (usize, usize) {
 /// stage whose passes write a light's page. Leaving it out of that stage while keeping it in
 /// the other two gives the same picture with the shadow removed, and nothing else, which is
 /// what makes the two frames comparable.
-fn scene(occluder: bool) -> Value {
+fn shadow_scene(occluder: bool) -> Value {
     scene_of(1, 64, occluder)
 }
 
@@ -202,13 +203,13 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
             "ground",
             "Triangles",
             point.clone(),
-            heightfield(32, GROUND, flat),
+            heightfield(32, SHADOW_GROUND, flat),
         ),
         mesh(
             "block",
             "Triangles",
             point.clone(),
-            heightfield(32, GROUND, raised),
+            heightfield(32, SHADOW_GROUND, raised),
         ),
     ]);
 
@@ -252,9 +253,9 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
         };
         extra.push(light_with_radius(
             "second",
-            SECOND,
+            SHADOW_SECOND,
             [0.85, 0.9, 1.0],
-            flux(SECOND),
+            flux(SHADOW_SECOND),
             20.0,
             70.0,
         ));
@@ -408,17 +409,6 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
     ])
 }
 
-/// Returns a renderer, or nothing when the machine has no adapter.
-fn renderer() -> Option<WgpuRenderer> {
-    let runtime = tokio::runtime::Runtime::new().expect("a runtime");
-    runtime.block_on(async {
-        if !WgpuRenderer::probe().await {
-            return None;
-        }
-        WgpuRenderer::new().await.ok()
-    })
-}
-
 /// Compiles a scene the way a host would.
 fn compile(scene: &Value, limits: Option<scene::DeviceLimits>) -> scene::CompileOutput {
     let mut registry = Registry::new();
@@ -456,7 +446,7 @@ fn compile(scene: &Value, limits: Option<scene::DeviceLimits>) -> scene::Compile
 }
 
 /// Compiles a scene the way a host would and renders it.
-fn render(renderer: &WgpuRenderer, scene: &Value) -> Result<Frame, String> {
+fn shadow_render(renderer: &WgpuRenderer, scene: &Value) -> Result<Frame, String> {
     // The limits are the renderer's own, because this scene is compiled against the machine
     // that is about to draw it rather than against a floor.
     let compiled = compile(scene, renderer.limits());

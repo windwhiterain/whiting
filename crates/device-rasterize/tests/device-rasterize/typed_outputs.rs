@@ -24,19 +24,14 @@
 //! The last two need an adapter and skip with a printed note without one, following
 //! `multi_attachment_render.rs`.
 
+use super::support::{
+    FRAME, INSTANCE_ROW_BYTES, NO_ADAPTER, TRIANGLE_BYTES, buffer_declaration, instance_row,
+    renderer, target_payload, texture_declaration, triangle_vertices,
+};
 use definition::{Schema, SchemaKind, Value};
 use device::{RenderError, Renderer};
 use graphics::Output;
-use whiting_device_rasterize::{WgpuRenderer, check_outputs};
-
-/// The size of the frame the end to end test draws.
-const FRAME: u32 = 64;
-
-/// The bytes three two dimensional points of three floats each occupy.
-const TRIANGLE_BYTES: i64 = 3 * 3 * 4;
-
-/// The bytes one instance row of three floats occupies.
-const INSTANCE_ROW_BYTES: i64 = 3 * 4;
+use whiting_device_rasterize::check_outputs;
 
 /// The colour the frame's own attachment carries, and a value eight bits holds exactly.
 const FRAME_VALUE: [f32; 4] = [0.25, 0.5, 0.75, 1.0];
@@ -51,9 +46,6 @@ const DECLARED: usize = 3;
 /// came back as `0.0` in the blue channel is a value that was never written where it was read
 /// from, and a swapped pair cannot produce anything that looks right.
 const NORMAL_VALUE: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
-
-/// A note printed when there is nothing to test on.
-const NO_ADAPTER: &str = "skipped: no gpu adapter is present";
 
 /// A shader whose fragment stage writes `colour` at location zero and `normal` at location one.
 const TWO_OUTPUTS: &str = r#"
@@ -1005,7 +997,7 @@ fn a_three_component_output_is_written_read_back_and_the_frame_is_unchanged() {
     // `vec3` declaration is drawn in: the declaration states how many numbers a texel holds and
     // the drawing is one component wider than that, so the fourth is padding.
     let images = renderer
-        .render_outputs(&three_component_graphics(), &instance())
+        .render_outputs(&three_component_graphics(), &typed_instance())
         .expect("a `vec3<f32>` declaration a shader fills with four components renders");
 
     let normal = images
@@ -1101,7 +1093,7 @@ fn a_swapped_pair_of_same_typed_declarations_is_refused_before_the_draw() {
     // The same document with the two declarations' locations exchanged. Both are `vec4<f32>`
     // and both are filled by a shader writing `vec4<f32>`, so this is refused by the location
     // cross-check alone and by nothing else.
-    let mut graphics = graphics();
+    let mut graphics = typed_graphics();
     let Value::Struct(ref mut fields) = graphics else {
         unreachable!("a graphics document is a structure value")
     };
@@ -1121,7 +1113,7 @@ fn a_swapped_pair_of_same_typed_declarations_is_refused_before_the_draw() {
     );
 
     let said = renderer
-        .render_outputs(&graphics, &instance())
+        .render_outputs(&graphics, &typed_instance())
         .expect_err("a location that is not its point's is refused before the draw")
         .to_string();
     // Which of the two swapped declarations is named first depends on the order the map reads
@@ -1147,7 +1139,7 @@ fn a_declared_output_no_pass_writes_is_an_error_rather_than_an_empty_image() {
     };
     // The document declares an image at a point **no pass renders into**, which is the case the
     // closed set of channels could not express: there was no way to name an image nothing drew.
-    let mut graphics = graphics();
+    let mut graphics = typed_graphics();
     let Value::Struct(ref mut fields) = graphics else {
         unreachable!("a graphics document is a structure value")
     };
@@ -1163,7 +1155,7 @@ fn a_declared_output_no_pass_writes_is_an_error_rather_than_an_empty_image() {
     );
 
     let error = renderer
-        .render_outputs(&graphics, &instance())
+        .render_outputs(&graphics, &typed_instance())
         .expect_err("an output no pass writes is refused rather than answered with nothing");
 
     let RenderError::UnwrittenOutput {
@@ -1205,7 +1197,7 @@ fn a_scene_declared_output_is_written_read_back_and_carries_its_own_type() {
         return;
     };
     let images = renderer
-        .render_outputs(&graphics(), &instance())
+        .render_outputs(&typed_graphics(), &typed_instance())
         .expect("a pass whose fragment shader writes the location the document declares renders");
 
     let names: Vec<&str> = images.iter().map(|image| image.name.as_str()).collect();
@@ -1267,7 +1259,7 @@ fn the_same_scene_with_a_broken_shader_is_refused_rather_than_drawn() {
         return;
     };
     let error = renderer
-        .render_outputs(&graphics(), &instance_with(WRONG_TYPE))
+        .render_outputs(&typed_graphics(), &instance_with(WRONG_TYPE))
         .expect_err("a shader that does not write the declared type is refused before the draw");
     let said = error.to_string();
     assert!(
@@ -1342,7 +1334,7 @@ fn declared_both() -> Vec<Output<'static>> {
 }
 
 /// Builds the graphics document: one rasterize pass, two colour attachments, two declarations.
-fn graphics() -> Value {
+fn typed_graphics() -> Value {
     let binders = vec![
         (
             "first".to_owned(),
@@ -1418,7 +1410,7 @@ fn graphics() -> Value {
 /// and the pass are the ones the other tests use, so a difference in what this document does is
 /// a difference about the width and about nothing else.
 fn three_component_graphics() -> Value {
-    let mut graphics = graphics();
+    let mut graphics = typed_graphics();
     let Value::Struct(ref mut fields) = graphics else {
         unreachable!("a graphics document is a structure value")
     };
@@ -1436,7 +1428,7 @@ fn three_component_graphics() -> Value {
 }
 
 /// Builds the instance the pass draws from, carrying the source that fills both locations.
-fn instance() -> Value {
+fn typed_instance() -> Value {
     instance_with(TWO_OUTPUTS)
 }
 
@@ -1455,7 +1447,7 @@ fn instance_with(source: &str) -> Value {
                 // giving a target pixels would be uploading into a map the clear overwrites.
                 ("first".to_owned(), target_payload("rgba8unorm")),
                 ("normal".to_owned(), target_payload("rgba16float")),
-                ("shader".to_owned(), shader(source)),
+                ("shader".to_owned(), typed_shader(source)),
                 ("triangle".to_owned(), triangle_vertices()),
             ]),
         ),
@@ -1481,12 +1473,12 @@ fn declared_value(point: &str, location: u32, ty: &str) -> Value {
 }
 
 /// Builds the instance entry the pass names as its shader.
-fn shader(source: &str) -> Value {
+fn typed_shader(source: &str) -> Value {
     Value::variant(
         "Shader",
         [
             ("source".to_owned(), Value::String(source.to_owned())),
-            ("schema".to_owned(), interface()),
+            ("schema".to_owned(), typed_interface()),
         ],
     )
 }
@@ -1496,7 +1488,7 @@ fn shader(source: &str) -> Value {
 /// The targets are listed because a binder field is one the pass **must** have, even though the
 /// shader reads none of them: a target takes a binding number with no entry behind it, so there
 /// is nothing for a shader to declare.
-fn interface() -> Value {
+fn typed_interface() -> Value {
     Schema::new(SchemaKind::structure([
         (
             "uniform".to_owned(),
@@ -1516,109 +1508,4 @@ fn interface() -> Value {
         ),
     ]))
     .to_value()
-}
-
-/// Builds a vertex buffer of three points that cover the whole viewport.
-///
-/// The third point is at three in both axes, so the triangle a rasteriser clips out of it covers
-/// every pixel of the target rather than half of it — which is what makes every texel of the
-/// second attachment the value the shader wrote.
-fn triangle_vertices() -> Value {
-    packed_buffer(
-        &[-1.0, -1.0, 0.0, 3.0, -1.0, 0.0, -1.0, 3.0, 0.0],
-        "position",
-        "vertex",
-    )
-}
-
-/// Builds the single instance row, which carries nothing but has to exist to be counted.
-fn instance_row() -> Value {
-    packed_buffer(&[0.0, 0.0, 0.0], "filler", "instance")
-}
-
-/// Builds a buffer payload of three component points packed as floats.
-fn packed_buffer(values: &[f32], field: &str, usage: &str) -> Value {
-    let bytes: Vec<u8> = values
-        .iter()
-        .flat_map(|value| value.to_le_bytes())
-        .collect();
-    Value::variant(
-        "Buffer",
-        [
-            ("size_bytes".to_owned(), Value::Int(bytes.len() as i64)),
-            (
-                "usage".to_owned(),
-                Value::List(vec![Value::String(usage.to_owned())]),
-            ),
-            ("data".to_owned(), Value::Bytes(bytes)),
-            ("topology".to_owned(), Value::variant("Triangles", [])),
-            (
-                "schema".to_owned(),
-                Schema::new(SchemaKind::structure([(
-                    field.to_owned(),
-                    graphics::layout::components_schema(3),
-                )]))
-                .to_value(),
-            ),
-        ],
-    )
-}
-
-/// Builds the payload of a target, which is written by the pass and carries no pixels.
-fn target_payload(format: &str) -> Value {
-    Value::variant(
-        "Texture",
-        [
-            ("width".to_owned(), Value::Int(FRAME as i64)),
-            ("height".to_owned(), Value::Int(FRAME as i64)),
-            ("format".to_owned(), Value::String(format.to_owned())),
-        ],
-    )
-}
-
-/// Builds a texture declaration naming an entry of the instance.
-fn texture_declaration(source: &str, format: &str) -> Value {
-    Value::variant(
-        "Resource",
-        [(
-            "resource".to_owned(),
-            Value::variant(
-                "Texture",
-                [
-                    ("source".to_owned(), Value::String(source.to_owned())),
-                    ("width".to_owned(), Value::Int(FRAME as i64)),
-                    ("height".to_owned(), Value::Int(FRAME as i64)),
-                    ("format".to_owned(), Value::String(format.to_owned())),
-                ],
-            ),
-        )],
-    )
-}
-
-/// Builds a buffer declaration of the given size.
-fn buffer_declaration(source: &str, size: i64) -> Value {
-    Value::variant(
-        "Resource",
-        [(
-            "resource".to_owned(),
-            Value::variant(
-                "Buffer",
-                [
-                    ("source".to_owned(), Value::String(source.to_owned())),
-                    ("size_bytes".to_owned(), Value::Int(size)),
-                ],
-            ),
-        )],
-    )
-}
-
-/// Returns a renderer, or nothing when the machine has no adapter.
-fn renderer() -> Option<WgpuRenderer> {
-    let runtime = tokio::runtime::Runtime::new().expect("a runtime");
-    runtime.block_on(async {
-        if !WgpuRenderer::probe().await {
-            return None;
-        }
-        WgpuRenderer::new().await.ok()
-    })
 }
