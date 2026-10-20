@@ -14,7 +14,7 @@
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use graphics::{LOCATION_FIELD, Output, POINT_FIELD, TYPE_FIELD};
-use whiting_gallery::Gallery;
+use whiting_scene::standard::example_standard_scene;
 use whiting_scene::{
     CompileContext, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene,
     register_standard_scene_schema,
@@ -35,10 +35,9 @@ fn compiled(channels: &[DebugChannel]) -> whiting_scene::CompileOutput {
     let source = Definition::new(
         DefinitionIdentifier::new("typed-outputs.scene"),
         SchemaIdentifier::new(STANDARD_SCENE_SCHEMA),
-        // The gallery is a dev-dependency of this crate, which is the only reason a test here
-        // can reach a real scene: the cycle exists for tests alone and the published library's
-        // dependency graph never sees it.
-        Gallery::build("tidewater"),
+        // The example document, which carries a post stage and so declares a frame the way a
+        // document with a post chain does.
+        example_standard_scene(),
     );
     StandardScene::new(
         DefinitionIdentifier::new("typed-outputs.graphics"),

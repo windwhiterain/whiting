@@ -4,9 +4,9 @@
 //!
 //! `a81b203` changed the rotation this emitter writes for a camera, to cancel a scale in world
 //! space that the loader does not compute. Every camera in the gallery was turned away from its
-//! subject by `2 * atan2(forward.x, forward.z)`, `sunlight` fell from drawing 59.597% of its frame
-//! to 10.372%, and `foldyard` lost its courtyard. It was reverted in `afb0c0b`, and **110 tests
-//! stayed green throughout** because `cycles_export` had none.
+//! subject by `2 * atan2(forward.x, forward.z)`: one demo scene fell from drawing 59.597% of its
+//! frame to 10.372%, and another lost its courtyard. It was reverted in `afb0c0b`, and **110
+//! tests stayed green throughout** because `cycles_export` had none.
 //!
 //! The only thing that noticed was a person rendering eight scenes and reading the numbers. This
 //! is that check without the rendering: it composes the emitted `translate`/`rotate`/`scale` the

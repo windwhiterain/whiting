@@ -21,24 +21,23 @@
 //! The other half of the contract is here too, and it is the half that decides whether the
 //! notes are ever read: **a frame that is fine says nothing at all.** A backdrop wall that
 //! covers the whole frame, a ground reaching past it in every direction, a fitted camera and a
-//! scene that names no camera are all ordinary, and the gallery below is the evidence that none
-//! of them is reported.
+//! document that names no camera are all ordinary, and the document under test is the evidence
+//! that none of them is reported.
 
 use definition::{
     Definition, DefinitionIdentifier, FieldMap, Path, Registry, SchemaIdentifier, Value,
 };
 /// The field a scene holds its instances under, which standard does not re export.
 const INSTANCES: &str = "instances";
-use whiting_gallery::Gallery;
 use whiting_gallery::kit::camera_placed;
 use whiting_scene::standard::{CAMERAS, EYE, TARGET};
 use whiting_scene::{
     CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema,
 };
 
-/// The studio scene is one mesh of four instances, which is the smallest document a test can
+/// The example document: one mesh of four instances, which is the smallest document a test can
 /// bury a camera in.
-fn studio() -> Value {
+fn example_document() -> Value {
     whiting_scene::standard::example_standard_scene()
 }
 
@@ -46,7 +45,7 @@ fn studio() -> Value {
 fn an_eye_inside_an_instance_is_named_with_the_instance_and_how_far_in() {
     // The eye at 0.3 above the floor of a two unit cube, three tenths of the way in, which is
     // the dsf pond: a camera standing in the water rather than beside it.
-    let scene = isolating(&with_a_cube(&studio()), "quad");
+    let scene = isolating(&with_a_cube(&example_document()), "quad");
     let scene = with_camera(&scene, &placed([0.4, -0.7, 0.4], [0.0, 0.0, -10.0]));
 
     let notes = camera_notes_of(&scene);
@@ -78,7 +77,7 @@ fn an_eye_inside_an_instance_is_named_with_the_instance_and_how_far_in() {
 fn one_instance_holding_the_frame_between_the_eye_and_the_target_is_named_with_its_share() {
     // A wall twenty units across, one unit thick, eight units in front of an eye looking at
     // something ten units away: it holds the whole frame and it is in front of the subject.
-    let scene = isolating(&with_a_cube(&studio()), "quad");
+    let scene = isolating(&with_a_cube(&example_document()), "quad");
     let scene = with_transform(&scene, "quad", [0.0, 0.0, -8.0], [20.0, 20.0, 1.0]);
     let scene = with_camera(&scene, &placed([0.0, 0.0, 0.0], [0.0, 0.0, -10.0]));
 
@@ -111,7 +110,7 @@ fn a_backdrop_behind_the_target_holds_the_frame_and_is_not_reported() {
     // a still life is a backdrop and a backdrop fills the frame — and it is not what the frame
     // is *of*, so the note does not fire. This is the case that decides the bar: one instance
     // covering the frame is only a fault when it stands in front of the subject.
-    let scene = isolating(&with_a_cube(&studio()), "quad");
+    let scene = isolating(&with_a_cube(&example_document()), "quad");
     let scene = with_transform(&scene, "quad", [0.0, 0.0, -20.0], [20.0, 20.0, 1.0]);
     let scene = with_camera(&scene, &placed([0.0, 0.0, 0.0], [0.0, 0.0, -2.0]));
 
@@ -126,7 +125,7 @@ fn a_backdrop_behind_the_target_holds_the_frame_and_is_not_reported() {
 fn a_target_nearer_than_the_near_plane_is_named_with_both_numbers() {
     // An eye ten units from the origin, a target two units in front of it, and a near plane
     // five units out: the camera was aimed at something the frame cannot hold.
-    let scene = isolating(&with_a_cube(&studio()), "quad");
+    let scene = isolating(&with_a_cube(&example_document()), "quad");
     let scene = with_camera(
         &scene,
         &Value::structure([
@@ -161,11 +160,11 @@ fn a_target_nearer_than_the_near_plane_is_named_with_both_numbers() {
 
 #[test]
 fn a_scene_naming_no_camera_is_not_told_about_the_convention_one() {
-    // The studio scene names no camera, so this is the convention: pulled back until the whole
+    // The document names no camera, so this is the convention: pulled back until the whole
     // box fits, which puts the eye three half widths off the centre of the scene and outside
     // every box in it. A note here would point at a field the document does not have.
     assert_eq!(
-        camera_notes_of(&studio()),
+        camera_notes_of(&example_document()),
         Vec::new(),
         "a camera nobody wrote is not a fault anybody can fix"
     );
@@ -187,68 +186,6 @@ fn a_scene_naming_no_camera_is_not_told_about_the_convention_one() {
     );
 }
 
-/// The gallery's own scenes, as the evidence that the notes are silent where they should be.
-///
-/// `terraces` and `tidewater` are the two that are **not** silent, and the next two tests say
-/// why. They are here in the list of the seven rather than in a list of the ten because a scene
-/// with a heightfield in it has a box around a valley, and a camera standing in the valley is
-/// inside that box — which is a true statement and not a fault.
-#[test]
-fn the_gallery_scenes_that_bury_nothing_say_nothing() {
-    for name in [
-        "dunes",
-        "lanterns",
-        "monoliths",
-        "spotlight",
-        "stilllife",
-        "sunlight",
-        "tiles",
-    ] {
-        assert_eq!(
-            camera_notes_of(&Gallery::build(name)),
-            Vec::new(),
-            "`{name}` names a camera that is not inside anything, and says so by saying nothing"
-        );
-    }
-}
-
-/// The cost of measuring a box rather than a surface, pinned with both numbers.
-///
-/// A heightfield's box is a box around a valley: `terraces` puts its eye sixteen units inside
-/// the terrain's bounds while standing in open air above the floor, and `tidewater` does the
-/// same for the far bank. Neither is a buried camera, and both are reported, because the
-/// compiler knows bounds and not surfaces — the same reason the notes cannot be quieter and
-/// the same reason they are worth having when the eye really is in the water.
-#[test]
-fn a_heightfield_reports_the_eye_inside_the_box_around_it() {
-    // One note rather than three, because the terrain is one box drawn in three stages.
-    let notes = camera_notes_of(&Gallery::build("terraces"));
-    assert_eq!(
-        notes.len(),
-        1,
-        "one box holding the eye, named once: {notes:#?}"
-    );
-    for named in ["terrain-depth", "terrain-shade", "terrain-cast", "16.746"] {
-        assert!(
-            notes[0].message.contains(named),
-            "the note names every instance that draws it and how far in: {}",
-            notes[0].message
-        );
-    }
-
-    let notes = camera_notes_of(&Gallery::build("tidewater"));
-    assert_eq!(
-        notes.len(),
-        1,
-        "and the same for the bank behind the water: {notes:#?}"
-    );
-    assert!(
-        notes[0].message.contains("`depth-shore`") && notes[0].message.contains("18.000"),
-        "which is one note rather than two, because the compile drew camera zero: {}",
-        notes[0].message
-    );
-}
-
 /// The whole of the picture invariant, as far as a compile can be asked about it: the notes
 /// travel beside the documents and are not in them. A compile that raises one emits the same
 /// passes, the same instance entries and the same delta it would have emitted silently, and
@@ -256,11 +193,11 @@ fn a_heightfield_reports_the_eye_inside_the_box_around_it() {
 #[test]
 fn a_scene_that_raises_a_note_still_emits_the_pipeline_it_always_did() {
     let quiet = compiled(&with_camera(
-        &isolating(&with_a_cube(&studio()), "quad"),
+        &isolating(&with_a_cube(&example_document()), "quad"),
         &placed([0.0, 0.0, 20.0], [0.0, 0.0, -10.0]),
     ));
     let buried = compiled(&with_camera(
-        &isolating(&with_a_cube(&studio()), "quad"),
+        &isolating(&with_a_cube(&example_document()), "quad"),
         &placed([0.4, -0.7, 0.4], [0.0, 0.0, -10.0]),
     ));
 

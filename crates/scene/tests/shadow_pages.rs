@@ -19,13 +19,13 @@
 //! - the pool's own shape, bounded rather than refused, with a note naming what was lost.
 
 use definition::{Definition, DefinitionIdentifier, Path, Registry, SchemaIdentifier, Value};
-use whiting_gallery::Gallery;
 use whiting_scene::CompileContext;
 use whiting_scene::Compiler;
 use whiting_scene::lighting::{
     ClusterLight, Clustering, Clusters, LightPool, NO_PAGE, SHADOW_PAGE_WIDTH, SHADOW_PAGES,
     assign, read_light_pool,
 };
+use whiting_scene::standard::example_standard_scene;
 use whiting_scene::standard::{Bounds, Camera, FRAME, Projection, register_standard_scene_schema};
 use whiting_scene::{
     CompileError, CompileNote, DeviceLimits, STANDARD_SCENE_SCHEMA, StandardScene,
@@ -390,9 +390,12 @@ fn a_pool_the_scene_says_nothing_about_is_the_documented_one() {
 /// O(min(lights, pages) * groups).
 #[test]
 fn the_lighting_pass_count_does_not_move_when_a_light_is_added() {
-    let before = Gallery::build("lanterns");
+    let before = with_one_more_light(&example_standard_scene());
     let one = light_count(&before);
-    assert!(one > 1, "lanterns starts with several lights, not {one}");
+    assert!(
+        one > 1,
+        "the document starts with several lights, not {one}"
+    );
 
     let after = with_one_more_light(&before);
     assert_eq!(
@@ -417,19 +420,21 @@ fn the_lighting_pass_count_does_not_move_when_a_light_is_added() {
 ///
 /// The bound is the pool's, and only the pool's. A light recorded as a grid is not in this
 /// arithmetic at all — its pass count is its own pages times the groups that cast into them, and
-/// the ceiling on that is the atlas rather than the pool — which is why the scene below is
-/// `lanterns`, whose lights are all of the kind that stayed on the pool. The other half of that
-/// claim, that a grid's pages and its table cannot come apart, is
+/// the ceiling on that is the atlas rather than the pool — which is why the document below
+/// carries only lights of the kind that stayed on the pool. The other half of that claim, that a
+/// grid's pages and its table cannot come apart, is
 /// `the_pages_a_spot_light_emits_are_the_pages_its_table_answers` in `spot_lights.rs`.
 #[test]
 fn the_shadowing_pass_count_is_bounded_by_the_pool_and_not_by_the_light_count() {
-    let scene = with_a_pool_of_one_page(Gallery::build("lanterns"));
+    let before = with_one_more_light(&example_standard_scene());
+    let scene = with_a_pool_of_one_page(before.clone());
     let three = light_count(&scene);
+    let groups = shadowing_groups(&scene);
     assert_eq!(
         shadowing_pass_count(&scene),
-        3,
-        "lanterns has {three} groups and a pool of one page gives one light a page, so exactly \
-         one shadowing pass per group"
+        groups,
+        "the document has {groups} groups of shadow casting geometry and a pool of one page \
+         gives one light a page, so exactly one shadowing pass per group"
     );
 
     let scene = with_a_pool_of_one_page(with_one_more_light(&scene));
@@ -440,7 +445,7 @@ fn the_shadowing_pass_count_is_bounded_by_the_pool_and_not_by_the_light_count() 
     );
     assert_eq!(
         shadowing_pass_count(&scene),
-        3,
+        groups,
         "the pool did not grow, so the added light is lit unshadowed and no pass was added for \
          it: the shadowing count is a function of the pool, not of the lights"
     );
@@ -449,8 +454,8 @@ fn the_shadowing_pass_count_is_bounded_by_the_pool_and_not_by_the_light_count() 
     // nothing at all in passes, in either stage.
     assert_eq!(
         pass_labels(&scene),
-        pass_labels(&with_a_pool_of_one_page(Gallery::build("lanterns"))),
-        "every pass of the scene is the same, so a light the pool turned away is not drawn \
+        pass_labels(&with_a_pool_of_one_page(before)),
+        "every pass of the document is the same, so a light the pool turned away is not drawn \
          into anything and is lit unshadowed instead"
     );
 }
@@ -506,6 +511,22 @@ fn light_count(scene: &Value) -> usize {
         .and_then(|fields| fields.get("lights"))
         .and_then(Value::as_list)
         .expect("a scene names its lights")
+        .len()
+}
+
+/// Returns how many groups of shadow casting geometry a document places.
+///
+/// This is the number a pool of one page is spent on: one page is given to one light, and that
+/// light draws every group that casts into it, so the count is read off the document rather than
+/// written down and does not have to be a number this file was written against.
+fn shadowing_groups(scene: &Value) -> usize {
+    scene
+        .as_field_map()
+        .and_then(|fields| fields.get("instances"))
+        .and_then(Value::as_dict)
+        .and_then(|buckets| buckets.get("shadowing"))
+        .and_then(Value::as_list)
+        .expect("a document places its instances by stage")
         .len()
 }
 

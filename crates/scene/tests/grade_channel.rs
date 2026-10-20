@@ -31,17 +31,18 @@
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use graphics::pass::{BINDERS, LABEL};
-use whiting_gallery::Gallery;
 use whiting_scene::standard::PRESENT_TARGET;
+use whiting_scene::standard::example_standard_scene;
 use whiting_scene::{
     CompileContext, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene,
     register_standard_scene_schema,
 };
 
-/// The scene the measurements below are made on: it has a post chain, and it is the scene the
-/// proposal's evidence came from.
-fn tidewater() -> Value {
-    Gallery::build("tidewater")
+/// The document the measurements below are made on: one light, one mesh, one camera and a post
+/// chain, which is the smallest document that compiles to a whole pipeline and so the smallest
+/// one a channel's own pass can be added to.
+fn document() -> Value {
+    example_standard_scene()
 }
 
 #[test]
@@ -176,8 +177,8 @@ fn asking_for_the_grade_channel_moves_no_pixel_of_the_picture() {
     // declared output. The beauty image is the `present` output either way, and a channel that
     // could reach it would change what that output names. The picture half of this is measured
     // on the adapter in the handoff, by sha-256 over the png.
-    let quiet = compiled(&tidewater(), &[]);
-    let loud = compiled(&tidewater(), &[DebugChannel::Grade]);
+    let quiet = compiled(&document(), &[]);
+    let loud = compiled(&document(), &[DebugChannel::Grade]);
     assert_eq!(
         frame_output(&quiet),
         frame_output(&loud),

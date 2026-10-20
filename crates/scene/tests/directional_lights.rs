@@ -2,7 +2,7 @@
 //!
 //! # What this holds that the picture cannot
 //!
-//! `crates/gallery/src/sunlight.rs` draws four parallel shadows, but a frame cannot show that
+//! A demo scene in the gallery draws four parallel shadows, but a frame cannot show that
 //! a directional light that was given **no page** rendered a scene with no shadow in it and
 //! nothing to say so. It cannot show the size of a packed buffer either, and it cannot show
 //! that a document was refused rather than guessed at.

@@ -2,11 +2,11 @@
 //!
 //! # What this holds that the pixel test cannot
 //!
-//! `crates/gallery/src/spotlight.rs` renders a cone, but a frame cannot show that a light whose
-//! two angles disagree was **refused** rather than drawn, and it cannot show the size of a
-//! buffer. Both are the document side of this stage: the cone run is a second storage buffer,
-//! and the whole reason it is a second buffer rather than more fields of the light record is a
-//! claim about sizes that has to be pinned by something.
+//! The gallery's cone demo draws a cone, but a frame cannot show that a light whose two angles
+//! disagree was **refused** rather than drawn, and it cannot show the size of a buffer. Both are
+//! the document side of this stage: the cone run is a second storage buffer, and the whole reason
+//! it is a second buffer rather than more fields of the light record is a claim about sizes that
+//! has to be pinned by something.
 //!
 //! # The two claims this file exists to hold
 //!
@@ -27,7 +27,6 @@ use graphics::{
     BINDERS, ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA, LABEL, PASSES_FIELD, layers_of,
 };
 use std::collections::BTreeMap;
-use whiting_gallery::Gallery;
 use whiting_scene::lighting::record_table_base;
 use whiting_scene::standard::RADIUS;
 use whiting_scene::standard::example_standard_scene;
@@ -207,6 +206,28 @@ fn point(label: &str) -> Value {
     )
 }
 
+/// Builds a lamp standing over the example's geometry and shining straight down at it.
+///
+/// The direction is the point of this one rather than a detail of it: **a cone the geometry is
+/// not inside allocates no page**, and the test below would then have an empty map to compare
+/// and would pass on it. The lamp therefore stands above the mesh, aims at it, and opens wide
+/// enough that the whole triangle is inside the cone at the depth it sits at.
+fn lamp_above() -> Value {
+    Value::variant(
+        "Spot",
+        [
+            ("label".to_owned(), Value::String("lamp".to_owned())),
+            ("position".to_owned(), triple([0.0, 6.0, 0.0])),
+            ("direction".to_owned(), triple([0.0, -1.0, 0.0])),
+            ("inner_angle".to_owned(), Value::Float(0.16)),
+            ("outer_angle".to_owned(), Value::Float(0.56)),
+            ("color".to_owned(), triple([1.0, 0.95, 0.9])),
+            ("power".to_owned(), Value::Float(1.0)),
+            ("shadow_extent".to_owned(), Value::Float(2.5)),
+        ],
+    )
+}
+
 /// Builds the example scene with its one light replaced, which is the smallest document that
 /// compiles and therefore the smallest way to ask what the compiler does with a different light.
 fn scene(lights: &[Value]) -> Value {
@@ -343,15 +364,12 @@ fn the_pages_a_spot_light_emits_are_the_pages_its_table_answers() {
     // that is not the page the bit was set for is a fragment reading a rectangle of somebody
     // else's depth. Both of those render, and render wrong by one lamp's worth of shadow, which is
     // why this compares the two documents instead of trusting either.
-    let scene = Gallery::build("spotlight");
+    let scene = scene(&[lamp_above()]);
     let compiled = compiled(&scene);
     let records = packed_words(&compiled, LIGHT_RECORDS);
     let header = records[VIRTUAL_PAGE_WORD];
     let layer = records[VIRTUAL_PAGE_WORD + 1];
-    assert!(
-        header >= 0.0,
-        "the lamp of the one scene built to be lit by a cone is recorded as a grid of pages"
-    );
+    assert!(header >= 0.0, "the lamp is recorded as a grid of pages");
     assert_eq!(
         header as usize,
         record_table_base(lights_of(&scene)) as usize,

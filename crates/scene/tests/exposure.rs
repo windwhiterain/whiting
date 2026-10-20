@@ -30,15 +30,15 @@ use definition::{
 };
 use graphics::PASSES_FIELD;
 use graphics::pass::{LABEL, UNIFORM};
-use whiting_gallery::Gallery;
 use whiting_scene::standard::{
-    EXPOSURE, PASS_SCHEMA, SOURCE, post_pass_schema, post_pass_schema_exposed,
+    EXPOSURE, PASS_SCHEMA, SOURCE, example_standard_scene, post_pass_schema,
+    post_pass_schema_exposed,
 };
 use whiting_scene::{
     CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema,
 };
 
-/// The label the gallery's scenes give their post shader.
+/// The label the document under test gives its post shader.
 const POST_SHADER: &str = "post";
 
 /// The field a scene lists its post processes under.
@@ -86,7 +86,7 @@ fn a_scene_naming_no_exposure_carries_no_exposure_in_its_documents() {
     // word does not appear in what the compiler emitted. The picture half is measured on the
     // adapter and is in the handoff; this is the same claim where it can be asserted on every
     // run of the suite.
-    let emitted = compile(&Gallery::build("dunes"));
+    let emitted = compile(&example_standard_scene());
     assert!(
         !mentions_exposure(&emitted.graphics.value) && !mentions_exposure(&emitted.instance.value),
         "a scene that names no exposure emits no exposure, so its frame is the frame it drew \
@@ -96,7 +96,7 @@ fn a_scene_naming_no_exposure_carries_no_exposure_in_its_documents() {
 
 #[test]
 fn a_scene_naming_an_exposure_carries_it_in_the_post_uniform() {
-    let scene = with_an_exposure(&exposing_post(&Gallery::build("dunes")), 0.5);
+    let scene = with_an_exposure(&exposing_post(&example_standard_scene()), 0.5);
     let emitted = compile(&scene);
     let exposure = post_uniform_field(&emitted.graphics.value, EXPOSURE)
         .expect("the post uniform carries the exposure the scene named");
@@ -113,7 +113,7 @@ fn a_scene_naming_an_exposure_whose_shader_does_not_declare_it_is_refused() {
     // post shader that declares the plain interface and a scene that names an exposure is a
     // document that would be drawn unexposed on every machine, which the page pool's policy
     // makes a fact about the document and so a refusal rather than a note.
-    let scene = with_an_exposure(&Gallery::build("dunes"), 0.5);
+    let scene = with_an_exposure(&example_standard_scene(), 0.5);
     let Err(said) = compile_failing(&scene) else {
         panic!("a scene whose post shader cannot read the field is refused rather than drawn");
     };
@@ -129,7 +129,7 @@ fn a_scene_naming_an_exposure_and_no_post_process_is_told() {
     // A field nothing reads is a state this project calls out as one to avoid, and the answer
     // is a note rather than a refusal: a scene with no grade is a legitimate scene, and the
     // frame of one is the shaded image itself.
-    let mut scene = Gallery::build("dunes");
+    let mut scene = example_standard_scene();
     scene
         .as_field_map_mut()
         .expect("a scene is a struct")
@@ -156,7 +156,7 @@ fn an_exposure_that_is_not_a_positive_number_is_refused() {
     // no meaning as a multiplier of light. Both are refused rather than clamped, because a
     // clamp hands back a picture and says nothing.
     for (written, expected) in [(0.0, "positive"), (-1.0, "positive")] {
-        let scene = with_an_exposure(&exposing_post(&Gallery::build("dunes")), written);
+        let scene = with_an_exposure(&exposing_post(&example_standard_scene()), written);
         let Err(error) = compile_failing(&scene) else {
             panic!("{written} is refused rather than clamped: it compiled");
         };
@@ -167,7 +167,8 @@ fn an_exposure_that_is_not_a_positive_number_is_refused() {
     }
 }
 
-/// Returns `dunes` with its post shader's interface and source declaring an `exposure`.
+/// Returns the document under test with its post shader's interface and source declaring an
+/// `exposure`.
 ///
 /// This is the whole opt-in a scene makes, in the order a scene author makes it: the field on
 /// the document, the field in the interface the shader declares, and the field in the shader's
@@ -191,7 +192,7 @@ fn exposing_post(scene: &Value) -> Value {
                 .and_then(Value::as_str)
                 == Some(POST_SHADER)
         })
-        .expect("the gallery's scenes declare a post shader");
+        .expect("the document declares a post shader");
     let Some(Value::Enum { fields, .. }) = Some(&mut *post) else {
         panic!("a shader is a variant carrying the stage it belongs to");
     };
@@ -205,7 +206,7 @@ fn exposing_post(scene: &Value) -> Value {
     let anchor = "    depth_range: vec2<f32>,\n";
     assert!(
         text.contains(anchor),
-        "the gallery's post uniform declares its fields in name order, which is where an \
+        "the post uniform declares its fields in name order, which is where an \
          exposure goes: {text}"
     );
     let exposed = text.replacen(anchor, &format!("{anchor}    exposure: f32,\n"), 1);

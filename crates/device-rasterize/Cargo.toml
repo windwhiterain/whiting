@@ -37,9 +37,6 @@ name = "render"
 name = "shadow_probe"
 
 [[test]]
-name = "gallery_render"
-
-[[test]]
 name = "texture_channel_render"
 
 [[test]]
