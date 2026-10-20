@@ -582,7 +582,45 @@ fn gallery(skeleton: &mut building::BuildingSkeleton) {
             GALLERY_SECTION,
         ));
         tops.push([edge, floor + RAIL_HEIGHT, foot[1]]);
+        // **A middle rail in every bay**, because a rail at the top of a baluster and nothing above the
+        // plate lets a child through: the 走马廊's rail is a frame, not a handrail on posts.
     }
+    // **Three slats in every bay**, at its quarters: a 走马廊's rail is a frame of rails and uprights, and
+    // the balusters it already had stand only at the posts, which is a fence and not a railing.
+    for pair in posts.windows(2) {
+        let (here, there) = (pair[0].0[1], pair[1].0[1]);
+        for step in 1..=3 {
+            let z = here + (there - here) * step as f32 / 4.0;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [edge, floor, z],
+                },
+                building::Anchor::Free {
+                    at: [edge, floor + RAIL_HEIGHT, z],
+                },
+                [1.0, 0.0],
+                GALLERY_SECTION * 0.7,
+                GALLERY_SECTION * 0.7,
+            ));
+        }
+    }
+
+    // The middle rail: one per bay, at half the rail's height, from one baluster to the next.
+    let middle = floor + RAIL_HEIGHT * 0.45;
+    for pair in posts.windows(2) {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [edge, middle, pair[0].0[1]],
+            },
+            building::Anchor::Free {
+                at: [edge, middle, pair[1].0[1]],
+            },
+            [1.0, 0.0],
+            GALLERY_SECTION,
+            GALLERY_SECTION,
+        ));
+    }
+
     if let (Some(first), Some(last)) = (tops.first(), tops.last()) {
         skeleton.members.push(building::Member::new(
             building::Anchor::Free { at: *first },

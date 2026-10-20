@@ -1408,3 +1408,21 @@ About the research itself:
 - All four notes were briefed with a premise this proposal has since corrected ("every roof is a flat
   slab"). Their sections on what breaks are sound; their *vocabulary* for the roof is one step behind
   the code, and a reader of the notes alone would think the crate has no pitched roof at all.
+
+### The 走马廊's rail is a frame, not a fence
+
+The stilt house's gallery had posts, joists, struts, a baluster at every post and one rail across their tops.
+That is a fence: two horizontals and nothing between them, with a gap wide enough to fall through, and it read
+as a railing only because it was in shadow.
+
+It is now a **frame**: a baluster at every post, three slats at the quarters of every bay, a middle rail per
+bay and the top rail across the lot. The section is the gallery's own (`GALLERY_SECTION`), narrowed to 70 % for
+the slats so the uprights read against the rails rather than merging with them. Rows 2 071 → **2 167**.
+
+**A door onto the walk was attempted and refused, and the reason is worth keeping.** A gallery with no door
+behind it is a balcony with nothing to walk out of, so the downhill wall was cut as a front — a door in the
+middle bay, a 直棂窗 in every upper one. `validate` answered `OpeningOutsideWall { past: 1.4 }`: the wall the
+gallery hangs from is the house's **gable end** as well, and that wall is split at its middle before the seat so
+the ridge can crown it. A three-bay grid laid on it either spans two half-walls of two metres (bays too narrow
+for their own margins) or has the crown's own node standing inside a bay. The window band therefore waits for a
+type whose gallery fronts a wall that is not also its gable.
