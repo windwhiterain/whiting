@@ -551,7 +551,12 @@ fn with_one_more_light(scene: &Value) -> Value {
         .variant_fields()
         .expect("a light carries its fields")
         .clone();
-    light_fields.insert("label".to_owned(), Value::String("added".to_owned()));
+    // **The label counts**, or a document that gains two lights in two steps is a document with
+    // two lights of one name, which the compiler refuses as `DuplicateLabel`.
+    light_fields.insert(
+        "label".to_owned(),
+        Value::String(format!("added-{}", lights.len())),
+    );
     lights.push(Value::variant(tag, light_fields));
     scene_fields.insert("lights".to_owned(), Value::List(lights));
     Value::structure(scene_fields)

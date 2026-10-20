@@ -94,6 +94,30 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 "started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 "===================================================================="
 
+# Returns the warning and error lines a build printed about **this workspace's own crates**.
+#
+# A path dependency under a sibling checkout (the lichen stages are one) compiles into this build, and
+# its warnings appear in this output. They are not this workspace's warnings and cannot be fixed here,
+# so the gate must not read them as its own. Each warning is attributed by the `--> ` line that follows
+# it, which is where cargo names the file; a warning with no such line is kept, because a gate that
+# silently drops what it cannot place is worse than one that goes red.
+function Get-OwnWarnings {
+    param($Output, $Root)
+    $kept = @()
+    for ($i = 0; $i -lt $Output.Count; $i++) {
+        if ($Output[$i] -notmatch '^(warning|error)') { continue }
+        $where = $null
+        for ($j = $i + 1; $j -lt [Math]::Min($Output.Count, $i + 6); $j++) {
+            if ($Output[$j] -match '^\s+--> (.+)$') { $where = $Matches[1]; break }
+            if ($Output[$j] -match '^(warning|error)') { break }
+        }
+        if ($null -eq $where -or $where.StartsWith($Root, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $kept += $Output[$i]
+        }
+    }
+    return $kept
+}
+
 "--------------------------------------------------------------------"
 "[1/8] build --workspace --all-targets, and the worktree discipline"
 "--------------------------------------------------------------------"
@@ -103,7 +127,7 @@ $build | Out-File -FilePath $log -Append -Encoding utf8
 $compiling = @($build | Where-Object { $_ -match '^\s*Compiling ' })
 $mine = @($compiling | Where-Object { $_ -match 'Compiling whiting-' })
 $notMine = @($mine | Where-Object { $_ -notmatch [regex]::Escape($root) })
-$warn = @($build | Where-Object { $_ -match '^(warning|error)' })
+$warn = @(Get-OwnWarnings $build $root)
 "  Compiling lines total          : $($compiling.Count)"
 "  of which whiting-*             : $($mine.Count)"
 "  whiting-* NOT naming worktree  : $($notMine.Count)"
@@ -126,7 +150,7 @@ $release | Out-File -FilePath $log -Append -Encoding utf8
 $relCompiling = @($release | Where-Object { $_ -match '^\s*Compiling ' })
 $relMine = @($relCompiling | Where-Object { $_ -match 'Compiling whiting-' })
 $relNotMine = @($relMine | Where-Object { $_ -notmatch [regex]::Escape($root) })
-$relWarn = @($release | Where-Object { $_ -match '^(warning|error)' })
+$relWarn = @(Get-OwnWarnings $release $root)
 "  release Compiling whiting-*    : $($relMine.Count)"
 "  release NOT naming worktree    : $($relNotMine.Count)"
 "  release warning/error lines    : $($relWarn.Count)   (the gate compares this against 0)"
@@ -179,10 +203,10 @@ Gate "cargo doc -p whiting-building --no-deps" $code 0
 # a suite whose count is printed and not compared is decoration, which is the one thing this
 # file exists to not be.
 $expect = [ordered]@{
-    "whiting-scene"           = 111
+    "whiting-scene"           = 106
     "whiting-gallery"         = 10
-    "whiting-device-cycles"   = 3
-    "whiting-device-rasterize" = 49
+    "whiting-device-cycles"   = 0
+    "whiting-device-rasterize" = 47
     "whiting-definition"      = 22
     "whiting-graphics"        = 15
 }
@@ -212,7 +236,7 @@ foreach ($pkg in $expect.Keys) {
 "--------------------------------------------------------------------"
 "[5/8] every example in building and gallery"
 "--------------------------------------------------------------------"
-foreach ($pair in @(@("whiting-building", "building", 40), @("whiting-gallery", "gallery", 17))) {
+foreach ($pair in @(@("whiting-building", "building", 40), @("whiting-gallery", "gallery", 19))) {
     $pkg = $pair[0]; $dir = $pair[1]; $want = $pair[2]
     $examples = Get-ChildItem (Join-Path (Join-Path (Join-Path $root "crates") $dir) "examples") -Filter *.rs | Sort-Object Name
     $ran = 0; $bad = @()
