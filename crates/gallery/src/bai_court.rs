@@ -17,8 +17,14 @@
 //!
 //! # What it does not draw
 //!
-//! - **the third 坊** and the 门楼 in the corner, which are the courtyard's other two walls;
 //! - **the painted panels** a 照壁 carries, which are a texture and not a shape.
+//!
+//! # What "three ranges" means
+//!
+//! **The fourth side is the 照壁 and not a range.** The type is named for what it has, so a scene of it has *exactly* three
+//! ranges; round 74's own note said the third range "would stand where the camera is", and that was wrong — the camera stands
+//! where the screen wall's approach is. What the court was missing is the **门楼**: a 白族 court is entered through the gate in
+//! the corner between a 厢房 and the 照壁, and it is a wall with a door in it and a little roof over the door.
 
 use building::{Building, BuildingSkeleton, Covering, Mass, MassId, PlanNode, derive, ops};
 use definition::Value;
@@ -45,6 +51,14 @@ const SCREEN_HIGH: f32 = 3.10;
 const SCREEN_WALL: f32 = 0.18;
 const SCREEN_RISE: f32 = 0.45;
 const SCREEN_EAVE: f32 = 0.28;
+
+/// The 门楼: the corner between the east 厢房 and the 照壁, the wall that closes it, and the roof over its door.
+const GATE_THICK: f32 = 0.40;
+const GATE_WALL: f32 = 0.16;
+const GATE_HIGH: f32 = 2.70;
+const GATE_EAVE: f32 = 0.55;
+const GATE_RISE: f32 = 0.40;
+const GATE_DEEP: f32 = 1.10;
 
 const TILES: Covering = Covering {
     period: 0.19,
@@ -223,6 +237,60 @@ pub fn document() -> Building {
                 building::Opening::new(face, 0, 0, building::Inset::new(1.10, 1.10, 0.0, 1.30)),
             );
         }
+    }
+
+    // **The 门楼: the corner between the east 厢房 and the 照壁.** A 白族 court is entered through a gate in a corner, and the
+    // corner is a short wall with a door in it and a roof over the door. The wall runs from the wing's south face to the
+    // screen's inner face on the court's east line, so it meets both and shares area with neither.
+    let gate_z0 = -COURT;
+    let gate_z1 = -WING_DEPTH * 0.5;
+    let gate_x = COURT + GATE_THICK * 0.5;
+    let mut gate = Mass::new(
+        ops::wound(vec![
+            [gate_x - GATE_THICK * 0.5, gate_z0],
+            [gate_x + GATE_THICK * 0.5, gate_z0],
+            [gate_x + GATE_THICK * 0.5, gate_z1],
+            [gate_x - GATE_THICK * 0.5, gate_z1],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, 0.0))
+        .collect(),
+        GATE_HIGH,
+    );
+    gate.wall = GATE_WALL;
+    gate.slab = 0.20;
+    let gate_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(gate);
+
+    // **A door through the gate wall**, cut into the face that looks down the approach: one bay, an inset a wall's thickness
+    // clear of the bay's ends — round 69's invariant, which the wall's own `0.40 m` depth demands and no more.
+    let approach = building::FaceRef::new(gate_id, 3);
+    if building::ops::split_face(
+        &mut skeleton,
+        approach,
+        &building::Rhythm::Even { count: 1 },
+        &building::Rhythm::Even { count: 1 },
+    )
+    .is_some()
+    {
+        let _ = building::ops::add_opening(
+            &mut skeleton,
+            building::Opening::new(approach, 0, 0, building::Inset::new(0.50, 0.50, 0.0, 1.05)),
+        );
+    }
+
+    // **The gate's hood: a lean-to over the corner**, hosted by the gate wall and shedding into the lane.
+    let half = GATE_THICK * 0.5;
+    let plan = [
+        [gate_x + half + GATE_EAVE, gate_z1],
+        [gate_x + half + GATE_EAVE, gate_z0],
+        [gate_x - half - GATE_DEEP, gate_z0],
+        [gate_x - half - GATE_DEEP, gate_z1],
+    ];
+    if let Some(hood) =
+        derive::lean_to(gate_id, plan, GATE_HIGH - 0.15, GATE_HIGH + GATE_RISE, 0.12)
+    {
+        skeleton.roofs.push(hood.with_covering(TILES));
     }
 
     Building::new(skeleton)

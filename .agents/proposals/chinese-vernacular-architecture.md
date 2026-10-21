@@ -2056,3 +2056,17 @@ Two things the frame taught, both about which face is which:
 court and eight openings' reveals. The document is 7.59 MB.
 
 The third 坊 and the corner 门楼 are not drawn, and the type says so: the camera stands where the third range would be.
+## Round 75: the 门楼, and a sentence of the type's own that was wrong
+
+Round 74's note said the court does not draw **"the third 坊 and the 门楼 in the corner"**. The second is true and the first is
+not: **the fourth side of a 三坊一照壁 is the 照壁**, which is what the name says, so a scene of the type has exactly three
+ranges and the camera does not stand where a range would be — it stands on the screen wall's approach. The note is corrected
+and the court is entered now.
+
+**The 门楼** is the corner between the east 厢房 and the 照壁: a short wall on the court's east line, a door through it and a
+lean-to hood over the door. It runs from the wing's south face to the screen's inner face, so it **meets both and shares area
+with neither** — the join a wall has (round 72). Its door is cut the way round 69 measured: one bay, an inset a wall's
+thickness clear of the bay's ends, which the gate wall's own `0.40 m` depth demands and no more.
+
+**Identity: 33 scenes, 115 550 rows**; `bai_court` 1 738 → **1 800** — the gate wall's faces and top, one door's reveals and
+the hood. The document is 7.61 MB.
