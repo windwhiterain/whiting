@@ -2830,3 +2830,15 @@ and the piers are `Under` it** (round 89), and **the gate stands in front of the
 
 **Identity: 38 scenes, 134 447 rows**; `slate_street` 2 049 → **2 106** — the second gate's lintel, its two piers, two leaves and its
 threshold. The document is 7.74 MB.
+## Round 128: the 竹楼's rail
+
+A floor two metres up with no rail is a platform you fall off, and the **晒台** — the drying deck — is where a Dai family sits. The
+type has shown three of them bare in every plate since round 40; they have rails now, on the veranda's front and the drying deck's
+three open sides: a post every `RAIL_BAY`, a top rail at `RAIL_HIGH` above the floor and a mid rail, which is the shape a 竹楼's own
+rail takes.
+
+**The rail is a closure over an edge, called three times**: one run's posts are laid at the edge's own spacing and its two rails are
+one member each, so a rail and a rail's posts cannot disagree about a length.
+
+**Identity: 38 scenes, 134 927 rows**; `bamboo_house` 764 → **884** and `dai_hamlet` 4 699 → **5 297**, because the hamlet is three of
+them. A change to a type is a change to every scene that holds it, which is why it owes a measurement in each. The document is 4.46 MB.

@@ -53,6 +53,12 @@ const DECK: f32 = 1.5;
 const WALL: f32 = 0.14;
 const PLATE: f32 = 0.22;
 
+/// The rail round the veranda and the drying deck: how high it stands above the floor, how wide a bay between posts, and the
+/// posts own section.
+const RAIL_HIGH: f32 = 0.92;
+const RAIL_BAY: f32 = 1.10;
+const RAIL_POST: f32 = 0.075;
+
 /// The roof: a steep hip, deep eaves, and thatch rather than tile.
 const OVERHANG: f32 = 1.35;
 const RISE: f32 = 2.70;
@@ -339,6 +345,50 @@ pub fn document() -> Building {
         )
         .with_host(id),
     );
+
+    // **The rail round the veranda and the deck.** A floor two metres up with no rail is a platform you fall off: the rail is what
+    // makes a **晒台** a place where a family sits, and it is the one thing the type was missing while the plate showed three of
+    // them bare. Two rails follow the deck's own edges — the veranda's front and the drying deck's three open sides — as members:
+    // a post every `RAIL_BAY`, a top rail at `RAIL_HIGH` above the floor, and a mid rail, which is the shape a 竹楼 rail takes.
+    let mut bay = |from: [f32; 2], to: [f32; 2]| {
+        let steps = (((to[0] - from[0]).powi(2) + (to[1] - from[1]).powi(2)).sqrt() / RAIL_BAY)
+            .ceil() as usize;
+        let steps = steps.max(1);
+        for index in 0..=steps {
+            let t = index as f32 / steps as f32;
+            let at = [
+                from[0] + (to[0] - from[0]) * t,
+                from[1] + (to[1] - from[1]) * t,
+            ];
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [at[0], 0.0, at[1]],
+                },
+                building::Anchor::Free {
+                    at: [at[0], RAIL_HIGH, at[1]],
+                },
+                [1.0, 0.0],
+                RAIL_POST,
+                RAIL_POST,
+            ));
+        }
+        for high in [RAIL_HIGH, RAIL_HIGH * 0.52] {
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [from[0], high, from[1]],
+                },
+                building::Anchor::Free {
+                    at: [to[0], high, to[1]],
+                },
+                [-(to[1] - from[1]), (to[0] - from[0])],
+                RAIL_POST * 0.6,
+                RAIL_POST * 0.8,
+            ));
+        }
+    };
+    bay([-half, deep + VERANDA], [half, deep + VERANDA]);
+    bay([half + DECK, deep], [half + DECK, -deep]);
+    bay([half, -deep], [half + DECK, -deep]);
 
     // **The roof covers the room, the veranda and the deck**, which is why its overhang is more than a metre: a
     // thatched roof is drawn by its eaves, and a 竹楼's come down to the floor's own level on the shaded side.
