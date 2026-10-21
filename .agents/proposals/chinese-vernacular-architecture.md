@@ -2718,3 +2718,14 @@ row draws a temple with no shadow.
 
 **Identity: 38 scenes, 133 857 rows**; `dai_hamlet` 2 305 → **4 699** — the wat's two buildings, its compound, its gate, its 塔 and
 its yard. The document is 46.0 MB.
+## Round 118: the wat's trees
+
+A court with two buildings and no tree is a yard. The wat has three now — a bodhi inside the gate's sight, and two along the wall —
+carried by the **vegetation bridge** the hamlet already uses, merged rather than re-authored.
+
+**The identity table does not move, and that is the measurement**: 38 scenes / 133 857 rows before and after, `dai_temple` still
+**2 389**. A tree is not a building element and the bridge's meshes carry no identity rows, so a scene that gains vegetation gains
+no ids — the same answer the hamlet's own palms gave. What moves is the **document**: 7.79 MB → **31.4 MB**, because three trees
+are three crowns of leaf geometry, and the channel that names masonry does not name a leaf.
+
+**Identity: 38 scenes, 133 857 rows** (unchanged); `dai_temple` **2 389** (unchanged); the document 7.79 → **31.41 MB**.

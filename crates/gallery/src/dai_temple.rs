@@ -93,9 +93,17 @@ const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the temple: from the porch's corner, so the pitch and the platform's height are both seen.
 pub fn dai_temple() -> Value {
+    // **The yard's trees**: a wat keeps a **bodhi** at its gate and a mango or two along its wall, and a court with two buildings
+    // and no tree is a yard. The vegetation bridge is the hamlet's own, merged here rather than re-authored — the same answer
+    // round 117 gave the temple itself.
+    let mut extra = crate::settlement_plants::Extra::none();
+    extra.merge(crate::settlement_plants::trees(
+        &[[-11.4, 12.8], [12.2, 13.4], [-13.2, -9.0]],
+        &|_: [f32; 2]| 0.0,
+    ));
     crate::village::scene_of(
         &document(),
-        &crate::settlement_plants::Extra::none(),
+        &extra,
         &|_, _| 0.0,
         // **Backed off to take the whole wat in**: two buildings, the yard between them and the wall round both. A plate that cuts
         // the 戒堂 at its edge is a plate of one hall.
