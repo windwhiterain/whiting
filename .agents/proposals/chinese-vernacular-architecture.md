@@ -3195,3 +3195,16 @@ stepped over — and the yard has all three now.
 
 **Identity: 41 scenes, 147 450 rows**; `qiang_tower` 994 → **1 025** — a head's faces and top, two leaves and a sill. The document is
 7.45 MB.
+## Round 158: the 木廊
+
+A 碉房's stone box is broken on one face by a **wooden gallery** — a deck cantilevered out at the first floor, its posts and its rail — and
+that gallery is the only timber on the building. The house is no longer a plain masonry box with a lattice on its roof; it is a house
+somebody stands on the front of.
+
+**It went to the wrong face first.** The house is turned a quarter when it is placed, so the local `+x` face it was built on maps to the
+world's `-z` — the side the camera cannot see. On the local `-x` face the gallery lands where the plate looks, which is **round 97's and
+round 136's rule read a third time**: *which side of a building an object belongs on is decided by which side the view is on, not by which
+side the drawing is easier from.*
+
+**Identity: 41 scenes, 147 510 rows**; `qiang_tower` 1 025 → **1 085** — a deck, its edges, four posts and a rail. The document is
+7.47 MB.

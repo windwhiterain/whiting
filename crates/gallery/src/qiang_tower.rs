@@ -69,8 +69,17 @@ const PAVING: f32 = 0.07;
 /// The gates head: how deep it lies on the walls own head.
 const GATE_HEAD: f32 = 0.42;
 
-/// The 碉房 beside the tower: where it stands in the towers own coordinates.
+/// The 木廊 on the 碉房: how far out the deck stands in the houses own coordinates, its depth, its length, its level, its slab, its
+/// posts, a posts section and the rails height above the deck.
 const HOUSE_AT: [f32; 2] = [14.20, 2.60];
+const GALLERY_X: f32 = -5.10;
+const GALLERY_DEEP: f32 = 1.30;
+const GALLERY_LONG: f32 = 4.40;
+const GALLERY_LEVEL: f32 = 2.80;
+const GALLERY_SLAB: f32 = 0.16;
+const GALLERY_POSTS: usize = 3;
+const GALLERY_POST: f32 = 0.14;
+const GALLERY_RAIL: f32 = 0.92;
 
 /// length, its height and a posts section.
 
@@ -264,6 +273,67 @@ pub fn document() -> Building {
     // flat roof — merged in at the tower's east and turned to face the camera, which is the composition this gallery uses everywhere
     // else: **a settlement is made of types it already has.**
     let mut house = crate::tibetan::document().skeleton;
+    // **The 木廊: the timber gallery the house wears.** It stands on the local -x face, because the house is turned a quarter and that
+    // face is the one the camera sees — round 97's and round 136's rule, read a third time. A 碉房's stone box is broken on one face by a **wooden gallery** — a deck
+    // cantilevered out at the first floor, its posts and its rail — and that gallery is the only timber on the building. It is drawn in
+    // the house's own coordinates, before the house is turned, so it turns with it.
+    let gallery = [
+        [GALLERY_X, -GALLERY_LONG * 0.5],
+        [GALLERY_X + GALLERY_DEEP, -GALLERY_LONG * 0.5],
+        [GALLERY_X + GALLERY_DEEP, GALLERY_LONG * 0.5],
+        [GALLERY_X, GALLERY_LONG * 0.5],
+    ];
+    house.slabs.push(building::Slab::floor(
+        ops::wound(gallery.to_vec()),
+        GALLERY_LEVEL - GALLERY_SLAB,
+        GALLERY_LEVEL,
+    ));
+    for index in 0..=GALLERY_POSTS {
+        let z = -GALLERY_LONG * 0.5 + GALLERY_LONG * index as f32 / GALLERY_POSTS as f32;
+        // The posts stand on the ground and carry the deck's outer edge.
+        house.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [GALLERY_X + 0.12, 0.0, z],
+            },
+            building::Anchor::Free {
+                at: [GALLERY_X + 0.12, GALLERY_LEVEL, z],
+            },
+            [1.0, 0.0],
+            GALLERY_POST,
+            GALLERY_POST,
+        ));
+        // The rail above the deck.
+        house.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [GALLERY_X + 0.12, GALLERY_LEVEL, z],
+            },
+            building::Anchor::Free {
+                at: [GALLERY_X + 0.12, GALLERY_LEVEL + GALLERY_RAIL, z],
+            },
+            [1.0, 0.0],
+            GALLERY_POST * 0.6,
+            GALLERY_POST * 0.6,
+        ));
+    }
+    house.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [
+                GALLERY_X + 0.12,
+                GALLERY_LEVEL + GALLERY_RAIL,
+                -GALLERY_LONG * 0.5,
+            ],
+        },
+        building::Anchor::Free {
+            at: [
+                GALLERY_X + 0.12,
+                GALLERY_LEVEL + GALLERY_RAIL,
+                GALLERY_LONG * 0.5,
+            ],
+        },
+        [1.0, 0.0],
+        GALLERY_POST * 0.7,
+        GALLERY_POST * 0.9,
+    ));
     ops::rotate(&mut house, [0.0, 0.0], -core::f32::consts::FRAC_PI_2);
     ops::translate(&mut house, [HOUSE_AT[0], HOUSE_AT[1]]);
     assert!(
