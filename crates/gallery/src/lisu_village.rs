@@ -80,6 +80,24 @@ pub fn lisu_village() -> Value {
     )
 }
 
+/// The **close plate**: the retaining face, its flight of steps and a corn rack, at the distance a person walks past them.
+///
+/// # Why a second camera and not a second document
+///
+/// Round 185 put four treads on a `1.40 m` rise into a village composed for five houses, and said the frame could not show them. The document is
+/// the same one; round 172 made this move for the 土掌房 village and it is the cheaper of the two answers every time.
+pub fn lisu_steps() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [-7.0, 2.6, -2.2],
+        [-21.0, 1.0, 2.4],
+        FIELD_OF_VIEW * 1.30,
+        "lisu_steps",
+    )
+}
+
 /// Returns the document: one bench, five log houses, the lane's fence.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());

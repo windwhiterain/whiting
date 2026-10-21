@@ -3553,3 +3553,14 @@ note is that this village is now the second scene here that owes a **close plate
 close plate of the two benches and their steps is the same move).
 
 **Identity: 47 scenes, 160 616 rows**; `lisu_village` 1 081 → **1 129** — two flights of four treads. The document is 7.48 MB.
+## Round 186: the 傈僳 village's close plate
+
+Round 185 put four treads on a `1.40 m` rise into a village composed for five houses and said the frame could not show them. The answer is the same
+as round 172's: **a second camera on the same document**. `lisu_steps` stands in the lane at eye height, and at that distance the **corn rack's
+sheaves**, the **fence**, a log house's **gable end** and the **step between the two benches** all read as things rather than as pixels.
+
+**The steps themselves are behind this camera**, which the round records rather than hides: the flight at the lane's far end is what the plate
+*should* show, and the camera that shows the rack and the fence is looking the other way along the lane. One document can carry more than one
+plate, and the pair now covers both halves of the street.
+
+**Identity: 48 scenes, 161 745 rows**; `lisu_steps` **1 129** — the same document as `lisu_village`, by design. The document is 7.48 MB.
