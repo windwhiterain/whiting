@@ -418,16 +418,49 @@ pub fn document() -> Building {
     // crowned is a crowned gable (`GridOnACrownedFace`, then `FaceNotPlanar` at 0.303), and after the crown the door`s own
     // inset came back as `OpeningOutsideWall { edge: 3, past: 0.411 }`. The windows are the next round`s work and this one
     // lands the type.
-    let _ = facade::open_court_face(
-        &mut skeleton,
-        id,
-        deep,
-        true,
-        Front {
-            storeys: 1,
-            bays: 3,
-            door: true,
-        },
-    );
+    // **The front is split into its three bays and then cut**, which is the order the crate asks for: an `Opening` cuts
+    // inside a bay, so an unsplit face answers `None`.
+    //
+    // # The fault this round found
+    //
+    // `Opening::new(face, row, column, inset)` — **the row comes first**. Every attempt in round 68 passed
+    // `(column, 0)`, so the door was asked of row 0 or row 2 of a one-row face and the third bay was never cut at all: the
+    // refusals that followed (`OpeningOutsideWall { past: 0.411 }`, and a window silently absent) were that one transposed
+    // pair, read three different ways. The front edge is found after the gables are crowned because a split moves every
+    // station after it, and it is the edge whose midpoint stands furthest along `+z`.
+    let front = {
+        let outline = skeleton.masses[id.0].outline().to_vec();
+        let mut best = (0usize, f32::NEG_INFINITY);
+        for index in 0..outline.len() {
+            let a = outline[index].position;
+            let b = outline[(index + 1) % outline.len()].position;
+            let run = (a[0] - b[0]).abs() + (a[1] - b[1]).abs();
+            if run > 1.0 && (a[1] + b[1]) * 0.5 > best.1 {
+                best = (index, (a[1] + b[1]) * 0.5);
+            }
+        }
+        best.0
+    };
+    let face = building::FaceRef::new(id, front);
+    let columns = building::Rhythm::Even { count: 3 };
+    let rows = building::Rhythm::Even { count: 1 };
+    building::ops::split_face(&mut skeleton, face, &columns, &rows)
+        .expect("a 石板房's front face takes its three bays");
+    for column in 0..3 {
+        // **An opening stands at least a wall`s thickness clear of the face`s own ends**, because the loop it is cut into
+        // is mitred inward: a window 0.22 from the outer corner is 0.33 *past* the inner one, and the crate answered
+        // `OpeningOutsideWall { past: 0.331 }` — which is the wall`s 0.55 less that 0.22. Seven tenths of a metre is the
+        // stone`s own thickness and a hand`s width besides.
+        let inset = if column == 1 {
+            building::Inset::new(0.70, 0.70, 0.0, 1.10)
+        } else {
+            building::Inset::new(0.70, 0.70, 1.15, 1.55)
+        };
+        building::ops::add_opening(
+            &mut skeleton,
+            building::Opening::new(face, 0, column, inset),
+        )
+        .expect("the bay is one the grid has");
+    }
     Building::new(skeleton)
 }

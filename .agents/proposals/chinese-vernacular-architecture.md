@@ -1925,3 +1925,30 @@ the wall's own material in front of the door, which is what a 屯堡's 院坝 is
 crowned gable, slate courses, yard — is landed, and the two windows are the next round's work.
 
 **Identity: 30 scenes, 112 218 rows**, of which `slate_house` is **252**.
+## Round 69: the 石板房's windows, and a transposed pair that cost two rounds
+
+Round 68 landed the twelfth type with a door and no windows and recorded three refusals. **All three were one pair of
+arguments in the wrong order, read three different ways:**
+
+```rust
+Opening::new(face, row, column, inset)   // the row comes first
+```
+
+Every attempt passed `(column, 0)` — the door asked of row 0 or row 2 of a **one-row** face, and the third bay never cut at
+all. What that produced, in order:
+
+| the symptom | what it was |
+| --- | --- |
+| `None` from `add_opening`, silently | the face had not been split yet |
+| `GridOnACrownedFace`, then `FaceNotPlanar` at 0.303 | the front edge named by index after the gables were crowned |
+| `OpeningOutsideWall { past: 0.411 }` | the *row* index standing where the *column* belonged |
+| `OpeningOutsideWall { past: 0.331 }` | **the mitre**: a window 0.22 m from the outer corner is 0.33 m *past* the inner one, which is the wall's 0.55 less that 0.22 |
+
+So the last fault is a real invariant of the model and not a mistake in the call: **an opening stands at least a wall's
+thickness clear of the face's own ends**, because the loop it is cut into is mitred inward. The slates' house windows are
+`0.70 m` in from their bays' ends and the door the same, and the face is split into its three bays first — after the gables
+are crowned, because a split moves every station after it.
+
+`slate_house` **252 → 260 rows**: two windows of four reveal faces each.
+
+**Identity: 30 scenes, 112 226 rows**, the other twenty-nine unchanged.
