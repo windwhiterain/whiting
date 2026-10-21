@@ -2515,7 +2515,7 @@ fn expand_covering(
                     if !prism_is_planar(low, high) {
                         continue;
                     }
-                    push_roll(mesh, roof_id, index, low, high);
+                    push_roll(mesh, roof_id, index, step, low, high);
                     index += 1;
                 }
             }
@@ -2638,6 +2638,7 @@ fn push_roll(
     mesh: &mut BuildingMesh,
     roof: RoofId,
     index: usize,
+    step: usize,
     start: [Vec3; 3],
     finish: [Vec3; 3],
 ) {
@@ -2658,15 +2659,19 @@ fn push_roll(
     // round from the finish one by construction, and the volume test below is what settles both.
     faces.push(([at(0), at(2), at(1)], RollSurface::End { start: true }));
     faces.push(([at(3), at(4), at(5)], RollSurface::End { start: false }));
-    push([at(0), at(1), at(4), at(3)], RollSurface::Base, &mut faces);
+    push(
+        [at(0), at(1), at(4), at(3)],
+        RollSurface::Base { step },
+        &mut faces,
+    );
     push(
         [at(1), at(2), at(5), at(4)],
-        RollSurface::Slope { side: 1 },
+        RollSurface::Slope { side: 1, step },
         &mut faces,
     );
     push(
         [at(2), at(0), at(3), at(5)],
-        RollSurface::Slope { side: 0 },
+        RollSurface::Slope { side: 0, step },
         &mut faces,
     );
     // The body's own signed volume, from its own triangles, decides the winding.

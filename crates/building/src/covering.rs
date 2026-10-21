@@ -54,14 +54,28 @@ pub struct RollId {
 }
 
 /// Which surface of one roll a face is.
+///
+/// # Invariants
+///
+/// **An element is one plane, so a surface that bends is more than one element.** A roll is a chain of prisms, one per
+/// step of the roof's profile, and it bends at every purlin: each prism is planar — that is what the guard in the
+/// expansion checks — but the chain is not, and naming all of them `Base` or `Slope { side }` puts a bent strip into one
+/// planarity group. Measured on a 竹楼's hip: two rolls whose own prisms depart their planes by under a millimetre were
+/// reported `FaceNotPlanar` at `1.106e-3`, because the group's fitted plane spans the purlin. The `step` is what makes
+/// the name a plane's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RollSurface {
     /// The face the roll stands on, which is on the skin and is the roll's own base.
-    Base,
+    Base {
+        /// Which step of the roof's profile this segment spans.
+        step: usize,
+    },
     /// One of the roll's two slopes.
     Slope {
         /// Which side: `0` is the side toward decreasing `across`, `1` the other.
         side: usize,
+        /// Which step of the roof's profile this segment spans.
+        step: usize,
     },
     /// One of the two ends, which are the only triangles a covering draws.
     End {

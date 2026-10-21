@@ -1564,3 +1564,35 @@ draws it) and the two triangles are not coplanar, which is the `1.106e-3` `valid
 span is under a centimetre at either end, and see whether those two are among them. If they are, the refusal belongs
 there, where the section is computed, rather than in the guards above it. This round did not build that instrument, and it
 did not land a fix: the two documents are back as they were, and the 竹楼's thatch stays off.
+## Round 52: an element is one plane, and the 竹楼's two rolls are still unexplained
+
+**Four hypotheses about the 竹楼's two twisted rolls, all four falsified by measurement**:
+
+| the hypothesis | the test | the result |
+| --- | --- | --- |
+| the guard's tolerance is a whisker loose | margin at 0.9 and at 0.5 of the tolerance | same two faces, same departures |
+| the guard's plane is ill-conditioned on a tapering band | the plane taken from the quad's fattest triangle | unchanged |
+| the roll collapses to a spike at the crest | the spans printed from inside `push_roll` | **no roll has a span under 5 cm at either end** |
+| the element groups a *bent* roll | `RollSurface` names its profile **step** | unchanged — the two rolls already sat in one step |
+
+The fourth was worth doing on its own account, and it is what this round lands: **an element is one plane, so a surface that
+bends is more than one element.** A roll is a chain of prisms, one per profile step, and it bends at every purlin; naming
+them all `Base` or `Slope { side }` put a bent strip into one planarity group. The name carries the step now, in the
+element and in the identity row (`its near slope, step 2`).
+
+**Identity: 26 scenes, 106 060 rows, unchanged** — every other roof in the gallery has a one-step profile, so the naming
+is an identity on them and a *correction* for any roof that ever gets a 举架 ladder under a covering.
+
+### So what is left
+
+The 竹楼's thatch stays off and the two rolls stay unnamed. What is now known about them:
+
+- their element is `Slope { side }` at **one** profile step, so the group is one prism;
+- their departure is `1.106e-3` and it did not move when the plane's construction, the tolerance, the spike check or the
+  naming changed — **a number that survives four different readings of the same quad is measuring something the readings
+  do not share**;
+- the printed corners put one corner at `y = 7.001` (the crest) and two at the eave, which is a roll that reaches the
+  ridge — and the covering's own span at the ridge is zero *by geometry*, not by arithmetic.
+
+The next instrument is not another guard: it is a print of `low`, `high` and the guard's own `departure` for **every**
+roll of that roof, so the two can be read against the rest.

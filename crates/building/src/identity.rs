@@ -228,11 +228,18 @@ fn roll_title(id: crate::covering::RollId) -> String {
 }
 
 /// Returns the sentence for one of a roll's surfaces.
+///
+/// **The step is in the name**, because a roll bends at every purlin and each segment is a plane of its own: a name that
+/// left it out would put a bent strip in one planarity group, which is the fault `RollSurface`'s own doc records.
 fn roll_surface(surface: crate::covering::RollSurface) -> String {
     match surface {
-        crate::covering::RollSurface::Base => "its base".to_owned(),
-        crate::covering::RollSurface::Slope { side: 0 } => "its near slope".to_owned(),
-        crate::covering::RollSurface::Slope { .. } => "its far slope".to_owned(),
+        crate::covering::RollSurface::Base { step } => format!("its base, step {step}"),
+        crate::covering::RollSurface::Slope { side: 0, step } => {
+            format!("its near slope, step {step}")
+        }
+        crate::covering::RollSurface::Slope { step, .. } => {
+            format!("its far slope, step {step}")
+        }
         crate::covering::RollSurface::End { start: true } => "its eave end".to_owned(),
         crate::covering::RollSurface::End { start: false } => "its crest end".to_owned(),
     }
