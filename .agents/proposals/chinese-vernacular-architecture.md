@@ -3635,3 +3635,15 @@ after it, and none of that had ever been looked at from the ground — **the obj
 argument the gallery has for a plate per scene rather than a document per scene.
 
 **Identity: 51 scenes, 174 476 rows**; `dong_square` **8 595** (the same document as `dong_village`). The document is 9.96 MB.
+## Round 193: the 羌寨's close plate
+
+Round 161 backed the camera off to take the whole yard in, and in doing so made every small thing in it a few pixels — the ladders (154), the beam
+ends (151), the merlons (152), the gallery (158), the apron (159), the cistern (160). **The wide plate is the yard's; this one is the towers'.**
+`qiang_double` stands in the lane and both towers come up through the frame: eight battered courses each, the beam ends in their rows, the merlons on
+the crown, and a ladder leaning to each door in the air.
+
+**Seven rounds of detail, visible for the first time.** Rounds 151 to 160 each added a small thing to this type and each was measured; none of them
+had been seen at a distance where they are objects. That is the same finding as round 192's, from the other side: **the gallery's habit of adding
+one piece per round had outrun its habit of looking at what it added**.
+
+**Identity: 52 scenes, 176 667 rows**; `qiang_double` **2 191** (the same document as `qiang_tower`). The document is 7.65 MB.

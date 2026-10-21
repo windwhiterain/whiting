@@ -117,6 +117,26 @@ pub fn qiang_tower() -> Value {
     )
 }
 
+/// The **close plate**: the yard's two towers from the lane, where their beam ends, their merlons, their ladders and the 碉房's gallery are all
+/// within the frame at a height a person standing in the yard would see them from.
+///
+/// # Why a second camera and not a second document
+///
+/// Round 161 backed the camera off to take the whole yard in, and in doing so made every small thing in it — the ladders (154), the beam ends
+/// (151), the merlons (152), the gallery (158), the apron (159) and the cistern (160) — a few pixels. **The wide plate is the yard's and this one
+/// is the towers'.**
+pub fn qiang_double() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [15.5, 6.2, 15.0],
+        [-3.2, 8.5, 3.6],
+        FIELD_OF_VIEW * 0.95,
+        "qiang_double",
+    )
+}
+
 /// Returns the document: a plinth, eight courses of coursed stone and a door in the air.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
