@@ -2295,3 +2295,18 @@ with no inside is a block.
 
 **Identity: 35 scenes, 125 194 rows**; `bai_lane` 5 535 → **5 548** — the curb's four faces, its top and its hole. Two clumps
 were added and the identity does not count them, because plants are not building elements. The document is 20.35 MB.
+## Round 89: the 巷门, and how this crate carries a thing over a gap
+
+Two rounds of notes said a gateway could not be modelled: a lintel over a lane is a mass over a void with nothing under it, and
+`UnattachedOverlap` refuses every attempt to stack one.
+
+**It is `Join::Under`, read the other way round.** The validator's own words: a mass with `Some(host) if join == Under` claims
+that **its top meets the host's foot and its plan stands inside the host's** — so the *mass carries the host* and the host is
+the thing above. A storey names the mass *below* it; a gateway names the mass *above* it, with both piers declaring `Under` the
+lintel. Every overlapping pair then has a relation and the overlap question is dropped for it.
+
+So the 白族巷 has its gate: a lintel `8.8 m` across standing `3.2 m` up, two piers under it outside the lane's paving — a cart
+is not stopped by them — and a lean-to roof over the lintel. The lane passes under it, and the shot is taken through it.
+
+**Identity: 35 scenes, 125 239 rows**; `bai_lane` 5 548 → **5 593** — the lintel's faces and top, the two piers, and the gate's
+roof. The document is 20.37 MB.
