@@ -49,6 +49,9 @@ const MERLON_FILL: f32 = 0.58;
 const MERLON_DEEP: f32 = 0.34;
 const MERLON_HIGH: f32 = 0.82;
 
+/// The 碉房 beside the tower: where it stands in the towers own coordinates.
+const HOUSE_AT: [f32; 2] = [9.80, 2.60];
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.5;
 
 /// Builds the scene: from the ground's own level, close enough that the batter reads.
@@ -197,6 +200,18 @@ pub fn document() -> Building {
             derive::crown_gables(&mut skeleton.masses[id.0], &roof);
         }
     }
+
+    // **The 碉房 beside it.** A 碉楼 is never alone: it stands in a courtyard of stone houses of the same masonry, and a tower on bare
+    // ground is a monument. The house is the `tibetan` type's own document — the 羌 and the 藏 build the same coursed-stone box with a
+    // flat roof — merged in at the tower's east and turned to face the camera, which is the composition this gallery uses everywhere
+    // else: **a settlement is made of types it already has.**
+    let mut house = crate::tibetan::document().skeleton;
+    ops::rotate(&mut house, [0.0, 0.0], -core::f32::consts::FRAC_PI_2);
+    ops::translate(&mut house, [HOUSE_AT[0], HOUSE_AT[1]]);
+    assert!(
+        ops::merge(&mut skeleton, house),
+        "the house places no parts, so the merge always happens"
+    );
 
     Building::new(skeleton)
 }

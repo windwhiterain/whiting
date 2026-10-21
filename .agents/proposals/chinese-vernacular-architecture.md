@@ -3136,3 +3136,17 @@ battlements; it had the wrong word for them, and the right one is `Member`.
 
 **Identity: 41 scenes, 146 863 rows**; `qiang_tower` 402 → **438** — six merlons with their sections and their ends. The document is
 7.21 MB.
+## Round 153: the 碉房 beside it
+
+A 碉楼 is never alone: it stands in a courtyard of stone houses of the same masonry, and a tower on bare ground is a monument. The house is
+the **`tibetan` type's own document** merged in beside it — the 羌 and the 藏 build the same coursed-stone box with a flat roof and a
+parapet — turned to face the camera.
+
+**This is the composition move the gallery has used everywhere else**: a settlement is made of types it already has. The 侗寨 is a tower
+and three 穿斗 houses; the 傣寨 is three 竹楼; a 羌寨 corner is a 碉楼 and a 碉房, and neither document was written for this scene.
+
+**What it changes in the plate**: the tower stops being a specimen and becomes the tall thing in a yard — its height now has something to
+be tall next to, which is the only way a plate can show height at all.
+
+**Identity: 41 scenes, 147 314 rows**; `qiang_tower` 438 → **889** — a whole house's courses, parapet, windows and door. The document is
+7.40 MB.
