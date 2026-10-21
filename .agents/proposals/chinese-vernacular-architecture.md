@@ -2352,3 +2352,23 @@ the 石板房 and this type call it.
 
 **Identity: 36 scenes, 126 323 rows**; `chuandou_house` **1 066** — a body, six posts, a purlin, a roof and three openings'
 reveals. The document is 7.38 MB.
+## Round 92: the porch's floor, and the 腰檐 this crate will not build
+
+A 穿斗 house's porch is a **floor** and not a pavement: the posts stand on it, and it is where the work that needs daylight
+happens. It is a `Slab::floor` a step above the ground, one bay deep, and the six posts stand on its edge.
+
+**The 腰檐 is not drawn, and the refusal is worth recording.** A Sichuan 穿斗 house is often **一挑二重檐** — the main roof over
+the body and a lower eave over the colonnade — and the obvious way to build the lower one is `derive::lean_to` hosted by the
+body, exactly as the 白族 gate's hood is. Every attempt came back the same way:
+
+```
+FaceNotPlanar { face: 28, departure: 0.11000013 }   warped face 28: Mass(MassId(0), WallTop { edge: 3, band: 0, half: 0 })
+```
+
+**A `lean_to` hosted by a gable-crowned mass warps that mass's own wall top.** It was tried with the plan crossing the wall and
+clear of it, with the eave side first and last, and with the two additions in isolation: the warp is the roof's, not the
+ordering's. The 白族 gate's hood works because its host is an uncrowned lintel. So the second eave is the next round's work and
+it needs a host this crate can give it — a dedicated fascia mass, or a roof that does not touch its host's wall top.
+
+**Identity: 36 scenes, 126 329 rows**; `chuandou_house` 1 066 → **1 072** — the porch floor's top and its four edges. The
+document is 7.39 MB.

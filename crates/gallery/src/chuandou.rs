@@ -31,6 +31,8 @@ const HEIGHT: f32 = 3.70;
 const PORCH: f32 = 1.60;
 const POSTS: usize = 6;
 const POST: f32 = 0.17;
+/// The porch's floor: one step above the ground, because a 穿斗 house's porch is a floor and not a pavement.
+const PORCH_FLOOR: f32 = 0.34;
 
 /// The body's boards and its floor plate: a board wall is thin, which is why the eaves are deep.
 const WALL: f32 = 0.22;
@@ -114,6 +116,18 @@ pub fn document() -> Building {
             POST,
         ));
     }
+    // **The porch's floor**: the platform the colonnade stands on, a step above the ground and one bay deep. A 穿斗 house's
+    // porch is a raised floor and not a pavement — the posts stand on it, and it is where the work that needs daylight happens.
+    skeleton.slabs.push(building::Slab::floor(
+        ops::wound(vec![
+            [-half - 0.30, deep],
+            [half + 0.30, deep],
+            [half + 0.30, deep + PORCH + 0.35],
+            [-half - 0.30, deep + PORCH + 0.35],
+        ]),
+        0.0,
+        PORCH_FLOOR,
+    ));
     // **The porch's own beam**: one member laid across the posts' heads, which is what a 穿斗 frame's purlin is at this scale.
     skeleton.members.push(building::Member::new(
         building::Anchor::Free {
