@@ -2396,3 +2396,15 @@ that can be lifted above a crown.
 
 **Identity: 36 scenes, 126 342 rows**; `chuandou_house` 1 072 → **1 085** — the plate's four faces and its top. The document is
 7.39 MB.
+## Round 94: the lane laid in flags
+
+The lane's paving was **one slab from end to end**, which reads as concrete and is not what a village street is. It is
+`LANE_SLABS` flags now, `3 m` each with a `0.045 m` joint between them — the joint is where the water goes and where a mason's
+day ended, and it is the whole difference between a street and a runway.
+
+`derive::court_paving` is *not* this: read before used, it builds a rectangle **with a square drainage grate at its centre**,
+which is a courtyard's floor and not a run of flags. So the lane stays a list of `Slab::paving`s and the joints come from the
+loop.
+
+**Identity: 36 scenes, 126 420 rows**; `bai_lane` 5 611 → **5 689** — fourteen flags in place of one, thirteen joints. The
+document is 20.39 MB.

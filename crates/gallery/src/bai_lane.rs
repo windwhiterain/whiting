@@ -34,6 +34,10 @@ const PLOTS: [(f32, f32, f32); 3] = [
 const LANE_HALF: f32 = 3.20;
 const LANE_FROM: f32 = -21.0;
 const LANE_TO: f32 = 21.0;
+/// How many flags the lane is laid in, the joint between them, and how thick a flag is.
+const LANE_SLABS: usize = 14;
+const JOINT: f32 = 0.045;
+const LANE_PAVING: f32 = 0.06;
 
 /// The lane`s well: where it stands, its half width, its own wall and its curb`s height.
 const WELL_AT: [f32; 2] = [0.0, -13.0];
@@ -99,18 +103,24 @@ pub fn document() -> building::Building {
         );
     }
 
-    // **The lane is paving and not a mass**: it has no wall and nothing stands on it, so it is a `Slab::paving` from one end
-    // to the other — the same answer the courts' own floors gave.
-    skeleton.slabs.push(building::Slab::paving(
-        building::ops::wound(vec![
-            [-LANE_HALF, LANE_FROM],
-            [LANE_HALF, LANE_FROM],
-            [LANE_HALF, LANE_TO],
-            [-LANE_HALF, LANE_TO],
-        ]),
-        0.0,
-        0.06,
-    ));
+    // **The lane is paving and not a mass**: it has no wall and nothing stands on it, so it is `Slab::paving` — the same answer
+    // the courts' own floors gave. It is laid in **`LANE_SLABS` flags with a joint between them**, because a stone lane is a run
+    // of flags and not one plate: one slab from end to end reads as concrete, and the joint is where the water goes.
+    let run = (LANE_TO - LANE_FROM) / LANE_SLABS as f32;
+    for slab in 0..LANE_SLABS {
+        let from = LANE_FROM + run * slab as f32 + JOINT * 0.5;
+        let to = LANE_FROM + run * (slab + 1) as f32 - JOINT * 0.5;
+        skeleton.slabs.push(building::Slab::paving(
+            building::ops::wound(vec![
+                [-LANE_HALF, from],
+                [LANE_HALF, from],
+                [LANE_HALF, to],
+                [-LANE_HALF, to],
+            ]),
+            0.0,
+            LANE_PAVING,
+        ));
+    }
 
     // **The lane's well.** A 白族 lane has one, and it is the lane's institution: the courts have their own water in their
     // yards, and the lane's well is where the lane meets. It is a mass whose wall is thick enough to be a ring — `0.24 m` in a
