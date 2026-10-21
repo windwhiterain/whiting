@@ -3177,3 +3177,10 @@ at its inner face (round 113) — and the ring's offset stays **under half the w
 `UnattachedOverlap { 14, 15 }`, `{ 15, 16 }`, and the block is three explicit rectangles because of them.
 
 **Identity: 41 scenes, 147 413 rows**; `qiang_tower` 949 → **988** — three lengths' faces and tops. The document is 7.43 MB.
+## Round 156: the yard's floor
+
+A courtyard is a **floor** and not a field: the 羌 pave the yard with flat stones, and a plate reads walls as enclosing something the moment
+there is a surface inside them. The paving runs to the walls' inner faces so no flag stands under a wall, which is the same rule round 113
+gave the walls themselves.
+
+**Identity: 41 scenes, 147 419 rows**; `qiang_tower` 988 → **994** — a floor's top and its edges. The document is 7.44 MB.

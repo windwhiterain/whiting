@@ -64,6 +64,8 @@ const YARD_TO: f32 = 12.60;
 const YARD_GATE: f32 = 1.60;
 const YARD_THICK: f32 = 0.48;
 const YARD_HIGH: f32 = 2.05;
+/// The yard's paving: how thick the flags lie.
+const PAVING: f32 = 0.07;
 
 /// The 碉房 beside the tower: where it stands in the towers own coordinates.
 const HOUSE_AT: [f32; 2] = [14.20, 2.60];
@@ -295,6 +297,19 @@ pub fn document() -> Building {
         wall.slab = 0.16;
         skeleton.masses.push(wall);
     }
+
+    // **The yard's floor.** A courtyard is a floor and not a field: the 羌 pave the yard with flat stones, and the plate reads the walls as
+    // enclosing something the moment there is a surface inside them. It runs to the walls' inner faces, so no paving stands under a wall.
+    skeleton.slabs.push(building::Slab::paving(
+        ops::wound(vec![
+            [YARD_WEST + YARD_THICK, YARD_SOUTH + YARD_THICK],
+            [YARD_EAST, YARD_SOUTH + YARD_THICK],
+            [YARD_EAST, YARD_TO],
+            [YARD_WEST + YARD_THICK, YARD_TO],
+        ]),
+        0.0,
+        PAVING,
+    ));
 
     Building::new(skeleton)
 }
