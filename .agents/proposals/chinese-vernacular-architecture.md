@@ -3287,3 +3287,21 @@ with the z running the other way from the x. A slab's corners must **wind counte
 and the two failed edits before it were both a `Replace` that did not match and a `wound` that does not reorder.
 
 **Identity: 42 scenes, 151 130 rows**; `naxi_court` 3 553 → **3 583** — four posts and a roof slab. The document is 8.17 MB.
+## Round 165: what the mitre complaint was never saying
+
+`MiterTooLong` has blocked two rounds of real work — round 160's second tower and the refactor under it — and each time it named a mass id, a
+node and a length, and **could not say which corner**. Read against the crate's own arithmetic, the reach is `wall / sin(interior / 2)`:
+a square corner reaches `1.41 × wall` and never breaks the limit of four, a `20°` corner reaches `5.76 × wall` and always does. **The length
+is a consequence; the angle is the fact**, and the complaint was reporting only the consequence.
+
+The problem now carries `interior`, in radians, measured from the two edge directions at the node. A probe states both halves:
+
+```
+square: expands clean, a corner of 90 degrees reaches 1.41 x wall
+wedge: DidNotExpand { problems: [MiterTooLong { loop_of: Outline { mass: MassId(0) }, node: 0, reach: 1.7403383, interior: 0.34649134 }] }
+```
+
+`interior: 0.3465` is `19.9°`, and at `wall = 0.30` it reaches `5.80 × wall` — the arithmetic the crate had and never showed.
+
+**Identity: 42 scenes, 151 130 rows**, unchanged by design: a diagnostic moves no geometry. What the round buys is that the next plan that
+breaks the join limit says **which corner** it broke it at, which is what round 160 needed and did not get.

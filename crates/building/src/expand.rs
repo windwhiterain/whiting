@@ -185,6 +185,9 @@ pub enum Problem {
         node: usize,
         /// How far it reached, from the corner.
         reach: f32,
+        /// The interior angle at that node, in radians: the reach is `wall / sin(interior / 2)`, so the angle is the number a plan has to
+        /// change and the length is only its consequence.
+        interior: f32,
     },
     /// An edge of the offset loop has no length left in it.
     OffsetEdgeVanished {
@@ -4021,10 +4024,16 @@ pub(crate) fn offset_loop(
         let mitred = step(near, directions[before], reach);
         let distance_reached = distance(mitred, corner);
         if distance_reached > MITER_LIMIT * wall {
+            // **The corner's own angle, in radians**: the mitre reaches `wall / sin(interior / 2)`, so the angle is what a plan's author can
+            // act on — a corner of `29°` reaches `4 × wall` and no wall thickness makes it legal. Reporting the reach alone leaves the
+            // author with a length and no corner.
+            let deflection = (turn).atan2(dot(directions[before], directions[node]));
+            let interior = std::f32::consts::PI - deflection.abs();
             problems.push(Problem::MiterTooLong {
                 loop_of,
                 node,
                 reach: distance_reached,
+                interior,
             });
             continue;
         }
