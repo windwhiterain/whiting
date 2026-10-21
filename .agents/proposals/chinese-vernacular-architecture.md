@@ -1774,3 +1774,25 @@ the seats I wrote by hand landed on ground that is off-frame. The change is reve
 
 **Identity: 27 scenes, 110 245 rows, unchanged** — plants are not building elements. The hamlet's document is 20.63 MB,
 against 12.57 MB for the bare culms and 7.75 MB for no plants at all.
+## Round 62: the hill village's scrub, and a plant drawn twice
+
+Round 61 put five clumps round the hill village and every one drew against the sky. Two faults, and the second is the one
+that mattered:
+
+- **the seats were read off a frame.** They are now **scattered on the terrain's own field** and refused twice: the seat's
+  ground must be within a metre and a half of the platform **and** its plan inside the square plus three metres. The level
+  alone is not enough — the massif carries ground at the platform's own height elsewhere on its flank, and that is exactly
+  where the hand-written seats landed. A terrace is a *place* as well as a height.
+- **the wood was translated twice.** `wood_points_of` bakes each placement into the points it packs, and the bridge also
+  pushed one instance **per placement** with that same translation. Every clump was drawn at twice its plan coordinate and
+  twice its height — on the hillside forty metres above a plateau standing at twenty, and in the flat hamlet so far out
+  that only the clumps nearest the origin were in frame at all. The wood's instance is now **the identity**, which is what
+  a world-space mesh wants.
+
+Both scenes now have their plants where they were meant to stand: nine clumps on the hillside's shelf between the houses,
+six in the hamlet's yards.
+
+`SEATS_DEBUG=1` prints every kept seat with the ground under it, which is how the twenty-metre plateau was found.
+
+**Identity: 27 scenes, 110 245 rows, unchanged.** The hillside's document is **110.32 MB** against 94.86 MB, and the
+hamlet's is 20.62 MB.

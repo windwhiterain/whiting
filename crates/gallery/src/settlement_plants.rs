@@ -152,12 +152,13 @@ pub(crate) fn bamboo_clumps(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32
                 .map(|placement| (expansion.wood.as_slice(), &ids, placement)),
         ),
     ));
-    for placement in &placements {
-        let (translation, rotation, scale) = standing_at(placement, 1.0);
-        extra
-            .wood
-            .push(("plants-wood".to_owned(), translation, rotation, scale));
-    }
+    // **The wood's instance is the identity, because its mesh is already in world space.** `wood_points_of` bakes each
+    // placement into the points it packs, so a second translation by that same placement adds the seat twice: measured on
+    // the hillside as a village's clumps drawn at twice their plan coordinate and forty metres above a plateau that stands
+    // at twenty, and in the flat hamlet as only the clumps nearest the origin being visible at all.
+    extra
+        .wood
+        .push(("plants-wood".to_owned(), [0.0; 3], [0.0; 3], [1.0; 3]));
 
     // The blades: one template per its own index, and one instance per leaf.
     let mut labels: Vec<Option<String>> = vec![None; species.templates.len()];

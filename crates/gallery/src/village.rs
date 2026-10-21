@@ -329,9 +329,72 @@ pub fn hillside_village() -> Value {
         eye_plan[1],
     ];
     let target = [2.0, f64::from(platform) + 4.0, -6.0];
+    // **The scrub is scattered on the terrain, and a seat is refused twice.** Round 61 put five clumps round this village
+    // by hand and every one drew above the horizon: the seats had been read off a frame, and a frame is not a place. A seat
+    // is kept only if the **ground under it is the village's own shelf** — the platform the houses stand on, within a
+    // metre and a half — and if it is **outside every building's plan**, which is the same refusal a seat inside a wall
+    // would get from the expansion and cheaper to make here.
+    let scattered = hillside_document();
+    let mut plans: Vec<([f32; 2], [f32; 2])> = Vec::new();
+    for mass in &scattered.skeleton.masses {
+        let mut low = [f32::INFINITY; 2];
+        let mut high = [f32::NEG_INFINITY; 2];
+        for node in mass.outline() {
+            for axis in 0..2 {
+                low[axis] = low[axis].min(node.position[axis]);
+                high[axis] = high[axis].max(node.position[axis]);
+            }
+        }
+        plans.push((low, high));
+    }
+    let mut seats: Vec<[f32; 2]> = Vec::new();
+    for across in 0..11 {
+        for along in 0..11 {
+            let at = [
+                (SQUARE[0] - 6.0) + across as f32 * 3.0,
+                (SQUARE[1] - 6.0) + along as f32 * 3.0,
+            ];
+            // **The shelf is the square's plan plus a margin, and then the level.** The level alone is not enough: the
+            // massif has ground at the platform's own height elsewhere on its flank, and that is where round 61's
+            // hand-written seats landed — a cluster of clumps drew against the sky above the ridge. A terrace is a
+            // *place* as well as a height.
+            if at[0] < SQUARE[0] - 3.0
+                || at[0] > SQUARE[2] + 3.0
+                || at[1] < SQUARE[1] - 3.0
+                || at[1] > SQUARE[3] + 3.0
+            {
+                continue;
+            }
+            let level = ground(at[0] as f64, at[1] as f64);
+            if (level - f64::from(platform)).abs() > 1.5 {
+                continue;
+            }
+            let inside = plans.iter().any(|(low, high)| {
+                at[0] > low[0] - 1.6
+                    && at[0] < high[0] + 1.6
+                    && at[1] > low[1] - 1.6
+                    && at[1] < high[1] + 1.6
+            });
+            if inside {
+                continue;
+            }
+            seats.push(at);
+        }
+    }
+    // **A row of clumps and not a lawn**: every third candidate, so the shelf keeps its open ground between the houses.
+    let seats: Vec<[f32; 2]> = seats.into_iter().step_by(3).take(9).collect();
+    if std::env::var("SEATS_DEBUG").is_ok() {
+        eprintln!("  platform {platform}");
+        for at in &seats {
+            eprintln!("  seat {at:?} y {:.3}", ground(at[0] as f64, at[1] as f64));
+        }
+    }
+    let scrub = crate::settlement_plants::bamboo_clumps(&seats, &|at: [f32; 2]| {
+        ground(at[0] as f64, at[1] as f64) as f32
+    });
     scene_of(
-        &hillside_document(),
-        &crate::settlement_plants::Extra::none(),
+        &scattered,
+        &scrub,
         &ground,
         eye,
         target,
