@@ -3963,3 +3963,17 @@ larger numbers exactly.
 of work on the same file because it was never re-measured. Round 207 paid for the same mistake with `spirv-val` in another project — *"when a tool or a
 backend is not available, look for it before repeating it"* — and here it was *"when a note says the crate cannot say something, check whether it
 already does."*
+## Round 216: the well was too narrow, and that was the darkness
+
+Round 204 put a gallery round the 一颗印's court, found the court plate nearly black, and **checked whether the gallery had done it** — it had not, the
+court was already dark. Round 205 recorded the darkness as the type's truth. **It was not the type's truth; it was a proportion error.**
+
+A 一颗印's ranges are six metres tall and its well was **three metres** across: a shaft of sun a metre wide and paving in shadow. A real 一颗印's well is
+**a third of its frontage, not a fifth**, so `COURT` is `2.05` — a `4.1 m` well — and the court plate is now **a room with a sky over it** rather than a
+slot: the paving, the grating at its middle and the gallery's rail all read, where before there was a black field and one lit wall.
+
+**The table moves the other way, and for a reason worth recording**: `yikeyin`, `yikeyin_court` and `yikeyin_gable` 6 997 → **6 896** — **a hundred and
+one rows fewer**. Every range's inner edge moved outward by `0.55 m`, the four ranges' own faces are unchanged, and what went is the court's surplus
+grating and panel rows: **widening a room is the only change in this gallery that takes rows away and gives light back.**
+
+**Identity: 60 scenes, 229 449 rows**.

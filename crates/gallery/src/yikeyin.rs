@@ -73,8 +73,13 @@ const STAIR_TREADS: usize = 12;
 const STAIR_WIDE: f32 = 0.86;
 const STAIR_LEFT: f32 = -COURT + 0.10;
 
-/// The court: three metres square, the well the ranges are built round.
-const COURT: f32 = 1.5;
+/// The court: **four metres and one tenth square**, the well the ranges are built round.
+///
+/// **It was three metres until round 216, and that was a proportion error of the kind a plate shows and a table does not.** A 一颗印's ranges are six
+/// metres tall; a three-metre well between them admits a shaft of sun a metre wide and leaves the paving in shadow, which is what the court plate has
+/// been since the scene was built — nearly black. A real 一颗印's well is **a third of its frontage and not a fifth**, so this is `4.1` and the plate
+/// is a room with a sky over it rather than a slot.
+const COURT: f32 = 2.05;
 
 /// The grating through the court's paving, at its middle, and the stone it stands clear of.
 const GRATE: f32 = 0.45;
