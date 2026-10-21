@@ -2244,3 +2244,15 @@ of it.
 
 **Identity: 35 scenes, 124 119 rows**; `tibetan_house` 385 → **391** (the west edge restored, the east edge split), and
 `plateau_village` 3 185 → **3 209** — four towers, each with a parapet that goes all the way round.
+## Round 85: the parapet's cap
+
+A stone parapet is not a wall that stops; it is a wall under a **cap**, and the cap is what sheds the water a flat roof would
+otherwise take at its edge. The parapets on both roofs of the 碉房 have one now: a second member over each side's own run and
+section `PARAPET + 0.10` wide, so it stands `0.05 m` proud of the wall on each face, `0.09 m` high.
+
+It follows the sides rather than replacing them, so the two gaps round 84 made — the gallery's bay and the stair's landing — are
+gaps in the coping as well, and the cap is continuous everywhere the wall is.
+
+**Identity: 35 scenes, 124 419 rows**; `tibetan_house` 391 → **451** (ten cap members: four on the lower roof, six on the upper
+where the sides are split), `plateau_village` 3 209 → **3 449** (four towers, each with both roofs capped). The tower's document
+is 4.37 MB.

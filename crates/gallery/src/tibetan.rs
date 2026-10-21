@@ -65,6 +65,9 @@ const ROOF_THICK: f32 = 0.30;
 /// The parapet round each roof, and the 煨桑炉 in the top one's corner.
 const PARAPET: f32 = 0.30;
 const PARAPET_HIGH: f32 = 0.70;
+/// The cap on the parapet: how proud it stands on each face, and its own height.
+const COPE_PROUD: f32 = 0.05;
+const COPE_HIGH: f32 = 0.09;
 const BURNER: f32 = 0.95;
 const BURNER_HIGH: f32 = 1.25;
 
@@ -474,6 +477,20 @@ pub fn document() -> Building {
                 across_of(from, to),
                 PARAPET,
                 PARAPET_HIGH,
+            ));
+            // **The coping: a cap stone laid on the parapet's top, proud of it on both faces.** A stone parapet is not a wall
+            // that stops — it is a wall under a cap, and the cap is what sheds the water the flat roof would otherwise take at
+            // its edge. It is a second member at the same run and a wider section, which is what a cap is.
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [from[0], level + PARAPET_HIGH, from[1]],
+                },
+                building::Anchor::Free {
+                    at: [to[0], level + PARAPET_HIGH, to[1]],
+                },
+                across_of(from, to),
+                PARAPET + COPE_PROUD * 2.0,
+                COPE_HIGH,
             ));
         }
     }
