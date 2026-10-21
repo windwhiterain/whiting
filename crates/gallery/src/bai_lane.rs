@@ -55,6 +55,9 @@ const GATE_RISE: f32 = 0.75;
 const PIER_HALF: f32 = 0.50;
 const GATE_WALL: f32 = 0.30;
 const GATE_EAVE: f32 = 0.55;
+/// The gate`s leaves and its board: how thick a leaf is, and how wide the 题额 is.
+const BOARD: f32 = 0.08;
+const BOARD_HALF: f32 = 0.95;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
@@ -188,6 +191,43 @@ pub fn document() -> building::Building {
     ) {
         skeleton.roofs.push(roof);
     }
+
+    // **The gate's own two leaves, standing open against the piers.** A 巷门 is a gate and not an arch: it closes, and when
+    // it is open each leaf lies back against its pier. Each leaf is a member hanging from the lintel's underside to a hand's
+    // width above the paving, `BOARD` thick, and it is **swung**, not closed, because a village's gate is open in the day.
+    let leaf = LANE_HALF - 0.10;
+    for across in [-1.0_f32, 1.0] {
+        let x = across * (LANE_HALF - BOARD * 0.5);
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, 0.08, GATE_AT - GATE_DEEP + 0.06],
+            },
+            building::Anchor::Free {
+                at: [x, 0.08, GATE_AT - GATE_DEEP + 0.06 + leaf],
+            },
+            // **A leaf is a panel and not a rod**: its run is the leaf's width along the lane's side, and its section is a
+            // hand's thickness across by the opening's height up. A member whose two anchors differ in elevation is a post,
+            // which is what the first version drew.
+            [1.0, 0.0],
+            0.06,
+            GATE_FOOT - 0.16,
+        ));
+    }
+
+    // **The 题额: the board over the gate.** A 巷门 wears the village's name over its opening, and that board is the one piece
+    // of a gate that is written rather than built. It is a member on the lintel's outer face, wider than a door leaf and a
+    // hand's height, standing `0.06 m` proud of the stone.
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [-BOARD_HALF, GATE_FOOT + 0.26, GATE_AT + GATE_DEEP + 0.03],
+        },
+        building::Anchor::Free {
+            at: [BOARD_HALF, GATE_FOOT + 0.26, GATE_AT + GATE_DEEP + 0.03],
+        },
+        [0.0, 1.0],
+        0.12,
+        0.52,
+    ));
 
     building::Building::new(skeleton)
 }

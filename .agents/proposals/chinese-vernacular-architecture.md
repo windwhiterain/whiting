@@ -2310,3 +2310,20 @@ is not stopped by them — and a lean-to roof over the lintel. The lane passes u
 
 **Identity: 35 scenes, 125 239 rows**; `bai_lane` 5 548 → **5 593** — the lintel's faces and top, the two piers, and the gate's
 roof. The document is 20.37 MB.
+## Round 90: the 巷门's leaves and its 题额 — and a rule that was already written
+
+The round began as a documentation task: put round 89's reading of `Join::Under` into the crate. **It is already there**, and it
+has been since the variant was added — "the mirror of `Storey` … a bridge's masonry pier and the timber gallery over it share a
+plan for as long as the bridge stands; without a word for that, `validate`'s overlap question reports the pair as two masses in
+each other's way". Two rounds were spent deriving a paragraph that sits in `mass.rs`, four hundred lines from where the failure
+appeared.
+
+So the round drew the gate's two missing pieces instead:
+
+- **two leaves, standing open against the piers.** A 巷门 is a gate and not an arch: it closes, and when it is open each leaf lies
+  back along its pier. The first version drew them as **rods**, because a member whose two anchors differ in elevation is a post —
+  a leaf's run is its own width along the lane and its section is a hand's thickness across by the opening's height up;
+- **the 题额**, the board over the opening: the one piece of a gate that is written rather than built, `0.12 m` proud of the
+  lintel's stone.
+
+**Identity: 35 scenes, 125 257 rows**; `bai_lane` 5 593 → **5 611** — two leaves and the board. The document is 20.37 MB.
