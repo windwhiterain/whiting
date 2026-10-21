@@ -546,6 +546,9 @@ fn arcade(
     )],
 ) {
     const POST: f32 = 0.16;
+    /// The 挑檐枋: as deep as the post it lands on, and a little wider so it reads as a beam and not as a plate.
+    const BEAM_DEEP: f32 = 0.20;
+    const BEAM_WIDE: f32 = 0.16;
     // **The posts stand under the projection's own outer edge**, which is the depth the upper floor moved out.
     let out = PROJECT;
     for (mass_id, _upper_id, plot, _projected) in plots {
@@ -593,6 +596,23 @@ fn arcade(
                 POST,
             ));
         }
+        // **The 挑檐枋: the beam the two posts carry**, running along the projection's outer edge under the floor it
+        // holds up. Without it the posts stand beside a slab that appears to float: a 骑楼's walk is roofed by the floor
+        // above, and what a walker sees from underneath is the beam the floor rests on and the two posts that meet it.
+        // It sits `0.22` below the floor's own underface so the beam is proud of the soffit rather than buried in it.
+        let beam = [inner[0] + step[0], inner[1] + step[1]];
+        let beam_end = [outer[0] + step[0], outer[1] + step[1]];
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [beam[0], base + FLOOR - 0.22, beam[1]],
+            },
+            building::Anchor::Free {
+                at: [beam_end[0], base + FLOOR - 0.22, beam_end[1]],
+            },
+            [0.0, 1.0],
+            BEAM_DEEP,
+            BEAM_WIDE,
+        ));
     }
 }
 

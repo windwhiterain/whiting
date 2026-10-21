@@ -1706,3 +1706,14 @@ down toward the same well is a hamlet** — and it took a rotation to say so.
 
 Identity: **27 scenes, 110 005 rows, unchanged** — a turn moves geometry and not a single element's name, which is exactly
 what the identity table is supposed to be blind to.
+## Round 59: the 挑檐枋 the posts carry
+
+A 骑楼's walk is roofed by the floor above it and by nothing else, and what a walker sees from under that floor is the
+**beam it rests on** and the posts that meet it. The posts were there; the beam was not, so the projecting slab read as
+something floating above two columns.
+
+The beam runs between each plot's two posts at `base + FLOOR - 0.22`, on the projection's own outer edge, `0.20` deep and
+`0.16` wide — as deep as the post it lands on and no wider, which is what a 挑檐枋 is. **`street` 12 550 → 12 610 rows**:
+six faces a plot, ten plots.
+
+**27 scenes, 110 245 rows**, the other twenty-six unchanged.
