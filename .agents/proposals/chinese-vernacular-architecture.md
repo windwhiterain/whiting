@@ -3992,3 +3992,21 @@ like it.**
 same thing rounds 189 and 199 recorded about small objects in a village plate.
 
 **Identity: 60 scenes, 229 576 rows**; `plateau_village` 3 449 → **3 576** — a heap, seven stones, two poles, a rope and nine cloths.
+## Round 218: the culverts, and where a street's mouths actually are
+
+This file said the culverts need *"a word for a mouth"* that the crate does not have. **It has one**: an `Opening` is a hole cut in a named face of a mass,
+and a culvert's mouth is exactly that. Two small stone boxes now stand over the channel at the street's two ends, each with a low rectangular mouth —
+`0.9 × 0.22` — cut in the face that looks down the lane.
+
+**Six measured refusals before one placement held, and three of them were the round learning the street's own axes:**
+1. `OffsetInverted` — the ring's offset was a fraction of the box's **long** side; the rule is the **narrow** one (rounds 74, 144, 171 — the thirteenth
+   time this project has paid it);
+2. then `UnattachedOverlap { 10, 31 }`, `{ 15, 30 }` — the box was laid along the **lane's own axis**, and **this lane runs along `z`, not `x`**;
+3. and at every position **inside** the mouths the gates' piers own the ground, so the culverts stand **outside** them — which is where the water leaves a
+   village in any case.
+
+**Identity: 60 scenes, 229 628 rows**; `slate_street` and `slate_gate` 2 997 → **3 023** — two mouths of twenty-six rows.
+
+**The third note in three rounds that was wrong about the crate's vocabulary** (穿枋, 玛尼堆, culvert mouths). The claims are all now corrected in their
+files, and the pattern is consistent enough to state as a rule: **a "what it does not draw" bullet is a hypothesis, and this gallery has three of them
+that were false.**

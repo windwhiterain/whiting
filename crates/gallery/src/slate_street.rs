@@ -40,6 +40,14 @@ const JOINT: f32 = 0.05;
 const FLAG: f32 = 0.07;
 /// The channel down the lane`s middle: half its width, and how deep it stands below the walked strips.
 const CHANNEL: f32 = 0.34;
+
+/// The culvert mouths at the street's two ends: how far in from the mouth it stands, its plan, its height, and the mouth's jamb and head.
+const CULVERT_OUT: f32 = 1.40;
+const CULVERT_LONG: f32 = 0.70;
+const CULVERT_WIDE: f32 = 1.90;
+const CULVERT_HIGH: f32 = 0.62;
+const CULVERT_JAMB: f32 = 0.42;
+const CULVERT_HEAD: f32 = 0.32;
 /// The 街沿石: how wide a kerb strip is and how high it stands above the flags.
 const KERB: f32 = 0.26;
 const KERB_HIGH: f32 = 0.13;
@@ -287,6 +295,54 @@ pub fn document() -> Building {
         ops::merge(&mut skeleton, tower),
         "the tower places no parts, so the merge always happens"
     );
+
+    // **The culvert mouths the channel empties through.** This file said they need *"a word for a mouth"* that the crate does not have — **and it has
+    // one**: an `Opening` is a hole cut in a named face of a mass, which is exactly what a culvert's mouth is. Two small stone boxes stand over the
+    // channel at the street's two ends, each with a low rectangular mouth cut in the face that looks down the lane.
+    // **They stand outside the mouths, not inside them**: the gates' piers own the ground at each end of the lane (measured: `UnattachedOverlap`
+    // against masses 10 and 15 at every position tried inside), and a culvert is where the water **leaves** the village in any case.
+    for (at, face) in [
+        (LANE_TO + CULVERT_OUT, 0_usize),
+        (LANE_FROM - CULVERT_OUT, 2_usize),
+    ] {
+        let mut culvert = Mass::new(
+            ops::wound(vec![
+                [-CULVERT_WIDE * 0.5, at - CULVERT_LONG * 0.5],
+                [CULVERT_WIDE * 0.5, at - CULVERT_LONG * 0.5],
+                [CULVERT_WIDE * 0.5, at + CULVERT_LONG * 0.5],
+                [-CULVERT_WIDE * 0.5, at + CULVERT_LONG * 0.5],
+            ])
+            .into_iter()
+            .map(|at| building::PlanNode::new(at, 0.0))
+            .collect(),
+            CULVERT_HIGH,
+        );
+        // **The ring's offset stays under half the narrow side** (rounds 74, 144, 171).
+        culvert.wall = CULVERT_WIDE * 0.14;
+        culvert.slab = 0.12;
+        let id = building::MassId(skeleton.masses.len());
+        skeleton.masses.push(culvert);
+        let face = building::FaceRef::new(id, face);
+        if ops::split_face(
+            &mut skeleton,
+            face,
+            &building::Rhythm::Even { count: 1 },
+            &building::Rhythm::Even { count: 1 },
+        )
+        .is_some()
+        {
+            // **A mouth is wider than it is high and sits at the channel's floor**, so its inset is deep at the head and shallow at the sill.
+            let _ = ops::add_opening(
+                &mut skeleton,
+                building::Opening::new(
+                    face,
+                    0,
+                    1,
+                    building::Inset::new(CULVERT_JAMB, CULVERT_JAMB, 0.04, CULVERT_HEAD),
+                ),
+            );
+        }
+    }
 
     Building::new(skeleton)
 }
