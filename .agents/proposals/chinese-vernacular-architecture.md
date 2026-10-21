@@ -1596,3 +1596,30 @@ The 竹楼's thatch stays off and the two rolls stay unnamed. What is now known 
 
 The next instrument is not another guard: it is a print of `low`, `high` and the guard's own `departure` for **every**
 roll of that roof, so the two can be read against the rest.
+## Round 53: the census, and the fifth falsification
+
+The instrument is built and it settles the question by **refusing the premise**: `ROLL_DEBUG=1` prints every roll the
+guard sees, and on the 竹楼's hip that is **240 rolls, every one of them flat**:
+
+```text
+  roll 24 step 0: spans 0.1918/0.1918 departures [4.7683716e-7, 4.7683716e-7, 7.1525574e-7]
+  roll 39 step 0: spans 0.1918/0.1918 departures [0.0, 0.0, 4.7683716e-7]
+```
+
+The two rolls `validate` names as `FaceNotPlanar { departure: 1.106e-3 }` are, at the guard, an ordinary pair of prisms
+whose three faces each depart their own plane by **half a micrometre**. So:
+
+- the guard is not wrong about what it measures;
+- the sections do not collapse (spans `0.1918` at both ends);
+- the group is one step (round 52's naming did not change the number);
+- and the fitted-plane departure of the same four corners is `1.1e-3` **only in the validator**.
+
+Five hypotheses, five falsifications. What is left is a disagreement between **two readings of the same four points**, and
+that is a different kind of fault from every one this arc has chased: not a wrong roll, but a wrong *passage* between the
+expansion and the validator. The instrument that follows from this is not another guard — it is a check that the validator's
+`departure_of` and the expansion's `departure` agree on a set of four points they both see, and that is where the next
+round should start.
+
+**Landed**: the census itself, behind `ROLL_DEBUG`, and **26 scenes at 106 060 rows, unchanged**. The 竹楼's thatch stays
+off until the disagreement is understood; a covering that one reading calls flat and another calls twisted is not a
+covering to ship.

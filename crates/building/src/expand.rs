@@ -2512,6 +2512,24 @@ fn expand_covering(
                     // 0.0102 and 0.0202 on a single hip wearing a covering. The long planes are unaffected
                     // -- their rows stay parallel -- so a hip keeps its tiles over the sides and loses them
                     // at the two ends, which is the honest draw rather than a lid that is nearly flat.
+                    // **The census of a covering, one line per roll.** `ROLL_DEBUG=1` prints what the guard sees: the
+                    // two sections' widths and all three faces' departures from their own planes. It exists because a
+                    // fault was reported two guards above this line and could not be reproduced here — every one of a
+                    // hip's 240 rolls read flat to `5e-7`, the two the validator named among them — and a measurement
+                    // that disagrees with the validator has to be printed, not argued about.
+                    if std::env::var("ROLL_DEBUG").is_ok() {
+                        let quads = [
+                            [low[0], low[1], high[1], high[0]],
+                            [low[1], low[2], high[2], high[1]],
+                            [low[2], low[0], high[0], high[2]],
+                        ];
+                        let held: Vec<f32> = quads.iter().map(|quad| departure(*quad)).collect();
+                        eprintln!(
+                            "  roll {index} step {step}: spans {:.4}/{:.4} departures {held:?}",
+                            span3(low[0], low[1]),
+                            span3(high[0], high[1]),
+                        );
+                    }
                     if !prism_is_planar(low, high) {
                         continue;
                     }
