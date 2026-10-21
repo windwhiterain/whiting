@@ -4083,3 +4083,18 @@ and the honest answer is to find a site inside an existing frame rather than to 
 
 **Identity: 61 scenes, 230 767 rows**; `dong_village` and `dong_square` 10 408 → **10 747** — the mill's 339 rows, exactly, which is the composition check
 this project has now made on five villages.
+## Round 223: the water plate, and the registration that fails silently
+
+The mill and the bridge are both in the 侗寨's document and **both are invisible in its two plates**: one is a wide view where nothing smaller than a house
+is a shape, and the other looks at the square across the lane. `dong_water` stands three metres off the ground at the race's edge: **the wheel is right
+there** — twelve spokes, two rims, and its own shadow thrown across the shed's wall — **and the 风雨桥 crosses the frame behind it**, its railing and its
+pavilion roof in the same picture. It is the one plate in this gallery that shows a **machine at work in a village**.
+
+**`dong_square` and `dong_village` are untouched** (10 747 rows each); the new plate is 10 747 too, because it is the same document.
+
+**Identity: 62 scenes, 241 514 rows.**
+
+**And the round paid the registration failure for the third time** (rounds 207 and 221 were the others): the scene was added to `Gallery::names`, to
+`build`'s match and to the probe's `SCENES` — **and not to `naming::building_of`**, so the probe **silently skipped it** and reported sixty-one scenes with
+no error at all. Three of the four lists were right, the fourth defaulted to "no such building", and a scene that is not in `naming` is a scene **no
+instrument measures**. The check that catches it is the count: **62 scenes in `SCENES` and 62 row-lines in the output**, never one without the other.

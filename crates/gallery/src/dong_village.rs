@@ -179,6 +179,25 @@ pub fn dong_square() -> Value {
     )
 }
 
+/// The **water plate**: the mill, its race and the village behind it, from three metres off the ground.
+///
+/// # Why a third camera and not a third document
+///
+/// Rounds 213 and 222 brought the bridge and the mill into this village, and **both are invisible in its two plates** — one is a wide view where nothing
+/// smaller than a house is a shape, and the other looks at the square, which is on the far side of the lane. **A 侗 village's water works are its oldest
+/// public work and its quietest**, and this is the plate that shows them: the wheel standing in its race with the lantern tower over the roofs behind.
+pub fn dong_water() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [31.4, 3.6, 22.2],
+        [40.4, 2.4, 11.6],
+        FIELD_OF_VIEW * 0.74,
+        "dong_water",
+    )
+}
+
 /// Returns the document: the tower, three houses, the square and the lane.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
