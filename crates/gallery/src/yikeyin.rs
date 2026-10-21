@@ -68,6 +68,11 @@ const GALLERY_DECK: f32 = 0.10;
 const GALLERY_POST: f32 = 0.13;
 const GALLERY_RAIL: f32 = 0.80;
 
+/// The stair up to the corridor: how many treads, and how wide and how far to the side of the well it stands.
+const STAIR_TREADS: usize = 12;
+const STAIR_WIDE: f32 = 0.86;
+const STAIR_LEFT: f32 = -COURT + 0.10;
+
 /// The court: three metres square, the well the ranges are built round.
 const COURT: f32 = 1.5;
 
@@ -809,6 +814,26 @@ pub fn document() -> Building {
             [1.0, 0.0],
             GALLERY_POST,
             GALLERY_POST,
+        ));
+    }
+
+    // **The stair up to the corridor.** Round 204 built the gallery and left it **two metres ninety-five above the court with nothing leading to it**,
+    // which is the third time this project has made a level and forgotten the way up (rounds 175 and 185 are the other two). A 一颗印's stair stands
+    // in the well against one range's face: `STAIR_TREADS` stone treads that fill the well's own depth, one rise each, so the flight's top tread is the
+    // corridor's deck and its bottom is the paving.
+    let rise = level / STAIR_TREADS as f32;
+    let run = (2.0 * COURT - GALLERY_DEEP - 0.08) / STAIR_TREADS as f32;
+    for tread in 0..STAIR_TREADS {
+        let front = -COURT + GALLERY_DEEP + run * tread as f32;
+        skeleton.slabs.push(building::Slab::paving(
+            ops::wound(vec![
+                [STAIR_LEFT, front],
+                [STAIR_LEFT + STAIR_WIDE, front],
+                [STAIR_LEFT + STAIR_WIDE, front + run],
+                [STAIR_LEFT, front + run],
+            ]),
+            rise * tread as f32,
+            rise * (tread + 1) as f32,
         ));
     }
 

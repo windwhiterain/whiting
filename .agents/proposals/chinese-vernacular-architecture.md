@@ -3797,3 +3797,16 @@ way to read a dark plate**, and it cost one revert-and-reapply of a 4 KB patch.
 **And seven warnings were the rounds' own.** Every close plate since round 190 added `"a" | "b" => ...` and left the old `"b" => ...` arm in place, so
 `naming.rs` had **seven unreachable patterns**. All seven are gone, and the gallery builds with **no warning of any kind** — which round 197's hygiene
 round could not claim, because these arrived after it.
+## Round 205: the stair up to the corridor
+
+Round 204 built a gallery two metres ninety-five above the court and **nothing leading to it**, which is the **third** time this project has made a
+level and forgotten the way up — round 175 found it on a longhouse's floor and round 185 on a 傈僳 terrace, and both were written down as a rule:
+**a level with no route is a level nobody uses**. The rule did not stop the third one, which is worth recording as itself.
+
+Twelve stone treads now fill the well's own depth against one range's face: the flight's bottom is the paving and its top tread is the corridor's deck,
+one rise each.
+
+**The plate does not change, and this time that is the finding**: the court is a light well and the stair stands in its shadow, like everything else in
+it. **The table is the evidence** — `yikeyin` and `yikeyin_court` 6 925 → **6 997**, twelve treads of six faces each.
+
+**Identity: 58 scenes, 214 886 rows**.
