@@ -4326,3 +4326,17 @@ arch in the foreground, the flagged square, two counters either side and the sta
 
 **And the instrument self-reports again**: `85 names, 72 buildings, 72 listed, unmeasured [], unknown []`, `72 asked, 72 printed` — the fourth round in a row
 where the registration check is what says the scene is real.
+## Round 239: the 碉楼, the twenty-seventh type
+
+A 屯堡 is a **garrison that became a village**: its founders were Ming soldiers settled on a frontier road, and the one building every one of their villages kept is
+the tower at the end of its street that could see the road for twenty kilometres. It is **not** the 羌碉 — round 120's type is a highland **house** that fortifies
+itself — a 碉楼 is **only a tower**: no rooms, no hearth, a stair and loopholes, and its whole form is a **square stone stack with a timber top**.
+
+**Four stone storeys**, each standing on the one below with `Join::Storey` and each a step narrower (a tower's batter is exactly what attachment is for), **a
+loophole on each storey's street face** — a 碉楼 watches **one way** and that way is the road — and **the timber gallery** that crowns a stone tower in this
+tradition: four posts and a cap.
+
+**Identity: 73 scenes, 256 198 rows**; `watchtower` **111** — the plinth, four storeys' fabric and four loopholes, four posts and a cap.
+
+**And it is the cleanest use of `Join::Storey` in the gallery**: the 风水塔 (round 207) and the 马店's upstairs (round 229) each had to argue for the attachment;
+here it is what a battered tower **is** — and the four openings cost **22 rows each**, the same price the 塔门 paid in round 210.

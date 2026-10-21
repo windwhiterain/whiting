@@ -170,6 +170,7 @@ pub mod vegetation_mesh;
 pub mod vegetation_picture;
 pub mod village;
 /// The workshop scene: two storeys with a floor between them.
+pub mod watchtower;
 pub mod watermill;
 pub mod wing;
 pub mod workshop;
@@ -297,6 +298,7 @@ impl Gallery {
             "tunpu_village",
             "tibetan_house",
             "wing",
+            "watchtower",
             "watermill",
             "workshop",
             "yard",
@@ -453,6 +455,7 @@ impl Gallery {
             "tunpu_village" => tunpu_village::tunpu_village(),
             "tibetan_house" => tibetan::tibetan_house(),
             "wing" => wing::wing(),
+            "watchtower" => watchtower::watchtower(),
             "watermill" => watermill::watermill(),
             "workshop" => workshop::workshop(),
             "yard" => yard::yard(),
