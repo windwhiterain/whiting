@@ -2783,3 +2783,14 @@ village walks past, which is also where a wat's release pond belongs.
 
 **Identity: 38 scenes, 134 177 rows**; `dai_temple` 2 536 → **2 549** — a rim's four faces, its top and its inner loop. The document
 is 31.5 MB.
+## Round 124: the 界石
+
+An ordination hall is not just a building: it stands inside a **consecrated precinct**, and the precinct is marked by a ring of
+stones set in the ground. Six **界石** stand round the 戒堂 — along its south and east sides, where the plate sees them, and not on
+the west, which is the 大殿's platform: a stone set inside another building's plan is a stone on its floor.
+
+The stones are `SIMA` square and knee high, a mass each, because a boundary stone has a foot and a top and is set *into* the ground
+rather than resting on it.
+
+**Identity: 38 scenes, 134 333 rows**; `dai_temple` 2 549 → **2 627** — six stones' four faces and their tops. The document is
+31.5 MB.

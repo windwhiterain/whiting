@@ -90,6 +90,9 @@ const UPOSATHA_PLINTH: f32 = 0.55;
 const UPOSATHA_RISE: f32 = 3.20;
 const UPOSATHA_OVERHANG: f32 = 0.85;
 const UPOSATHA_AT: [f32; 2] = [10.10, -2.20];
+/// The 界石 round the 戒堂: one stones plan and its height above the yard.
+const SIMA: f32 = 0.30;
+const SIMA_HIGH: f32 = 0.58;
 /// The 寺门`s piers: how wide one is, in metres.
 const GATE_PIER: f32 = 0.52;
 
@@ -542,6 +545,36 @@ pub fn document() -> Building {
     uposatha.slab = 0.26;
     let uposatha_id = MassId(skeleton.masses.len());
     skeleton.masses.push(uposatha);
+
+    // **The 界石: the sima stones round the 戒堂.** An ordination hall is not just a building — it stands inside a **consecrated
+    // precinct**, marked by a ring of stones set in the ground, and the precinct is the thing that makes a 戒堂 a 戒堂. Six stones
+    // stand along its south and east sides, where the plate sees them; the west side is the 大殿's platform and a stone set inside
+    // another building's plan is a stone on its floor.
+    for (dx, dz) in [
+        (-2.40_f32, 3.00_f32),
+        (0.00, 3.00),
+        (2.40, 3.00),
+        (3.85, 1.00),
+        (3.85, -1.00),
+        (2.40, -3.00),
+    ] {
+        let mut stone = Mass::new(
+            ops::wound(vec![
+                [uposatha_x + dx - SIMA * 0.5, uposatha_z + dz - SIMA * 0.5],
+                [uposatha_x + dx + SIMA * 0.5, uposatha_z + dz - SIMA * 0.5],
+                [uposatha_x + dx + SIMA * 0.5, uposatha_z + dz + SIMA * 0.5],
+                [uposatha_x + dx - SIMA * 0.5, uposatha_z + dz + SIMA * 0.5],
+            ])
+            .into_iter()
+            .map(|at| PlanNode::new(at, 0.0))
+            .collect(),
+            SIMA_HIGH,
+        );
+        stone.wall = SIMA * 0.26;
+        stone.slab = 0.10;
+        skeleton.masses.push(stone);
+    }
+
     if let Some(roof) = derive::gable_roof_by(
         uposatha_id,
         &skeleton.masses[uposatha_id.0],
