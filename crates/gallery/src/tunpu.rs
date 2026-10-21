@@ -23,7 +23,7 @@
 //! - **the dressed quoins**: a real wall has cut stone at its corners and rubble between, and one plaster thickness cannot
 //!   say so.
 
-use building::{Building, BuildingSkeleton, Covering, Mass, MassId, PlanNode, derive, ops};
+use building::{Building, BuildingSkeleton, Covering, Mass, MassId, PlanNode, derive};
 use definition::Value;
 use document::air::Atmosphere;
 use document::building_identity::{
@@ -36,7 +36,6 @@ use document::kit::{
 use document::shaders::{Projection, post_shader};
 use scene::standard::Stage;
 
-use crate::facade::{self, Front};
 use crate::ground;
 
 /// The house: `WIDTH` by `DEPTH`, one storey of `HEIGHT`, with a stone yard `YARD` deep in front of it.

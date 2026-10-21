@@ -3820,3 +3820,24 @@ gable is four lines among many, and the court plate is a **light well and theref
 and the eaves' own rafter ends show underneath. **The two things the type is read by, in one frame, for the first time.**
 
 **Identity: 59 scenes, 221 883 rows**; `yikeyin_gable` **6 997** (the same document as `yikeyin`). The document is 6.32 MB.
+## Round 207: the 风水塔, the twentieth type
+
+Every 白族 and 汉族 village in 滇西 and 黔北 that could afford one built a **tower at the low end of its site**, and the tower is not a building: it has no
+floor to walk on, no door in use and no room. **Its whole content is its elevation** — seven battered storeys, each shorter than the one below, each
+with its own corbelled eave, and a spire above them.
+
+**Three attempts, and the first two are the round's real finding:**
+1. **seven unattached masses**, one per storey — refused with fourteen `UnattachedOverlap`s, because **the validator compares plans** (round 137) and a
+   pagoda's storeys are nested in plan by construction;
+2. **seven thick slabs** — built, validated, and **invisible**: the plates are plates, and a two-metre-thick slab is not a volume this crate draws;
+3. **seven attached masses**, each `Join::Storey` on the one below — which is how the 土掌房's room stands inset on its terrace — and the tower stands.
+
+**The lesson is the one the 土掌房 paid for in round 169 and this round paid again**: when a small solid must stand **inside** another's plan, it is
+**attached**, and attachment is what answers the nesting rule.
+
+**Identity: 60 scenes, 222 047 rows**; `fengshui_tower` **164** — the smallest type in the gallery, because it is seven boxes and their eaves and
+nothing else.
+
+**And ten warnings turned out to be round 197's own**: that round's dead-code removal deleted the functions its imports served and left the imports
+behind, so `cargo build` had **ten unused imports** and one **duplicated `paved_stone`** in `yikeyin.rs`, left by an earlier replace. All are gone; the
+build is silent again.

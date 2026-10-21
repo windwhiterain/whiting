@@ -19,7 +19,7 @@
 //! - **the second range**: a courtyard house has ranges on its other sides, and a 屯堡 house's court has one house and a
 //!   wall — anything more would be the 一颗印 and not this.
 
-use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, derive};
+use building::{Building, Mass, MassId, PlanNode, derive};
 use definition::Value;
 
 /// The court's inner half extents: the house is 8.2 wide, so the wall stands 1.1 m clear of its flanks.

@@ -87,6 +87,7 @@ mod dunes;
 pub mod earthen;
 /// Where a courtyard house's own fronts are, and what one is made of.
 pub mod facade;
+pub mod fengshui_tower;
 mod foldyard;
 pub mod hall;
 pub mod hamlet;
@@ -218,6 +219,7 @@ impl Gallery {
             "foldyard",
             "hermite",
             "hermite_massif",
+            "fengshui_tower",
             "hall",
             "dai_hamlet",
             "hall_large",
@@ -364,6 +366,7 @@ impl Gallery {
             "chuandou_house" => chuandou::chuandou_house(),
             "compound" => compound::compound(),
             "compound_court" => compound::compound_court(),
+            "fengshui_tower" => fengshui_tower::fengshui_tower(),
             "hall" => hall::hall(),
             "dai_hamlet" => hamlet::hamlet(),
             "hall_large" => hall::hall_large(),

@@ -26,7 +26,7 @@
 //!   flights are external and each lands through its own gap in the parapet;
 //! - **the 经堂's interior**: the shrine room on the top floor is the interior arc's work;
 //! - **the stone**: the walls are one plaster thickness here, and the courses are a material the frame cannot show.
-use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, derive, site};
+use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, derive};
 use definition::Value;
 use document::air::Atmosphere;
 use document::building_identity::{

@@ -26,8 +26,6 @@
 use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, site};
 use definition::Value;
 
-use crate::ground;
-
 /// The lane the houses stand along, and how far apart their plots are.
 const LANE_Z: f32 = 0.0;
 /// The plots, and how far each house is turned: the middle house faces the lane, the two outer ones a quarter turn

@@ -21,7 +21,7 @@
 //! leaf of every clump is an instance of it. Baking the wood costs points; instancing the leaves costs one mesh.
 
 use definition::{PackedList, Value};
-use document::kit::{instance, mesh, mesh_material, surface};
+use document::kit::{instance, mesh_material, surface};
 use vegetation::derive::{Species, clump, tree};
 use vegetation::expand::{Detail, expand};
 use vegetation::plant::Placement;

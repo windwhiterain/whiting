@@ -21,7 +21,7 @@
 //! - **the battlements**: a 碉楼's crown has a wall with gaps in it, and this crate's `crown_gables` is a roof's own edge. The crown
 //!   here is the top course's wall, and its gaps are the one thing the type still owes.
 
-use building::{Building, BuildingSkeleton, Covering, derive, ops};
+use building::{Building, BuildingSkeleton, derive, ops};
 use definition::Value;
 
 /// The base: a square, `BASE` a side, standing on a plinth two steps up out of the ground.

@@ -308,9 +308,6 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
     // **Wet stone**: the court is the one surface in a 一颗印 that rain reaches, so its paving is darker and much
     // smoother than the platforms around it.
     let paved_stone = || surface([0.24, 0.23, 0.21], 0.0, 0.34, [0.0; 3]);
-    // **Wet stone**: the court is the one surface in a 一颗印 that rain reaches, so its paving is darker and much
-    // smoother than the platforms around it.
-    let paved_stone = || surface([0.24, 0.23, 0.21], 0.0, 0.34, [0.0; 3]);
     let earth = || surface([0.31, 0.28, 0.22], 0.0, 0.94, [0.0; 3]);
     // The bars are wood, not plaster: a dark warm brown that reads against the wall behind them.
     let timber = || surface([0.22, 0.14, 0.08], 0.0, 0.72, [0.0; 3]);
