@@ -1536,3 +1536,31 @@ built. The roof in this document is bare, and it should not be.
 
 Identity: 26 scenes, **106 060 rows**, of which `bamboo_house` is **184** — a small house, and the type's cost is in its
 decks and its stair rather than its walls.
+## Round 51: the hip's top rolls, measured and not yet fixed
+
+The covering's guard was to be made stricter so that a hip's corner rolls stop leaving their plane. **Three changes were
+tried and none of them moved the reported number** — the same two faces, the same departures, to the last digit:
+
+| the change | the result |
+| --- | --- |
+| the guard keeps a tenth of the tolerance in hand | `1.1063814` and `1.1048317`, unchanged |
+| the plane is taken from the fattest of the quad's four triangles instead of its first three corners | unchanged |
+| a degenerate quad is refused, and a roll that collapses to a spike at either end is not drawn | unchanged |
+
+**An unchanged number after three different guards is the finding**: those two rolls are not reaching the mesh through the
+guarded path, and the guard's own reading of them is not the validator's. What the probe printed is the clue:
+
+```text
+warped 274: Roll(RollId { roof: RoofId(0), index: 24 }, Slope { side: 0 })
+  corners [[2.5709066, 4.3910003, -4.35], [2.475, 4.301, -4.35], [0.21571869, 7.001, 0.0]]
+```
+
+**The third corner is on the crest** (`y = 7.001`) while the other two are at the eave: the roll's section has collapsed to
+a point at the ridge, so the prism has a triangle where a quad should be. A degenerate quad has no plane to depart from,
+which is why every guard here called it flat — but the element's group holds **four** vertices (the pair of triangles that
+draws it) and the two triangles are not coplanar, which is the `1.106e-3` `validate` reports.
+
+**The next step is therefore one instrument and not another guard**: count, inside `push_roll`, the rolls whose section
+span is under a centimetre at either end, and see whether those two are among them. If they are, the refusal belongs
+there, where the section is computed, rather than in the guards above it. This round did not build that instrument, and it
+did not land a fix: the two documents are back as they were, and the 竹楼's thatch stays off.
