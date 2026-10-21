@@ -525,26 +525,30 @@ pub(crate) fn scene_of(
         ));
     }
 
+    // **A mesh that is not declared is not instanced either.** The two lists have to agree, and the document writer says so
+    // twice: `mesh roofs has no points` when one was declared empty, and `instance roofs-depth names mesh roofs, which the
+    // scene does not declare` when the instance outlived it. One table of what this building has decides both.
+    let has = [
+        ("walls", "wall", !walls.is_empty()),
+        ("roofs", "roof", !roofs.is_empty()),
+        ("flats", "paving", !flats.is_empty()),
+        ("timber", "timber", !timbers.is_empty()),
+        ("ground", "ground", true),
+    ];
     let placed = |stage: &str| {
-        [
-            ("walls", "wall"),
-            ("roofs", "roof"),
-            ("flats", "paving"),
-            ("timber", "timber"),
-            ("ground", "ground"),
-        ]
-        .into_iter()
-        .map(|(label, material)| {
-            instance(
-                format!("{label}-{stage}"),
-                label,
-                [0.0; 3],
-                [0.0; 3],
-                [1.0; 3],
-                &format!("{material}-{stage}"),
-            )
-        })
-        .collect::<Vec<_>>()
+        has.into_iter()
+            .filter(|(_, _, present)| *present)
+            .map(|(label, material, _)| {
+                instance(
+                    format!("{label}-{stage}"),
+                    label,
+                    [0.0; 3],
+                    [0.0; 3],
+                    [1.0; 3],
+                    &format!("{material}-{stage}"),
+                )
+            })
+            .collect::<Vec<_>>()
     };
     // **A settlement's plants are placed per stage like everything else**, and a scene with none adds nothing: the
     // extra's instance list is empty and the stage's list is the one it always was.
@@ -615,13 +619,22 @@ pub(crate) fn scene_of(
         (
             "meshes".to_owned(),
             Value::List({
-                let mut all = vec![
-                    mesh("walls", "Triangles", point.clone(), walls),
-                    mesh("roofs", "Triangles", point.clone(), roofs),
-                    mesh("flats", "Triangles", point.clone(), flats),
-                    mesh("timber", "Triangles", point.clone(), timbers),
-                    mesh("ground", "Triangles", plain.point_schema(), ground),
-                ];
+                // **A mesh with no points is not declared.** A settlement whose houses wear no roof — the plateau village,
+                // whose towers are flat-topped — has nothing for a roofs mesh to draw, and a scene that declares one with no
+                // points is refused by the document writer: `mesh roofs has no points`.
+                let mut all = Vec::new();
+                for (label, packed) in [
+                    ("walls", walls),
+                    ("roofs", roofs),
+                    ("flats", flats),
+                    ("timber", timbers),
+                ] {
+                    if packed.is_empty() {
+                        continue;
+                    }
+                    all.push(mesh(label, "Triangles", point.clone(), packed));
+                }
+                all.push(mesh("ground", "Triangles", plain.point_schema(), ground));
                 for (label, packed) in plants.meshes() {
                     all.push(mesh(&label, "Triangles", plain.point_schema(), packed));
                 }

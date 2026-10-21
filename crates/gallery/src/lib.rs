@@ -95,6 +95,7 @@ mod lanterns;
 pub mod log_house;
 mod monoliths;
 pub mod mushroom_house;
+pub mod plateau;
 pub mod rain_bridge;
 pub mod settlement_plants;
 /// The shed scene: the facade — a rhythm, holes cut in it, and parts standing in the bays.
@@ -220,6 +221,7 @@ impl Gallery {
             "village_square",
             "hillside_village",
             "mushroom_house",
+            "plateau_village",
             "rain_bridge",
             "stilt_gallery",
             "street",
@@ -334,6 +336,7 @@ impl Gallery {
             "village_square" => village::village_square(),
             "hillside_village" => village::hillside_village(),
             "mushroom_house" => mushroom_house::mushroom_house(),
+            "plateau_village" => plateau::plateau_village(),
             "rain_bridge" => rain_bridge::rain_bridge(),
             "stilt_gallery" => stilt::stilt_gallery(),
             "terrace" => terrace::terrace(),

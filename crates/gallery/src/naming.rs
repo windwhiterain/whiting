@@ -406,6 +406,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "village_square" => crate::village::document(),
         "hillside_village" => crate::village::hillside_document(),
         "mushroom_house" => crate::mushroom_house::document(),
+        "plateau_village" => crate::plateau::document(),
         "rain_bridge" => crate::rain_bridge::document(),
         "stilt_gallery" => crate::stilt::document(),
         "street" => crate::street::document(),

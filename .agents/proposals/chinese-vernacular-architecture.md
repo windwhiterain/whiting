@@ -1878,3 +1878,27 @@ Two things were measured on the way:
 
 **Identity: 28 scenes, 110 529 rows**, of which `tibetan_house` is **284** — a tower of two tiers, four windows, a door,
 two parapets, a burner and a gallery.
+## Round 67: the plateau village, the gallery's third settlement
+
+**Four towers in a row with the sun on their galleries, and the shelf falling away behind them.** A mountain village is a
+terrace village round a square; a Dai hamlet is a row on a valley floor; a plateau village is neither — its ground is one
+shelf at one height, its houses are **one type at one size**, and what holds it up is a wall.
+
+- **four `tibetan::document()`s**, all facing south: a plateau household puts its only timber where the sun is, whatever
+  the lane does;
+- **two trees and three clumps** from the same bridge the other two settlements use;
+- **one retaining wall** at the shelf's north edge, one metre of stone holding a terrace a metre and a half high.
+
+Three refusals were measured on the way, and two of them are the shared scene shell's own:
+
+- **a retaining wall inside a house's plan** is `UnattachedOverlap` against all four houses, because a mass inside a mass is
+  a mass with a host — the wall stands clear of the row now;
+- **a mesh with no points is not a mesh**: a tower village wears no roof, so `roofs` was declared empty and the document
+  writer refused it (`mesh roofs has no points`), and after the mesh was skipped the *instance* outlived it
+  (`instance roofs-depth names mesh roofs, which the scene does not declare`). **One table of what the building has now
+  decides both**, which is a fault any scene with an element kind missing would have hit;
+- **an outline drawn the other way round** answers `OffsetInverted` — the wall's four nodes were listed clockwise when the
+  reorder was made, and the crate says so with an area of `-157.85`.
+
+**Identity: 29 scenes, 111 966 rows**, of which `plateau_village` is **1 437** — four towers at 284 rows each, the wall, the
+trees and the clumps. The village's document is 28.91 MB.
