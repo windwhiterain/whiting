@@ -4200,3 +4200,17 @@ looks like from outside. **Attachment is for a volume standing over another volu
 
 **The camera was too high and was lowered on the second try**: at six metres the plate looks **into** the chambers' own crowns and reads five open boxes; at
 three metres it looks **along** them and reads a stair, which is what the building is.
+## Round 231: the 陶村, the fourteenth settlement
+
+Round 230 built the kiln and left it standing in a field. **A 龙窑 is never alone**: the shed where the pots are thrown stands at its foot, the woodpile stands
+beside its doors, and the ground between them is a **drying floor** — flat, swept and the only paving in the village, because a wet pot cannot stand on grass.
+
+**The four parts are the four steps of the process**: the clay is thrown under the **拉坯棚** (four posts, a cap and the bench the wheels stand on), the pots dry
+on the **floor**, the **柴垛** waits beside the doors, and the **kiln** climbs away at the far end with its chimney against the sky. **The works are the
+village**, as they are at 黑井 for salt, and this is the second settlement here whose subject is a product.
+
+**Identity: 68 scenes, 243 578 rows**; `pottery_village` **173** — the kiln's 111 and a shed, a bench, a woodpile and a floor.
+
+**And the registration failed silently for the fourth time** (rounds 207, 221, 223 and this one): the scene went into `Gallery::names`, `build` and the probe,
+**and the `naming` replacement missed** — a scripted `Replace` against a CRLF line. The document built, the plate rendered, and the probe would have reported
+sixty-seven scenes with no error. The count check caught it: **68 in `SCENES`, 68 row-lines out.**

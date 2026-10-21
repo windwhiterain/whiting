@@ -110,6 +110,7 @@ mod monoliths;
 pub mod mushroom_house;
 pub mod naxi_court;
 pub mod plateau;
+pub mod pottery_village;
 pub mod qiang_tower;
 pub mod rain_bridge;
 /// The shed scene: the facade — a rhythm, holes cut in it, and parts standing in the bays.
@@ -273,6 +274,7 @@ impl Gallery {
             "mushroom_house",
             "naxi_court",
             "plateau_village",
+            "pottery_village",
             "qiang_double",
             "qiang_tower",
             "rain_bridge",
@@ -426,6 +428,7 @@ impl Gallery {
             "mushroom_house" => mushroom_house::mushroom_house(),
             "naxi_court" => naxi_court::naxi_court(),
             "plateau_village" => plateau::plateau_village(),
+            "pottery_village" => pottery_village::pottery_village(),
             "qiang_double" => qiang_tower::qiang_double(),
             "qiang_tower" => qiang_tower::qiang_tower(),
             "rain_bridge" => rain_bridge::rain_bridge(),

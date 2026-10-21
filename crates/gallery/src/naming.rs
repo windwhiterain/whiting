@@ -427,6 +427,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "mushroom_house" => crate::mushroom_house::document(),
         "naxi_court" => crate::naxi_court::document(),
         "plateau_village" => crate::plateau::document(),
+        "pottery_village" => crate::pottery_village::document(),
         "qiang_double" | "qiang_tower" => crate::qiang_tower::document(),
         "rain_bridge" => crate::rain_bridge::document(),
         "stilt_gallery" => crate::stilt::document(),
