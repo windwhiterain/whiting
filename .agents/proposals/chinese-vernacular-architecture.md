@@ -2444,3 +2444,26 @@ of the gate the wall stands.**
 
 **Identity: 36 scenes, 126 564 rows**; `yikeyin` 6 841 → **6 865** — four mouldings with their sections and their ends. The
 document is 6.30 MB.
+## Round 98: the 屯堡石板街, the gallery's sixth settlement
+
+**A street and not a compound.** The 屯堡 village is a garrison's yard with a wall and a 朝门; a 屯堡 *street* is what a growing
+one becomes — houses on both sides of a flagged lane, each turning its 院坝 onto it, and the lane itself the village's front
+room.
+
+- **six `tunpu::document()`s in two rows**, the north row turned a half so both rows face the lane. A 石板房's yard is at `+z`,
+  so the south row takes no turn and the north row does — the same single fact the 白族 lane was arranged by;
+- **the lane laid in eighteen flags** across its whole length: a 屯堡's street is the same stone as its houses;
+- **a wall at each end with the lane's width left open**, so the street has two mouths and no third.
+
+Two faults of my own, both caught by the frame rather than by the crate:
+
+- **the street ran the wrong way.** The rows are at `±ROW` in `z`, so the lane between them runs **east-west** and its mouths are
+  at `±x`; the first version laid the flags and the end walls along `z` and put the camera at a mouth that was not there. What
+  the plate showed was a row of house **backs**.
+- **and the camera then stood outside a mouth**, where the end wall is the whole foreground. It stands in the street now, at
+  its west mouth, and the lane runs away to the far wall with the six yards along it.
+
+**Identity: 37 scenes, 128 284 rows**; `slate_street` **1 720** — six houses at 260 each, eighteen flags and four wall lengths.
+The document is 7.55 MB. A scene is not in the suite until three lists name it: `Gallery::names`, `build`'s match and
+`naming::building_of` — the probe skipped this street until the third was added, and a scene the suite skips is a scene nobody
+measures.
