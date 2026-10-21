@@ -1478,7 +1478,7 @@ impl Ring<'_> {
 
     /// Returns the four surfaces one edge of this ring is drawn on.
     fn surfaces(&self, edge: usize) -> RingSurfaces {
-        RingSurfaces::of(self.loop_of, edge, 0)
+        RingSurfaces::of(self.loop_of, edge, self.band)
     }
 }
 
@@ -2042,18 +2042,23 @@ pub(crate) fn ring_walk(
             );
             let warp = warp_of(solid, corners);
             let element = Element::Mass(mass, surfaces.top);
-            if warp > crate::validate::PLANARITY_TOLERANCE {
-                let halves = halves_of(surfaces.top);
-                solid.triangle(
-                    [corners[0], corners[1], corners[2]],
-                    Element::Mass(mass, halves.0),
-                );
-                solid.triangle(
-                    [corners[0], corners[2], corners[3]],
-                    Element::Mass(mass, halves.1),
-                );
-            } else {
-                solid.quad(corners, element);
+            // **The strip of wall top belongs to the crown and to nothing else**, the same rule `cut_edge` follows:
+            // an interior band of a mass is covered by the section above it, and a strip drawn there would be a face
+            // inside the solid.
+            if ends.crown {
+                if warp > crate::validate::PLANARITY_TOLERANCE {
+                    let halves = halves_of(surfaces.top);
+                    solid.triangle(
+                        [corners[0], corners[1], corners[2]],
+                        Element::Mass(mass, halves.0),
+                    );
+                    solid.triangle(
+                        [corners[0], corners[2], corners[3]],
+                        Element::Mass(mass, halves.1),
+                    );
+                } else {
+                    solid.quad(corners, element);
+                }
             }
             solid.quad(
                 wound(

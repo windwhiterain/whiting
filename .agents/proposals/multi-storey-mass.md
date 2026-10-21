@@ -293,3 +293,30 @@ With every band closing its own crown the seams move but do not close, and the w
 `WallTop { edge: 0, band: 0 }` departs its plane by `0.2` and `OuterWall { edge: 2, band: 0 }` by `0.99`, on a band
 whose two sections are **the same plan at two elevations** — a band that cannot warp at all. That is the thread to pull
 next, and the probe is the instrument that shows it in one run instead of in a five-building street.
+## Round 41: two regressions repaired, and the seam bounded
+
+The probe's own reading — planarity measured across each **element group** rather than read off the validator's index —
+found two defects, both of them mine from round 39's line-numbered surgery:
+
+- **`Ring::surfaces` was passing `0` instead of `self.band`.** Every band's faces were named `band: 0`, so two bands'
+  wall tops landed in one planarity group and reported a `3.2 m` departure — a group that was two planes because it
+  was two strips. With the band restored the groups went **21 → 29** and every departure to zero.
+- **`ring_walk`'s uncut branch drew its wall-top strip unconditionally.** `cut_edge` has had the crown flag since
+  stage B; the uncut branch never got it, so an interior band drew a face *inside* the solid. The probe's faces went
+  **80 → 72** and its open edges **16 → 8**.
+
+**All twenty-four scenes unchanged at 85 489 rows** — the strip was only ever drawn for a two-section mass, whose
+crown is the crown.
+
+### The seam that is left, bounded from both sides
+
+The eight remaining open edges are all at **one elevation**, the soffit band's crown:
+
+| crown rule | open edges | at |
+| --- | --- | --- |
+| the last band only | 8 | `y = 3.16` |
+| **every band** | 8 | `y = 3.00` |
+
+So whichever band is asked to close the seam does not close it, and the seam simply moves. The next instrument is
+narrow and written down here: **print band `0`'s ring corner indices against the loop's own**, because a strip that is
+drawn with four points the wall below does not name is exactly this shape of answer.
