@@ -2408,3 +2408,14 @@ loop.
 
 **Identity: 36 scenes, 126 420 rows**; `bai_lane` 5 611 → **5 689** — fourteen flags in place of one, thirteen joints. The
 document is 20.39 MB.
+## Round 95: the 挑枋 and its 撑弓
+
+A 穿斗 frame carries its eaves on **brackets pushed out through the posts** — a short beam cantilevered forward at the post's
+head, and a strut under it taking the load back down the post. Six of each now, one pair at every post: `CANTILEVER` of reach,
+`STRUT_DROP` of drop, and their shadows on the pavement read the frame's own rhythm.
+
+A post with a roof on its head and nothing else is a post holding a roof up by itself, which is what the frame drew until now.
+The bracket is the joint the tradition is built out of, and it is the reason the eaves can reach `2.9 m` past the wall.
+
+**Identity: 36 scenes, 126 492 rows**; `chuandou_house` 1 085 → **1 157** — six brackets and six struts, with their sections and
+their ends. The document is 7.42 MB.

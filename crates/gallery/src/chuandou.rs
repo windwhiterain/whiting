@@ -31,6 +31,10 @@ const HEIGHT: f32 = 3.70;
 const PORCH: f32 = 1.60;
 const POSTS: usize = 6;
 const POST: f32 = 0.17;
+/// The bracket: how far the 挑枋 reaches past the posts, its section, and how far the 撑弓 drops down the post.
+const CANTILEVER: f32 = 0.74;
+const BRACKET: f32 = 0.13;
+const STRUT_DROP: f32 = 0.95;
 /// The porch's floor: one step above the ground, because a 穿斗 house's porch is a floor and not a pavement.
 const PORCH_FLOOR: f32 = 0.34;
 /// The 腰檐`s own readings: the wall plate`s foot, the eave`s high edge against it, and how low it reaches past the posts.
@@ -118,6 +122,32 @@ pub fn document() -> Building {
             [1.0, 0.0],
             POST,
             POST,
+        ));
+        // **The 挑枋 and its 撑弓.** A 穿斗 frame carries its eaves on **brackets pushed out through the posts**: a short beam
+        // cantilevered forward at the post's head, and a strut under it that takes the load back down to the post. A post with a
+        // roof on its head and nothing else is a post holding a roof up by itself, which is what the first frame drew.
+        let out = front + CANTILEVER;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, HEIGHT - 0.10, front - POST * 0.5],
+            },
+            building::Anchor::Free {
+                at: [x, HEIGHT - 0.10, out],
+            },
+            [1.0, 0.0],
+            BRACKET,
+            BRACKET * 1.3,
+        ));
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, HEIGHT - STRUT_DROP, front - POST * 0.5],
+            },
+            building::Anchor::Free {
+                at: [x, HEIGHT - 0.16, out - BRACKET * 0.6],
+            },
+            [1.0, 0.0],
+            BRACKET * 0.8,
+            BRACKET * 0.9,
         ));
     }
     // **The porch's floor**: the platform the colonnade stands on, a step above the ground and one bay deep. A 穿斗 house's
