@@ -169,77 +169,12 @@ pub fn document() -> Building {
             skeleton.masses.push(wall);
         }
     }
-    // **The 街门 at the east mouth: a lintel over two piers, set out in front of the wall.** A street with two mouths and no gate is
-    // a street a garrison cannot close, and this is a 屯堡 — the wall's gap was the one thing the street was missing. The lintel is
-    // the **host** and the piers are `Under` it, as round 89 established for the 白族巷's gate; and the gate stands `GATE_OUT` in
-    // front of the wall's face for the reason round 114 measured: a lintel wide enough to contain two piers reaches past the gap's
-    // own edges, and the wall either side owns the square metre it reaches into.
-    let gate_x = LANE_TO - END_THICK + GATE_OUT;
-    let mut lintel = Mass::new(
-        ops::wound(vec![
-            [gate_x - MOUTH * 0.5 - 0.55, -0.42],
-            [gate_x + MOUTH * 0.5 + 0.55, -0.42],
-            [gate_x + MOUTH * 0.5 + 0.55, 0.42],
-            [gate_x - MOUTH * 0.5 - 0.55, 0.42],
-        ])
-        .into_iter()
-        .map(|at| PlanNode::new(at, GATE_HEAD))
-        .collect(),
-        GATE_HEAD + 0.52,
-    );
-    lintel.wall = 0.26;
-    lintel.slab = 0.20;
-    let lintel_id = MassId(skeleton.masses.len());
-    skeleton.masses.push(lintel);
-    for across in [-1.0_f32, 1.0] {
-        let x = gate_x + across * (MOUTH * 0.5 - GATE_PIER * 0.5);
-        let mut pier = Mass::new(
-            ops::wound(vec![
-                [x - GATE_PIER * 0.5, -0.36],
-                [x + GATE_PIER * 0.5, -0.36],
-                [x + GATE_PIER * 0.5, 0.36],
-                [x - GATE_PIER * 0.5, 0.36],
-            ])
-            .into_iter()
-            .map(|at| PlanNode::new(at, 0.0))
-            .collect(),
-            GATE_HEAD,
-        );
-        pier.wall = 0.18;
-        pier.slab = 0.16;
-        pier.attachment = Some(building::Attachment {
-            host: lintel_id,
-            join: building::Join::Under,
-        });
-        skeleton.masses.push(pier);
-    }
-
-    // **The gate's two leaves and its threshold.** A gate that cannot close is a doorway, and a 屯堡's street gate is the thing the
-    // garrison closed. The leaves hang from the lintel's underside to a hand's width above the flags, swung open into the street;
-    // they are `derive::leaf`'s panels, the fourth gate to hang them.
-    for across in [-1.0_f32, 1.0] {
-        if let Some(panel) = building::derive::leaf(
-            [gate_x - 0.05, 0.10, across * (MOUTH * 0.5 - GATE_PIER)],
-            MOUTH * 0.5 - GATE_PIER - 0.06,
-            GATE_HEAD - 0.22,
-            0.07,
-            [-1.0, 0.0],
-        ) {
-            skeleton.members.push(panel);
-        }
-    }
-    skeleton.members.push(building::Member::new(
-        building::Anchor::Free {
-            at: [gate_x, 0.0, -(MOUTH * 0.5 - GATE_PIER)],
-        },
-        building::Anchor::Free {
-            at: [gate_x, 0.0, MOUTH * 0.5 - GATE_PIER],
-        },
-        [-1.0, 0.0],
-        0.24,
-        0.17,
-    ));
-
+    // **A 街门 at each mouth.** A street with two mouths and no gate is a street a garrison cannot close, and this is a 屯堡. The gate
+    // is the same implementation twice — a lintel with two piers `Under` it (round 89) standing `GATE_OUT` in front of the wall's
+    // face (round 114), with `derive::leaf`'s panels hung in it — and the two differ only in which way the leaves swing: into the
+    // street, from either end.
+    gate(&mut skeleton, LANE_FROM + END_THICK - GATE_OUT, 1.0);
+    gate(&mut skeleton, LANE_TO - END_THICK + GATE_OUT, -1.0);
     // **The street's water: a well and a trough, at the east mouth.** A 屯堡 street's houses have no wells of their own — the
     // water is at the place the street widens, and it is one place. The well is a **mass whose wall is thick enough to be a ring**
     // (`0.24 m` in a `1.44 m` plan), the same answer the 白族 lane's well gave; the trough beside it is the same idea at a
@@ -322,4 +257,82 @@ pub fn document() -> Building {
     skeleton.masses.push(trough);
 
     Building::new(skeleton)
+}
+
+/// Raises one **街门** at `gate_x`, its leaves swung towards `inward` along `x`.
+///
+/// # Invariants
+///
+/// **The lintel is the host and the piers are [`building::Join::Under`] it.** A mass whose top meets the host's foot and whose plan
+/// stands inside the host's plan is a mass that carries the host, so the thing over the gap names the things under it (round 89).
+///
+/// **The gate stands in front of the wall's face and not in its gap**: a lintel wide enough to contain two piers reaches past the
+/// gap's own edges, and the wall either side owns the square metre it reaches into (round 114, measured as `UnattachedOverlap`).
+fn gate(skeleton: &mut BuildingSkeleton, gate_x: f32, inward: f32) {
+    let mut lintel = Mass::new(
+        ops::wound(vec![
+            [gate_x - MOUTH * 0.5 - 0.55, -0.42],
+            [gate_x + MOUTH * 0.5 + 0.55, -0.42],
+            [gate_x + MOUTH * 0.5 + 0.55, 0.42],
+            [gate_x - MOUTH * 0.5 - 0.55, 0.42],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, GATE_HEAD))
+        .collect(),
+        GATE_HEAD + 0.52,
+    );
+    lintel.wall = 0.26;
+    lintel.slab = 0.20;
+    let lintel_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(lintel);
+    for across in [-1.0_f32, 1.0] {
+        let x = gate_x + across * (MOUTH * 0.5 - GATE_PIER * 0.5);
+        let mut pier = Mass::new(
+            ops::wound(vec![
+                [x - GATE_PIER * 0.5, -0.36],
+                [x + GATE_PIER * 0.5, -0.36],
+                [x + GATE_PIER * 0.5, 0.36],
+                [x - GATE_PIER * 0.5, 0.36],
+            ])
+            .into_iter()
+            .map(|at| PlanNode::new(at, 0.0))
+            .collect(),
+            GATE_HEAD,
+        );
+        pier.wall = 0.18;
+        pier.slab = 0.16;
+        pier.attachment = Some(building::Attachment {
+            host: lintel_id,
+            join: building::Join::Under,
+        });
+        skeleton.masses.push(pier);
+    }
+    // **The leaves and the threshold.** A gate that cannot close is a doorway; the leaves hang from the lintel's underside to a
+    // hand's width above the flags, and they swing **into the street from either end**.
+    for across in [-1.0_f32, 1.0] {
+        if let Some(panel) = building::derive::leaf(
+            [
+                gate_x + inward * 0.05,
+                0.10,
+                across * (MOUTH * 0.5 - GATE_PIER),
+            ],
+            MOUTH * 0.5 - GATE_PIER - 0.06,
+            GATE_HEAD - 0.22,
+            0.07,
+            [inward, 0.0],
+        ) {
+            skeleton.members.push(panel);
+        }
+    }
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [gate_x, 0.0, -(MOUTH * 0.5 - GATE_PIER)],
+        },
+        building::Anchor::Free {
+            at: [gate_x, 0.0, MOUTH * 0.5 - GATE_PIER],
+        },
+        [1.0, 0.0],
+        0.24,
+        0.17,
+    ));
 }

@@ -2818,3 +2818,15 @@ It is the **fourth gate** built from `derive::leaf` — after the 白族巷's, t
 helper exists has not changed: **both anchors at one elevation, the section's height the opening's**, or the leaf is a rod.
 
 **Identity: 38 scenes, 134 390 rows**; `slate_street` 2 031 → **2 049** — two leaves and the threshold. The document is 7.72 MB.
+## Round 127: a 街门 at each mouth, from one implementation
+
+Round 126's gate stood at the east mouth only, which is a street that closes at one end and not the other. There is a gate at **both**
+now, and it cost **one function**: `fn gate(skeleton, gate_x, inward)` in the module, called twice with the two mouths and the two
+swing directions. A second copy of sixty lines would have been the easy answer and the wrong one — the crate's own rule is
+*unification against variants*, and the two gates differ in a sign.
+
+The function's doc carries both invariants it depends on, so the next gate does not have to rediscover them: **the lintel is the host
+and the piers are `Under` it** (round 89), and **the gate stands in front of the wall's face** (round 114).
+
+**Identity: 38 scenes, 134 447 rows**; `slate_street` 2 049 → **2 106** — the second gate's lintel, its two piers, two leaves and its
+threshold. The document is 7.74 MB.
