@@ -2419,3 +2419,15 @@ The bracket is the joint the tradition is built out of, and it is the reason the
 
 **Identity: 36 scenes, 126 492 rows**; `chuandou_house` 1 085 → **1 157** — six brackets and six struts, with their sections and
 their ends. The document is 7.42 MB.
+## Round 96: the well's 辘轳 — and the 土掌房's batter closed as impossible
+
+**The 辘轳 comes first.** A lane's well is not a hole with a curb: it is a curb with a **frame** over it — two posts, a beam, and
+a drum between them for the rope. Four members, and they are what makes the well an object a village uses rather than a drain.
+
+**The 土掌房's batter is closed, and this time by reading rather than by refusing.** Five rounds deferred it; opened, it cannot
+be built in this crate: the type is two storeys and the **door and windows occupy both of them** (`Front::RANGE` cuts a row per
+storey), while a batter in courses needs a **storey-high ground course above the door** — which this house has nowhere to put.
+Battering only its top course would inset a wall 0.5 m above the openings and read as a mistake, not as 夯土. So the type keeps
+its vertical wall and this record says why, instead of carrying the item for a sixth round.
+
+**Identity: 36 scenes, 126 516 rows**; `bai_lane` 5 689 → **5 713** — two posts, a beam and a drum. The document is 20.39 MB.

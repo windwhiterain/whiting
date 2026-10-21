@@ -44,6 +44,9 @@ const WELL_AT: [f32; 2] = [0.0, -13.0];
 const WELL_HALF: f32 = 0.72;
 const WELL_WALL: f32 = 0.24;
 const WELL_HIGH: f32 = 0.85;
+/// The 辘轳 over the well: how high its posts stand above the curb, and the section of a post.
+const WINDLASS_HIGH: f32 = 1.55;
+const WINDLASS: f32 = 0.11;
 
 /// The 巷门 where the lane leaves the village: the gate`s big plan over the lane, the two piers under it, and its roof.
 ///
@@ -141,6 +144,57 @@ pub fn document() -> building::Building {
     ring.wall = WELL_WALL;
     ring.slab = 0.18;
     skeleton.masses.push(ring);
+
+    // **The well's 辘轳: the windlass over it.** A lane's well is not a hole with a curb — it is a curb with a **frame** over it,
+    // two posts and a beam, and a drum between them that the rope winds on. The four members are what makes the well an object
+    // a village uses and not a drain.
+    let [well_x, well_z] = WELL_AT;
+    for across in [-1.0_f32, 1.0] {
+        let x = well_x + across * (WELL_HALF + 0.24);
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, WELL_HIGH - 0.10, well_z],
+            },
+            building::Anchor::Free {
+                at: [x, WELL_HIGH + WINDLASS_HIGH, well_z],
+            },
+            [1.0, 0.0],
+            WINDLASS,
+            WINDLASS,
+        ));
+    }
+    // **The beam across the two posts**, and the **drum** hanging under it: the drum is the member the rope winds on, so it is
+    // thinner than the beam and it turns — which is a thing the frame can only say by drawing it.
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [well_x - WELL_HALF - 0.34, WELL_HIGH + WINDLASS_HIGH, well_z],
+        },
+        building::Anchor::Free {
+            at: [well_x + WELL_HALF + 0.34, WELL_HIGH + WINDLASS_HIGH, well_z],
+        },
+        [0.0, 1.0],
+        WINDLASS * 1.4,
+        WINDLASS * 0.8,
+    ));
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [
+                well_x - WELL_HALF - 0.02,
+                WELL_HIGH + WINDLASS_HIGH - 0.22,
+                well_z,
+            ],
+        },
+        building::Anchor::Free {
+            at: [
+                well_x + WELL_HALF + 0.02,
+                WELL_HIGH + WINDLASS_HIGH - 0.22,
+                well_z,
+            ],
+        },
+        [0.0, 1.0],
+        0.20,
+        0.20,
+    ));
 
     // **The 巷门: where the lane leaves the village.** The lintel is one mass over the lane and the two piers are **under** it
     // — `Join::Under` read the other way round from a storey: the mass states that its top meets the host's foot and that its
