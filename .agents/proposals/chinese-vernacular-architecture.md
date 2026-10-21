@@ -4113,3 +4113,17 @@ both long sides so the steam leaves.
 **What it does not draw, and this type's version of it is the sharpest**: **the fire and the steam**. They are the two things that make a boiling house a
 boiling house, and this crate draws **solids** — the fire is not a solid and the steam is not one either. So the plate shows the works **between two
 firings**, which is the same compromise round 221 made with the wheel that cannot turn.
+## Round 225: the 盐村, the thirteenth settlement
+
+Round 224 built the salt works and left them in a field. At 黑井 and 盐津 the works **is** the village — the houses are where the people who draw and boil
+the brine live — so this settlement is the works' own home: **a paved yard with the works at its head, two 土掌房 along its sides and the wall that holds
+the yard up**, which is the first village here whose reason for existing is a **product** rather than a lane, a square or a temple.
+
+**The composition is two turns and three merges**: each 土掌房 is turned to face the yard, and the works is turned a quarter to look down it. **Nothing is
+re-authored** — the same rule rounds 208, 211, 213, 222 and 223 established for the tower, the bridge and the mill.
+
+**The first camera was wrong and the second is right, and the difference is what a plate is for**: the first stood at the yard's south-west corner and
+showed **a shelf, a wall and two roofs at an angle** — the works was behind a house. The second stands **down the yard's own axis**, which is how a
+visitor enters it, and the plate is symmetrical: two houses, the works between them at the head, the retaining wall in front.
+
+**Identity: 64 scenes, 242 357 rows**; `salt_village` **715** — two houses of 293, the works' 128, a yard and a wall.

@@ -111,6 +111,7 @@ pub mod plateau;
 pub mod qiang_tower;
 pub mod rain_bridge;
 /// The shed scene: the facade — a rhythm, holes cut in it, and parts standing in the bays.
+pub mod salt_village;
 pub mod saltworks;
 pub mod settlement_plants;
 pub mod shed;
@@ -233,6 +234,7 @@ impl Gallery {
             "landscape",
             "lanterns",
             "monoliths",
+            "salt_village",
             "saltworks",
             "shed",
             "stilt",
@@ -380,6 +382,7 @@ impl Gallery {
             "landscape" => landscape(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
+            "salt_village" => salt_village::salt_village(),
             "saltworks" => saltworks::saltworks(),
             "shed" => shed::shed(),
             "street" => street::street(),
