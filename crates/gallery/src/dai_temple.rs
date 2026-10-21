@@ -60,6 +60,15 @@ const TILES: Covering = Covering {
 const STEPS_HALF: f32 = 1.70;
 const STEP: f32 = 0.32;
 
+/// The compound: how far the yard stands beyond the platform, the walls height, its thickness and the wall inside it, the
+/// gates half width, and how thick the yards paving is.
+const YARD: f32 = 2.40;
+const WALL_HIGH: f32 = 1.55;
+const WALL_THICK: f32 = 0.40;
+const WALL_WALL: f32 = 0.16;
+const GATE_HALF: f32 = 1.60;
+const YARD_PAVING: f32 = 0.06;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the temple: from the porch's corner, so the pitch and the platform's height are both seen.
@@ -201,6 +210,65 @@ pub fn document() -> Building {
             .expect("the bay is one the grid has");
         }
     }
+
+    // **The compound: a low wall round the platform and a paved yard inside it.** A 缅寺 is not a hall standing in a field — it
+    // is a **wat**, and a wat is an enclosure: a wall a metre and a half high, a gate in its front, and the hall on its platform
+    // in the middle of the yard. Five lengths — two sides, a back and two front pieces round the gate — and none of them
+    // overlaps the platform, which is a slab and nothing else.
+    let yard_x = half + PLINTH_PROUD + YARD;
+    let yard_z = deep + PLINTH_PROUD + YARD;
+    let half_wall = WALL_THICK * 0.5;
+    let lengths: [([f32; 2], [f32; 2]); 5] = [
+        // **The sides stop at the back and front pieces' inner faces**, so two lengths never share a corner: a corner two masses
+        // both own is two masses in each other's way, which round 72 measured on the 石板房院's walls.
+        (
+            [-yard_x - half_wall, -yard_z + WALL_THICK],
+            [-yard_x + half_wall, yard_z - WALL_THICK],
+        ),
+        (
+            [yard_x - half_wall, -yard_z + WALL_THICK],
+            [yard_x + half_wall, yard_z - WALL_THICK],
+        ),
+        (
+            [-yard_x, -yard_z - half_wall],
+            [yard_x, -yard_z + half_wall],
+        ),
+        (
+            [-yard_x, yard_z - half_wall],
+            [-GATE_HALF, yard_z + half_wall],
+        ),
+        (
+            [GATE_HALF, yard_z - half_wall],
+            [yard_x, yard_z + half_wall],
+        ),
+    ];
+    for (from, to) in lengths {
+        let mut wall = Mass::new(
+            ops::wound(vec![
+                [from[0], from[1]],
+                [to[0], from[1]],
+                [to[0], to[1]],
+                [from[0], to[1]],
+            ])
+            .into_iter()
+            .map(|at| PlanNode::new(at, 0.0))
+            .collect(),
+            WALL_HIGH,
+        );
+        wall.wall = WALL_WALL;
+        wall.slab = 0.18;
+        skeleton.masses.push(wall);
+    }
+    skeleton.slabs.push(building::Slab::paving(
+        ops::wound(vec![
+            [-yard_x, -yard_z],
+            [yard_x, -yard_z],
+            [yard_x, yard_z],
+            [-yard_x, yard_z],
+        ]),
+        0.0,
+        YARD_PAVING,
+    ));
 
     Building::new(skeleton)
 }

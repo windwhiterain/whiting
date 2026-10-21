@@ -2640,3 +2640,15 @@ take an opening grid, because a grid is cut into a plane and a crown has already
 
 **Identity: 38 scenes, 130 566 rows**; `dai_temple` **1 492** — a platform, a hall, its crowned roof, four posts, a beam, three
 openings' reveals and two treads. The document is 7.51 MB.
+## Round 113: the 缅寺's compound
+
+A 缅寺 is not a hall standing in a field — it is a **wat**, and a wat is an **enclosure**: a wall a metre and a half high, a gate
+in its front, and the hall on its platform in the middle of the yard. The temple has one now: five wall lengths round a paved
+yard, and the platform standing `2.40 m` inside it.
+
+**The sides stop at the front and back pieces' inner faces**, so no two lengths share a corner. Two lengths that meet at a corner
+are two masses both owning the same square metre, which `validate` names `UnattachedOverlap` — round 72 measured it on the
+石板房院's walls and this round measured it again, in the same shape, four pairs at once.
+
+**Identity: 38 scenes, 130 637 rows**; `dai_temple` 1 492 → **1 563** — five wall lengths' faces and tops, and a yard's paving.
+The document is 7.53 MB.
