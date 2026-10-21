@@ -3694,3 +3694,17 @@ and exactly the opposite of what an addition owes.
 
 **The lesson is about the rounds themselves**: every round added a constant, and a round that replaced one (the camera of 161, the fence of 184)
 left the old one in place. **A table that cannot move is the only way to prove a removal is a removal.**
+## Round 198: the 苗寨, the twelfth settlement
+
+The gallery has had the **Miao stilt house** since Arc 1 (`stilt`, 2 167 rows) and had never put it in a village. A 苗寨 is **the clearest case in this
+whole gallery of a settlement whose form is its ground**: the houses do not stand on a slope, they **hang off** it, so a village of them is a **stair
+of houses**, each one's floor at the height of the terrace behind it.
+
+**Six `stilt::document()`s on three terraces**, each terrace a paving shelf with its own retaining face, each house raised onto its shelf by one
+`ops::raise` — round 169's helper in its fifth use. The type needed nothing: it already seats itself on a 35 % bank and draws its own posts, which is
+why the flight down the front of every house is there without the village asking for it.
+
+**The largest settlement by rows in the gallery**: `miao_village` **13 119**, where the 侗寨 is 8 595 — because a stilt house is the most heavily
+detailed single type here (2 167 rows each) and this village has six of them.
+
+**Identity: 56 scenes, 200 545 rows** — the gallery passes **two hundred thousand rows**. The document is 11.03 MB, also the largest here.

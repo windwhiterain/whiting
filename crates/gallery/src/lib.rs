@@ -102,6 +102,7 @@ mod lanterns;
 pub mod lisu_village;
 pub mod log_house;
 pub mod longhouse;
+pub mod miao_village;
 mod monoliths;
 pub mod mushroom_house;
 pub mod naxi_court;
@@ -254,6 +255,7 @@ impl Gallery {
             "village_square",
             "hillside_village",
             "longhouse",
+            "miao_village",
             "mushroom_house",
             "naxi_court",
             "plateau_village",
@@ -395,6 +397,7 @@ impl Gallery {
             "village_square" => village::village_square(),
             "hillside_village" => village::hillside_village(),
             "longhouse" => longhouse::longhouse(),
+            "miao_village" => miao_village::miao_village(),
             "mushroom_house" => mushroom_house::mushroom_house(),
             "naxi_court" => naxi_court::naxi_court(),
             "plateau_village" => plateau::plateau_village(),
