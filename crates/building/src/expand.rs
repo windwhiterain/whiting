@@ -2102,25 +2102,32 @@ pub(crate) fn ring_walk(
     let (walked_loop, _) = split_loop(&authored_base, &cuts, &notches, |station| station.authored);
     let (offset_loop, base_notched) =
         split_loop(&offset_base, &cuts, &notches, |station| station.offset);
-    // **The annulus is wound from the ring's outer face across to its inner one**, and which loop that
-    // is follows from the side the ring was offset to rather than from which loop was authored.
+    // **The base annulus is the foot's, and only the foot's.** An interior band of a mass is floored by the wall top
+    // of the band below it, so a base drawn there is a face inside the solid at the seam between two strips — measured
+    // on the four-section probe as eight open edges at `y = 3.16`, with the spurious annulus claiming one side of each
+    // and nothing claiming the other.
+    //
+    // **The annulus is wound from the ring's outer face across to its inner one**, and which loop that is follows from
+    // the side the ring was offset to rather than from which loop was authored.
     let (outer, inner) = if authored_is_outer {
         (&walked_loop, &offset_loop)
     } else {
         (&offset_loop, &walked_loop)
     };
-    for edge in 0..outer.len() {
-        // **A doorway notches the base, so there is no strip across it.** The wall has no material at the
-        // ground line over that span, and a strip drawn there would be a face with material on neither
-        // side of it — one whose four edges are claimed by the two walls' bottoms and the two jambs'.
-        if base_notched[edge] {
-            continue;
+    if ends.base {
+        for edge in 0..outer.len() {
+            // **A doorway notches the base, so there is no strip across it.** The wall has no material at the ground
+            // line over that span, and a strip drawn there would be a face with material on neither side of it — one
+            // whose four edges are claimed by the two walls' bottoms and the two jambs'.
+            if base_notched[edge] {
+                continue;
+            }
+            let next = (edge + 1) % outer.len();
+            solid.quad(
+                [outer[edge], outer[next], inner[next], inner[edge]],
+                Element::Mass(mass, ring.surfaces(0).base),
+            );
         }
-        let next = (edge + 1) % outer.len();
-        solid.quad(
-            [outer[edge], outer[next], inner[next], inner[edge]],
-            Element::Mass(mass, ring.surfaces(0).base),
-        );
     }
     if std::env::var("SHED_DEBUG").is_ok() {
         report_unclosed(solid, ring.loop_of, outer.len());

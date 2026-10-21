@@ -85,17 +85,39 @@ fn report_unclosed(mesh: &BuildingMesh) {
             *used.entry(edge).or_insert(0) += 1;
         }
     }
-    let mut open = 0;
+    // **A hole and a doubled face both show up as an unbalanced edge**, and they are different faults: a hole has one
+    // claim and no partner, and a doubled face has two claims the same way round and no partner either. Counting them
+    // apart is what stops one being read as the other.
+    let (mut holes, mut doubled) = (0, 0);
     for (edge, count) in &used {
-        if *count > used.get(&(edge.1, edge.0)).copied().unwrap_or(0) {
-            open += 1;
-            if open <= 8 {
-                let at = |index: u32| mesh.points[index as usize];
-                println!("  open {edge:?}: {:?} -> {:?}", at(edge.0), at(edge.1));
+        let reverse = used.get(&(edge.1, edge.0)).copied().unwrap_or(0);
+        if *count <= reverse {
+            continue;
+        }
+        let at = |index: u32| mesh.points[index as usize];
+        match *count {
+            1 => {
+                holes += 1;
+                if holes <= 4 {
+                    println!("  hole {edge:?}: {:?} -> {:?}", at(edge.0), at(edge.1));
+                }
+            }
+            _ => {
+                doubled += 1;
+                if doubled <= 4 {
+                    println!(
+                        "  doubled {edge:?} x{count}: {:?} -> {:?}",
+                        at(edge.0),
+                        at(edge.1)
+                    );
+                }
             }
         }
     }
-    println!("open boundary edges: {open}");
+    println!(
+        "open boundary edges: {} (holes {holes}, doubled {doubled})",
+        holes + doubled
+    );
 }
 
 /// Prints what the open boundary edges have in common: the elevations they sit at, and how many there are.

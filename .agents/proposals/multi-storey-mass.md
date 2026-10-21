@@ -320,3 +320,36 @@ The eight remaining open edges are all at **one elevation**, the soffit band's c
 So whichever band is asked to close the seam does not close it, and the seam simply moves. The next instrument is
 narrow and written down here: **print band `0`'s ring corner indices against the loop's own**, because a strip that is
 drawn with four points the wall below does not name is exactly this shape of answer.
+## Round 42: the base annulus was the seam, and the probe closes
+
+The instrument the last round asked for was built, and it said something the earlier one could not: **`holes 0`**. The
+solid was never open. Sixteen edges were claimed **twice in the same direction** — a doubled face, not a hole — and the
+probe's old criterion counted both as "open", which is why the seam appeared to move with the crown rule instead of
+staying put.
+
+**The root cause was `ring_walk`'s base annulus, unguarded.** `RingEnds { base, crown }` existed since stage A and the
+annulus ignored it, so **every** vertical band drew a base at its own foot: band 0 at `y = 0`, which is the foot's and
+correct, and band 2 at `y = 3.16`, which is a face inside the solid at the seam between two strips. Guarding it with
+`ends.base` took the probe to
+
+```text
+expands: 64 faces
+open boundary edges: 0 (holes 0, doubled 0)
+```
+
+— a **four-section mass with a projecting soffit that closes completely**, which is what four rounds were for. **All
+twenty-four scenes unchanged at 85 489 rows.**
+
+### Two things the probe now does that it did not
+
+- **it counts holes and doubled faces apart**, because a hole has one claim and no partner while a doubled face has two
+  claims the same way round and no partner either — and the two demand different fixes;
+- **it measures planarity across each element group itself**, which is what found the `Ring::surfaces` regression in
+  round 41 instead of reading a face index off the validator.
+
+### What the cut mass still does
+
+The street's conversion — four sections, shopfront in band `0`, window in band `2` — was tried again on top of this and
+came back `SolidOpen { loops: 4 }`: the **uncut** band walk now closes, and the **cut** one does not. The next
+instrument is the probe with one opening in band `0` and one in band `2`, which is a two-line change to a file that
+already reports exactly this.
