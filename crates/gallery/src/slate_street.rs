@@ -18,7 +18,7 @@
 //!
 //! - **the gate towers**: a 屯堡 street's 碉楼 stands at the village's corner and not on its street, and the compound scene has
 //!   it;
-//! - **the drainage channel** down the lane's middle, which is a slab's detail this crate has no word for.
+//! - **the culverts** the channel would empty into: a slab drains to its lowest edge and this crate has no word for a mouth.
 
 use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, ops};
 use definition::Value;
@@ -35,6 +35,9 @@ const LANE_TO: f32 = 26.0;
 const LANE_FLAGS: usize = 18;
 const JOINT: f32 = 0.05;
 const FLAG: f32 = 0.07;
+/// The channel down the lane`s middle: half its width, and how deep it stands below the walked strips.
+const CHANNEL: f32 = 0.34;
+const GUTTER: f32 = 0.015;
 
 /// The walls that close the street's two ends: their height and thickness, and the gap the lane leaves open.
 const END_HALF: f32 = 0.45;
@@ -82,21 +85,24 @@ pub fn document() -> Building {
         }
     }
 
-    // **The lane, laid in flags.** One slab from mouth to mouth reads as concrete; the joint is where the water goes.
+    // **The lane, laid in flags with a channel down its middle.** One slab from mouth to mouth reads as concrete; the joint is
+    // where a mason's day ended, and the **channel** is where the water goes. Each flag is three bands: two walked strips at
+    // `FLAG` and the gutter between them at `GUTTER`, a hand's depth lower — which is how a stone street drains without a pipe.
     let run = (LANE_TO - LANE_FROM) / LANE_FLAGS as f32;
     for flag in 0..LANE_FLAGS {
         let from = LANE_FROM + run * flag as f32 + JOINT * 0.5;
         let to = LANE_FROM + run * (flag + 1) as f32 - JOINT * 0.5;
-        skeleton.slabs.push(building::Slab::paving(
-            ops::wound(vec![
-                [from, -LANE_HALF],
-                [to, -LANE_HALF],
-                [to, LANE_HALF],
-                [from, LANE_HALF],
-            ]),
-            0.0,
-            FLAG,
-        ));
+        for (near, far, top) in [
+            (-LANE_HALF, -CHANNEL, FLAG),
+            (-CHANNEL, CHANNEL, GUTTER),
+            (CHANNEL, LANE_HALF, FLAG),
+        ] {
+            skeleton.slabs.push(building::Slab::paving(
+                ops::wound(vec![[from, near], [to, near], [to, far], [from, far]]),
+                0.0,
+                top,
+            ));
+        }
     }
 
     // **A wall at each end, with the lane's width left open.** A street with two mouths and no third is a street a garrison

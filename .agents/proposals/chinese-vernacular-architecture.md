@@ -2467,3 +2467,14 @@ Two faults of my own, both caught by the frame rather than by the crate:
 The document is 7.55 MB. A scene is not in the suite until three lists name it: `Gallery::names`, `build`'s match and
 `naming::building_of` — the probe skipped this street until the third was added, and a scene the suite skips is a scene nobody
 measures.
+## Round 99: the street's channel
+
+The lane was one flagged surface with joints across it. It has a **channel down its middle** now: each flag is three bands — two
+walked strips at `FLAG`, and a gutter `CHANNEL` wide standing `GUTTER` below them — which is how a stone street drains without a
+pipe, and why the middle of an old street is the part that is always wet.
+
+**Identity: 37 scenes, 128 500 rows**; `slate_street` 1 720 → **1 936** — eighteen flags become fifty-four bands, and the
+channel's own two edges are counted on every one of them. The document is 7.68 MB.
+
+The culverts the channel would empty into are still not drawn: a slab drains to its lowest edge and this crate has no word for a
+mouth in a wall.
