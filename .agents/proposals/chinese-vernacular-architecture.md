@@ -3496,3 +3496,14 @@ village is made of, and round 179 recorded the type's own scene without re-measu
 composes it.
 
 **Identity: 46 scenes, 159 343 rows**; `jingpo_village` **2 299** (2 256 from the thatch, 43 from the granary). The document is 7.74 MB.
+## Round 181: the entrance at the gable end
+
+The type had **no door**: rounds 174–180 drew a twenty-one metre house whose only way in was a ladder onto the gallery. A longhouse is entered from
+**its own end** — the house is a row of households and the door is where the row starts — so the entrance is a **porch at the gable end**: a deck
+at the floor's level, two posts, a lean-to over it, and a pair of panels standing in the porch's frame.
+
+**And the table was read on both scenes this time**, which is round 180's lesson applied: `longhouse` 721 → **757** and `jingpo_village`
+2 299 → **2 407** — three porches at once, because the village is made of three of the type. **A type's round owes every scene that composes it**,
+and the two numbers differ by exactly three times the first.
+
+**Identity: 46 scenes, 159 487 rows**. The document is 7.28 MB.

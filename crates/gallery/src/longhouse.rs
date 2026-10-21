@@ -57,6 +57,11 @@ const GALLERY_HALF: f32 = 8.20;
 const GALLERY: f32 = 0.95;
 const GALLERY_DECK: f32 = 0.12;
 
+/// The porch at the gable end: how far it reaches past the end wall, its half width, and how high its lean-to stands over the deck.
+const PORCH_DEEP: f32 = 1.35;
+const PORCH_WIDE: f32 = 2.05;
+const PORCH_HIGH: f32 = 2.15;
+
 /// The thatch: a coarse covering — four times a tiles period, nearly closed, and deep enough to read as a thatchs own thickness.
 const THATCH: building::Covering = building::Covering {
     period: 0.46,
@@ -178,6 +183,65 @@ pub fn document() -> building::Building {
             LADDER_POST * 0.8,
             LADDER_POST * 1.1,
         ));
+    }
+
+    // **The entrance: a porch at the gable end.** A longhouse is entered from **its own end**, not through the long wall — the house is a row of
+    // households and the door is where the row starts. It is a deck at the floor's level, two posts, a lean-to over it and a pair of panels
+    // standing in it, so the type finally has a way in that is not the ladder.
+    let end = STARTER.width * 0.5;
+    let porch = [
+        [end - PORCH_DEEP, -PORCH_WIDE],
+        [end + PORCH_DEEP, -PORCH_WIDE],
+        [end + PORCH_DEEP, PORCH_WIDE],
+        [end - PORCH_DEEP, PORCH_WIDE],
+    ];
+    skeleton.slabs.push(building::Slab::paving(
+        ops::wound(porch.to_vec()),
+        LEG - GALLERY_DECK,
+        LEG,
+    ));
+    for side in [-1.0_f32, 1.0] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [
+                    end + PORCH_DEEP - POST * 0.5,
+                    0.0,
+                    side * (PORCH_WIDE - POST * 0.5),
+                ],
+            },
+            building::Anchor::Free {
+                at: [
+                    end + PORCH_DEEP - POST * 0.5,
+                    LEG + PORCH_HIGH,
+                    side * (PORCH_WIDE - POST * 0.5),
+                ],
+            },
+            [1.0, 0.0],
+            POST,
+            POST,
+        ));
+    }
+    let host = building::MassId(0);
+    if let Some(shed) = derive::lean_to(
+        host,
+        porch,
+        LEG + PORCH_HIGH - 0.25,
+        LEG + PORCH_HIGH + 0.55,
+        0.12,
+    ) {
+        skeleton.roofs.push(shed);
+    }
+    // **The panels stand in the porch's own frame**, hung on the end wall's line: two leaves that close the entrance a household walks through.
+    for side in [-1.0_f32, 1.0] {
+        if let Some(leaf) = derive::leaf(
+            [end - 0.30, LEG, side * 0.06],
+            PORCH_WIDE - 0.12,
+            PORCH_HIGH - 0.30,
+            0.07,
+            [0.0, -side],
+        ) {
+            skeleton.members.push(leaf);
+        }
     }
 
     building::Building::new(skeleton)
