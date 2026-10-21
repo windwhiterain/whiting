@@ -100,6 +100,8 @@ pub mod rain_bridge;
 pub mod settlement_plants;
 /// The shed scene: the facade — a rhythm, holes cut in it, and parts standing in the bays.
 pub mod shed;
+/// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
+pub mod slate_court;
 /// The trees of the Hengduan: one species at a time, each drawn to the bar the proposal sets.
 pub mod southwest;
 /// Arc 5's two flagships: 珙桐's white bracts and 大树杜鹃's terminal leaf rosettes.
@@ -122,7 +124,6 @@ pub mod southwest_wave2;
 pub mod southwest_wave3;
 mod spotlight;
 mod stilllife;
-/// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
 pub mod stilt;
 /// The street scene: five plots on a frontage, one house on each, and the street climbing under them.
 pub mod street;
@@ -229,6 +230,7 @@ impl Gallery {
             "street",
             "street_arcade",
             "terrace",
+            "slate_court",
             "slate_house",
             "tunpu_village",
             "tibetan_house",
@@ -344,6 +346,7 @@ impl Gallery {
             "rain_bridge" => rain_bridge::rain_bridge(),
             "stilt_gallery" => stilt::stilt_gallery(),
             "terrace" => terrace::terrace(),
+            "slate_court" => slate_court::slate_court(),
             "slate_house" => tunpu::slate_house(),
             "tunpu_village" => tunpu_village::tunpu_village(),
             "tibetan_house" => tibetan::tibetan_house(),

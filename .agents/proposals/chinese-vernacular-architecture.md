@@ -1991,3 +1991,22 @@ degenerate length and being the merlon's own. The section is the perpendicular o
 
 **Identity: 31 scenes, 113 406 rows**; `tunpu_village` 1 098 → **1 180** — two storeys' walls, eight slits' reveals and four
 merlons.
+## Round 72: the 石板房's court, and the shape of a wall
+
+A 屯堡 house does not stand on the lane; it stands **behind a wall in its own court**. The type's scene showed the house and
+its yard and stopped there. `slate_court` closes the yard: the house at its head, three lengths of the same stone round the
+other sides, and the **门楼** over the gate — two piers and a lean-to, the one piece of the court that is not stone.
+
+The wall pieces were where every refusal came from, and each names something about a wall's own shape:
+
+- **a plan's winding depends on its run's direction**, and the same four corners listed for a wall running east and one
+  running west wind opposite ways: `OffsetInverted { area: -15.81 }` and `{ area: -7.82 }`. One `wound` helper decides it,
+  and it **keeps the first node**, so a wall's start stays the corner its neighbours were measured from;
+- **two lengths that each run to the corner share the corner's area**: `UnattachedOverlap { mass: 1, other: 3 }` and
+  `{ mass: 2, other: 4 }`. The side walls now stop at the south wall's inner face and the south wall spans the whole width —
+  meeting face to face is the join a wall has;
+- and the round-70 pair still hold: the wall is `0.35 m` in a `1.0 m` depth so the inner loop cannot fold, and the piers stand
+  **in the gate's gap** with `wall = 0.18` so they are neither masses inside masses nor folded.
+
+**Identity: 32 scenes, 113 750 rows**; `slate_court` **344** — the house's 260, three walls' tops and faces, two piers and
+the gate's roof. The document is 7.18 MB.
