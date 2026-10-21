@@ -2569,3 +2569,13 @@ between, and a roof slab `LID` thick over the top. A box with a lid is a burner;
 
 **Identity: 37 scenes, 128 656 rows**; `benzu_miao` 1 162 → **1 174** — the step's top and four edges, the lid's two faces and
 four edges. The document is 7.42 MB.
+## Round 107: the step up to the 井台
+
+A platform a hand's height up with no step is a kerb you climb. The 井台 has **two shallow steps** in front of it now — each a
+slab `STEP` deep at a third and two thirds of the platform's height — and the platform itself is raised from `0.15 m` to
+`0.30 m`, which is what a well platform is: not a kerb but a step up out of the street's water.
+
+At `0.15 m` the two steps were sub-pixel from the plate's own camera, and a detail that cannot be seen is a detail that cannot be
+checked — the same rule as rounds 77, 97 and 101, applied before landing this time rather than after.
+
+**Identity: 37 scenes, 128 668 rows**; `slate_street` 1 968 → **1 980** — two steps' tops and edges. The document is 7.69 MB.

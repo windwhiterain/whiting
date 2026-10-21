@@ -43,7 +43,9 @@ const WELL_HALF: f32 = 0.72;
 const WELL_WALL: f32 = 0.24;
 const WELL_HIGH: f32 = 0.82;
 /// The 井台`s own height: how far the whole of the street`s water stands above the flags.
-const PLINTH: f32 = 0.15;
+const PLINTH: f32 = 0.30;
+/// How deep one 踏步 in front of the platform is, in metres.
+const STEP: f32 = 0.26;
 const TROUGH_LONG: f32 = 1.85;
 const TROUGH_DEEP: f32 = 0.62;
 const TROUGH_WALL: f32 = 0.16;
@@ -166,6 +168,22 @@ pub fn document() -> Building {
         0.0,
         PLINTH,
     ));
+    // **The 踏步 in front of it**: a platform a hand's height up with no step is a kerb you climb, and a well is approached by
+    // two shallow steps and not by one. Each is a slab a hand's width deep, half the height of the one behind it — one step for
+    // the platform's own edge and one for the street.
+    for (band, top) in [(0usize, PLINTH * 0.66), (1, PLINTH * 0.33)] {
+        let south = apron[0][1] - STEP * (band + 1) as f32;
+        skeleton.slabs.push(building::Slab::floor(
+            ops::wound(vec![
+                [apron[0][0], south],
+                [apron[1][0], south],
+                [apron[1][0], south + STEP],
+                [apron[0][0], south + STEP],
+            ]),
+            0.0,
+            top,
+        ));
+    }
     let mut ring = Mass::new(
         ops::wound(vec![
             [well[0] - WELL_HALF, well[1] - WELL_HALF],
