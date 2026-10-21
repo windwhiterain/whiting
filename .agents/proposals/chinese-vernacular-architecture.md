@@ -2070,3 +2070,18 @@ thickness clear of the bay's ends, which the gate wall's own `0.40 m` depth dema
 
 **Identity: 33 scenes, 115 550 rows**; `bai_court` 1 738 → **1 800** — the gate wall's faces and top, one door's reveals and
 the hood. The document is 7.61 MB.
+## Round 76: the 门楼's own frame
+
+Rounds 74 and 75 drew the gate as **a hole in a wall**. A 白族 gate is framed — a threshold, two jambs, a lintel and a **门罩**
+over it — and the frame is what a person reads at a door, so it is drawn now: six members, each laid **in the wall's own
+thickness and proud of it**, because a frame stands in front of what it frames.
+
+The frame's own measurements come from the opening it frames, and not from a table: its clear span is the door's
+(`GATE_HIGH - 1.05` to the threshold), its jambs stand clear of what the opening already leaves, and the 门罩 stands a little
+further out than the lintel because that is the one member that is decoration and not structure.
+
+The scene's camera moved with it. The approach view that showed the 照壁 as a screen now stands off its east end, along the
+wall to the gate, so the frame is the foreground and the 正房 rises behind — **the shot is part of the type's record, and a
+detail added where no shot can see it is a detail no one will check**.
+
+**Identity: 33 scenes, 115 580 rows**; `bai_court` 1 800 → **1 830** — six members, thirty rows. The document is 7.62 MB.

@@ -82,10 +82,10 @@ pub fn bai_court() -> Value {
         &document(),
         &crate::settlement_plants::Extra::none(),
         &|_, _| 0.0,
-        // **From beyond the 照壁, looking through it into the court**: the wall is the type`s signature and the view it was
-        // built for is the one from the approach — its coping in the foreground and the 正房`s upper storey behind.
-        [11.0, 9.4, -19.5],
-        [0.0, 1.6, 2.2],
+        // **Along the 照壁 to the gate**: the approach view that showed the wall as a screen now stands off its east end, so
+        // the 门楼's own frame — threshold, jambs, lintel and 门罩 — is the foreground and the 正房 rises behind it.
+        [14.0, 4.4, -11.0],
+        [2.6, 1.9, -1.8],
         FIELD_OF_VIEW,
         "bai_court",
     )
@@ -277,6 +277,59 @@ pub fn document() -> Building {
             &mut skeleton,
             building::Opening::new(approach, 0, 0, building::Inset::new(0.50, 0.50, 0.0, 1.05)),
         );
+    }
+
+    // **The door's own frame**: a threshold, two jambs, a lintel and a 门罩 over it. A 白族 gate is framed in stone and wood
+    // and the frame is what a person reads at the door — without it the opening is a hole in a wall, which is what round 74
+    // and 75 drew. Every member is laid **in the wall's own thickness and proud of it**, because a frame stands in front of
+    // what it frames.
+    let sill = 0.0_f32;
+    let head = GATE_HIGH - 1.05;
+    let clear = [gate_z0 + 0.50, gate_z1 - 0.50];
+    let middle = gate_x;
+    let proud = GATE_THICK * 0.5 + 0.06;
+    // The threshold: stone, its top a hand's width above the court.
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [middle - proud, sill + 0.14, clear[0]],
+        },
+        building::Anchor::Free {
+            at: [middle + proud, sill + 0.14, clear[1]],
+        },
+        [1.0, 0.0],
+        0.18,
+        0.28,
+    ));
+    // The two jambs: from the threshold to the lintel, one on each side of the opening.
+    for z in clear {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [middle - proud, sill + 0.14, z],
+            },
+            building::Anchor::Free {
+                at: [middle + proud, head, z],
+            },
+            [1.0, 0.0],
+            0.16,
+            0.16,
+        ));
+    }
+    // The lintel over them, and the 门罩 above it: a band that stands out further than the frame and carries the hood.
+    for (height, across, deep, high) in [
+        (head + 0.10, 0.10, 0.90, 0.22),
+        (head + 0.34, 0.14, 1.05, 0.26),
+    ] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [middle + across, height, clear[0] - 0.06],
+            },
+            building::Anchor::Free {
+                at: [middle + across, height, clear[1] + 0.06],
+            },
+            [1.0, 0.0],
+            deep,
+            high,
+        ));
     }
 
     // **The gate's hood: a lean-to over the corner**, hosted by the gate wall and shedding into the lane.
