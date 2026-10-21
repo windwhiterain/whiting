@@ -2516,3 +2516,11 @@ this project has now learned three times (rounds 77, 97 and here).
 
 **Identity: 37 scenes, 128 538 rows**; `slate_street` 1 936 → **1 962** — a curb's four faces, its top and its hole, and a
 trough's. The document is 7.69 MB.
+## Round 102: the 井台
+
+A well's ring does not sit on the street: it sits on a **platform a hand's height up**, so that the water running down the
+channel cannot run back into it. The street's water stands on one now — a floor slab `PLINTH` high carrying both the curb and
+the trough, whose nodes are at that height and not at nothing.
+
+**Identity: 37 scenes, 128 544 rows**; `slate_street` 1 962 → **1 968** — the apron's top and its four edges. The document is
+7.69 MB.

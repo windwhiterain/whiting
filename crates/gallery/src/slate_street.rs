@@ -42,6 +42,8 @@ const WELL_AT: [f32; 2] = [7.4, 2.05];
 const WELL_HALF: f32 = 0.72;
 const WELL_WALL: f32 = 0.24;
 const WELL_HIGH: f32 = 0.82;
+/// The 井台`s own height: how far the whole of the street`s water stands above the flags.
+const PLINTH: f32 = 0.15;
 const TROUGH_LONG: f32 = 1.85;
 const TROUGH_DEEP: f32 = 0.62;
 const TROUGH_WALL: f32 = 0.16;
@@ -143,7 +145,27 @@ pub fn document() -> Building {
     // water is at the place the street widens, and it is one place. The well is a **mass whose wall is thick enough to be a ring**
     // (`0.24 m` in a `1.44 m` plan), the same answer the 白族 lane's well gave; the trough beside it is the same idea at a
     // rectangle, and it is what the animals drink from.
+    // **The 井台: the stepped stone apron the water stands on.** A well's ring does not sit on the street — it sits on a
+    // platform a hand's height up, so that the water running down the channel cannot run back into it. The apron is a floor
+    // slab, and the curb and the trough stand on its top: their nodes are at `PLINTH` and not at nothing.
     let well = WELL_AT;
+    let apron = [
+        [well[0] - WELL_HALF - 0.62, well[1] - WELL_HALF - 0.40],
+        [
+            well[0] + WELL_HALF + TROUGH_LONG + 1.05,
+            well[1] - WELL_HALF - 0.40,
+        ],
+        [
+            well[0] + WELL_HALF + TROUGH_LONG + 1.05,
+            well[1] + WELL_HALF + 0.40,
+        ],
+        [well[0] - WELL_HALF - 0.62, well[1] + WELL_HALF + 0.40],
+    ];
+    skeleton.slabs.push(building::Slab::floor(
+        ops::wound(apron.to_vec()),
+        0.0,
+        PLINTH,
+    ));
     let mut ring = Mass::new(
         ops::wound(vec![
             [well[0] - WELL_HALF, well[1] - WELL_HALF],
@@ -152,9 +174,9 @@ pub fn document() -> Building {
             [well[0] - WELL_HALF, well[1] + WELL_HALF],
         ])
         .into_iter()
-        .map(|at| PlanNode::new(at, 0.0))
+        .map(|at| PlanNode::new(at, PLINTH))
         .collect(),
-        WELL_HIGH,
+        PLINTH + WELL_HIGH,
     );
     ring.wall = WELL_WALL;
     ring.slab = 0.18;
