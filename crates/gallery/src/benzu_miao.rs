@@ -17,7 +17,6 @@
 //! # What it does not draw
 //!
 //! - **the god**: an image is a sculpture and not a building;
-//! - **the 山门**, which stands where the camera is.
 
 use building::{Building, BuildingSkeleton, Covering, Mass, MassId, PlanNode, derive, ops};
 use definition::Value;
@@ -74,6 +73,13 @@ const FLAGSTONE: f32 = 0.58;
 const FLAGSTONE_HIGH: f32 = 0.86;
 const FLAGSTONE_AT: f32 = 3.40;
 
+/// The 山门: how wide it is either side of the axis, how thick, how high, the wall in it, and where it stands.
+const SHANMEN_HALF: f32 = 6.20;
+const SHANMEN_THICK: f32 = 0.60;
+const SHANMEN_HIGH: f32 = 3.10;
+const SHANMEN_WALL: f32 = 0.26;
+const SHANMEN_Z: f32 = -12.40;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the temple: from the court's south-west corner, so the 戏台 is at one side and the 大殿 at the other.
@@ -84,8 +90,10 @@ pub fn benzu_miao() -> Value {
         &|_, _| 0.0,
         // **High and three-quarters from the south-west**: the 戏台`s mouth faces the 大殿 and a low camera from the south sees
         // only its back, so the shot looks over its roof into the court and down onto the 大殿`s colonnade.
-        [17.0, 13.0, -18.0],
-        [-0.5, 2.0, 1.2],
+        // **Backed off to take the 山门 in**: the gate closes the court at its south end, and a plate of a temple that leaves its
+        // own entrance out of the frame is a plate of a courtyard.
+        [20.5, 15.0, -21.0],
+        [-0.5, 2.0, -1.4],
         FIELD_OF_VIEW,
         "benzu_miao",
     )
@@ -292,6 +300,45 @@ pub fn document() -> Building {
             BURNER_WALL,
             BURNER_HIGH,
         ));
+    }
+
+    // **The 山门: the temple's own gate, closing the court at its south end.** The module has said since round 79 that the 山门 is
+    // "where the camera is"; it is a wall across the court with a door in it now, `SHANMEN_HALF` either side of the axis and
+    // `SHANMEN_THICK` deep, and the door cut in its court face the way every other opening in this repository is cut — the face
+    // split first, then an inset a wall's thickness clear of the bay's ends.
+    let mut shanmen = Mass::new(
+        rectangle(SHANMEN_HALF, SHANMEN_THICK * 0.5, 0.0, SHANMEN_Z, 0.0),
+        SHANMEN_HIGH,
+    );
+    shanmen.wall = SHANMEN_WALL;
+    shanmen.slab = 0.24;
+    let shanmen_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(shanmen);
+    let gate_face = building::FaceRef::new(shanmen_id, 2);
+    let columns = building::Rhythm::Even { count: 3 };
+    let rows = building::Rhythm::Even { count: 1 };
+    if ops::split_face(&mut skeleton, gate_face, &columns, &rows).is_some() {
+        let _ = ops::add_opening(
+            &mut skeleton,
+            building::Opening::new(gate_face, 0, 1, building::Inset::new(0.30, 0.30, 0.0, 0.90)),
+        );
+    }
+    // **Its roof**: a lean-to over the wall, shedding into the court, which is what makes a wall a gate house.
+    let span = SHANMEN_HALF + 0.55;
+    let plan = [
+        [-span, SHANMEN_Z + SHANMEN_THICK * 0.5 + 0.55],
+        [span, SHANMEN_Z + SHANMEN_THICK * 0.5 + 0.55],
+        [span, SHANMEN_Z - SHANMEN_THICK * 0.5],
+        [-span, SHANMEN_Z - SHANMEN_THICK * 0.5],
+    ];
+    if let Some(roof) = derive::lean_to(
+        shanmen_id,
+        plan,
+        SHANMEN_HIGH - 0.55,
+        SHANMEN_HIGH + 0.05,
+        0.14,
+    ) {
+        skeleton.roofs.push(roof.with_covering(TILES));
     }
 
     // **The 旗杆石 a pair, flanking the 大殿's steps.** A temple that has a court has two stones in it where the flags stand on

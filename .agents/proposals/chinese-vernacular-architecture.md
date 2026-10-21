@@ -2590,3 +2590,15 @@ faces, two edges, a foot and a top, all of them a box's.
 
 **Identity: 37 scenes, 128 687 rows**; `bai_lane` 5 713 → **5 732** — the stele's four faces and its top, and its foot slab's
 top and edges. The document is 20.40 MB.
+## Round 109: the 本主庙's 山门
+
+The module has said since round 79 that the **山门** "stands where the camera is". It stands there now: a wall across the court's
+south end, `12.4 m` wide and `0.6 m` thick with a `SHANMEN_WALL` in it, its door cut in three bays with an inset a wall's
+thickness clear of the ends, and a lean-to over it that sheds into the court — which is what makes a wall a gate house.
+
+The temple reads as a compound for the first time: **山门 → 戏台 → court → 大殿**, which is the order a 本主庙 is walked, and the
+plate is backed off to take the gate in — a plate of a temple that leaves its own entrance out of the frame is a plate of a
+courtyard.
+
+**Identity: 37 scenes, 129 044 rows**; `benzu_miao` 1 174 → **1 531** — the wall's faces and top, four reveals round its door, and
+the gate's roof. The document is 7.52 MB.
