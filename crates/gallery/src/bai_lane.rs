@@ -77,6 +77,14 @@ const STELE_WALL: f32 = 0.08;
 const STELE_FOOT: f32 = 0.14;
 const STELE_HIGH: f32 = 1.12;
 
+/// The 抱鼓石 at the gates piers: its plan and its height.
+const DRUM: f32 = 0.46;
+const DRUM_HIGH: f32 = 0.52;
+/// **The drums stand DRUM_Z, clear of the lintels plan.** The validator compares plans and not volumes, so a stone under the
+/// lintel is a stone *inside* it — measured as UnattachedOverlap { mass: 22, other: 25 } and { 22, 26 } while they stood on the
+/// gates line. Set out in front, the same pair overlaps nothing and is where the plate sees it.
+const DRUM_Z: f32 = -16.20;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the lane: from its south end, looking north between the gates.
@@ -275,6 +283,28 @@ pub fn document() -> building::Building {
         });
         skeleton.masses.push(pier);
     }
+    // **The 抱鼓石 at the piers' feet, in the doorway.** Round 104 gave the 屯堡 朝门 this pair; a 白族 gate has the same two stones,
+    // for the same two reasons — a leaf swings back against one, and the jamb is held upright by one. They stand **inside the
+    // opening** and against the pier's inner face, so neither overlaps the stone: a drum that reached past the jamb would be a mass
+    // inside a mass.
+    let inner = LANE_HALF + PIER_HALF + 0.15 - PIER_HALF;
+    for across in [-1.0_f32, 1.0] {
+        let centre = across * (inner - DRUM * 0.5 - 0.22);
+        let mut drum = building::Mass::new(
+            [
+                building::PlanNode::new([centre - DRUM * 0.5, DRUM_Z - DRUM * 0.5], 0.0),
+                building::PlanNode::new([centre + DRUM * 0.5, DRUM_Z - DRUM * 0.5], 0.0),
+                building::PlanNode::new([centre + DRUM * 0.5, DRUM_Z + DRUM * 0.5], 0.0),
+                building::PlanNode::new([centre - DRUM * 0.5, DRUM_Z + DRUM * 0.5], 0.0),
+            ]
+            .to_vec(),
+            DRUM_HIGH,
+        );
+        drum.wall = DRUM * 0.28;
+        drum.slab = 0.14;
+        skeleton.masses.push(drum);
+    }
+
     // **The gate's roof: a lean-to over the lintel**, shedding into the lane and hosted by the lintel itself.
     let plan = [
         [-GATE_HALF - GATE_EAVE, GATE_AT + GATE_DEEP + GATE_EAVE],

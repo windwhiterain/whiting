@@ -2930,3 +2930,14 @@ cost nothing to draw and they are what a 白族 gate is recognised by.
 
 **Identity: 39 scenes, 137 740 rows**; `bai_lane` 5 744 → **5 768** — four studs with their sections and ends. The document is
 20.41 MB.
+## Round 137: the 白族巷's 抱鼓石, and what the validator actually compares
+
+Round 104 gave the 屯堡 朝门 a pair of **抱鼓石**; the 白族巷's gate has the same two stones now, for the same two reasons — a leaf swings
+back against one, and the jamb is held upright by one.
+
+**They could not stand on the gate's own line**, and the reason is worth the record: `validate` compares **plans and not volumes**, so a
+stone anywhere under the lintel's outline is a stone *inside* the lintel — `UnattachedOverlap { mass: 22, other: 25 }` and `{ 22, 26 }`,
+measured twice while they stood at the gate's centre, once at the pier's face and once pulled in. Set `DRUM_Z` in front of the gate the
+same pair overlaps nothing, and that is also where the plate sees them.
+
+**Identity: 39 scenes, 137 766 rows**; `bai_lane` 5 768 → **5 794** — two drums' four faces and their tops. The document is 20.42 MB.
