@@ -67,6 +67,7 @@ pub mod patchmesh;
 pub mod ridges;
 
 pub mod bai_court;
+pub mod bai_lane;
 pub mod bamboo_house;
 /// The shell phase's proof scene: one authored building, derived and expanded, standing in a frame.
 ///
@@ -220,6 +221,7 @@ impl Gallery {
             "drum_tower",
             "earthen_house",
             "bai_court",
+            "bai_lane",
             "bamboo_house",
             "log_house",
             "village_west",
@@ -339,6 +341,7 @@ impl Gallery {
             "drum_tower" => drum_tower::drum_tower(),
             "earthen_house" => earthen::earthen_house(),
             "bai_court" => bai_court::bai_court(),
+            "bai_lane" => bai_lane::bai_lane(),
             "bamboo_house" => bamboo_house::bamboo_house(),
             "log_house" => log_house::log_house(),
             "village_west" => village::village_west(),

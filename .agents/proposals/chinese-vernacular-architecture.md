@@ -2102,3 +2102,19 @@ well was moved to the corner that shot can see.
 
 **Identity: 33 scenes, 115 593 rows**; `bai_court` 1 830 → **1 843** — the well's curb, its top and its hole, thirteen rows.
 The document is **13.91 MB** against 7.62, which is the planting's price and is the same trade the settlements made.
+## Round 78: the 白族巷, the gallery's fifth settlement
+
+**A lane with a courtyard house behind each gate.** The mountain village is walled houses round a square, the Dai hamlet is a
+row on a valley floor, the plateau village is four towers on one shelf, the 屯堡 is a garrison's compound — a 白族 village is
+a **巷**: a lane, and the courts turn their one formal face onto it.
+
+- **three `bai_court::document()`s**, two west of the lane and one east, each turned so its **gate opens onto the same strip of
+  paving**. The court's gate faces `+x`, so the west plots take no turn and the east plot is turned a half — the whole
+  arrangement is that one fact about which way a gate looks;
+- **the lane is a `Slab::paving`** from one end to the other: it has no wall and nothing stands on it, so it is not a mass;
+- **five clumps along it**, from the bridge the settlements use.
+
+**Identity: 34 scenes, 121 128 rows**; `bai_lane` **5 535** — three courts at 1 843 each and the lane's paving. The document is
+20.34 MB.
+
+The lane's other end and the village's 本主庙 are not drawn, and the type says so: three plots are this scene's frame.
