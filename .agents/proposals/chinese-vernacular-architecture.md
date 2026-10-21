@@ -3305,3 +3305,18 @@ wedge: DidNotExpand { problems: [MiterTooLong { loop_of: Outline { mass: MassId(
 
 **Identity: 42 scenes, 151 130 rows**, unchanged by design: a diagnostic moves no geometry. What the round buys is that the next plan that
 breaks the join limit says **which corner** it broke it at, which is what round 160 needed and did not get.
+## Round 166: the second tower, and the mitre that did not come back
+
+Round 160 withdrew a two-tower 羌寨 because the build refused it with `MiterTooLong { mass: 25, node: 3, reach: 3.005 }` at three different
+positions and would not say which corner was at fault. Round 165 made that complaint carry **the corner's angle**. This round redid the same
+refactor — the tower extracted into `tower_part()`, called twice — and it **builds**: `qiang_tower` is now a yard with **two towers**, each
+with its own ladder, its beam ends and its merlons, and the 碉房 with its gallery beside them.
+
+**And that is the honest report of the difference**: the failure did not reproduce. What changed between the two attempts is the crate's own
+diagnostic and the module's later rounds (the cistern, the camera); nothing about the tower's geometry did. So the round records **both**
+facts — the yard now has two towers, and the mitre complaint that blocked it in round 160 could not be reproduced in round 166 with the
+diagnosis in place. A defect that vanishes is still a defect until it is explained, and this one is **not explained**: the next time a plan
+answers `MiterTooLong`, the angle it now prints is the thread to pull.
+
+**Identity: 42 scenes, 151 628 rows**; `qiang_tower` 1 122 → **1 620** — a second tower's courses, beam ends, merlons, door, plinth and
+ladder. The document is 7.65 MB.

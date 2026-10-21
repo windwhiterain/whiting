@@ -80,6 +80,7 @@ const CISTERN_HIGH: f32 = 0.72;
 /// The 木廊 on the 碉房: how far out the deck stands in the houses own coordinates, its depth, its length, its level, its slab, its
 /// posts, a posts section and the rails height above the deck.
 const HOUSE_AT: [f32; 2] = [14.20, 2.60];
+const TOWER_AT: [[f32; 2]; 2] = [[0.0, 0.0], [-6.60, 8.20]];
 const GALLERY_X: f32 = -5.10;
 const GALLERY_DEEP: f32 = 1.30;
 const GALLERY_LONG: f32 = 4.40;
@@ -109,171 +110,10 @@ pub fn qiang_tower() -> Value {
 /// Returns the document: a plinth, eight courses of coursed stone and a door in the air.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
-    let half = BASE * 0.5;
-
-    // **The plinth**, which is where the tower's batter starts from and what keeps its foot out of the ground.
-    skeleton.slabs.push(building::Slab::floor(
-        ops::wound(vec![
-            [-half - 0.45, -half - 0.45],
-            [half + 0.45, -half - 0.45],
-            [half + 0.45, half + 0.45],
-            [-half - 0.45, half + 0.45],
-        ]),
-        0.0,
-        PLINTH,
-    ));
-
-    // **The eight courses.** `stepped_courses` wants the base's plan, the height of one course, the stack's own top, how many courses
-    // and how far each is set in; it carries each course on the one below and answers their ids in order.
-    let base = [[-half, -half], [half, -half], [half, half], [-half, half]];
-    let ids = derive::stepped_courses(
-        &mut skeleton,
-        base,
-        PLINTH,
-        PLINTH + COURSE * COURSES as f32,
-        COURSES,
-        BATTER,
-        WALL,
-        0.22,
-    );
-
-    // **The door in the air**, cut in the course the sill falls in: a 碉楼 is entered by a plank that is pulled up behind you, which is
-    // why it has a door four metres up and no stair.
-    if let Some(id) = ids.get(DOOR_COURSE) {
-        // **The door faces the plate**: `edge 1` is the plan`s `+x` side, which is the side the camera stands on — round 97 and
-        // round 136 each measured what happens when a face is chosen by the building rather than by the view.
-        let face = building::FaceRef::new(*id, 1);
-        if ops::split_face(
-            &mut skeleton,
-            face,
-            &building::Rhythm::Even { count: 3 },
-            &building::Rhythm::Even { count: 1 },
-        )
-        .is_some()
-        {
-            let sill = DOOR_SILL - (PLINTH + COURSE * DOOR_COURSE as f32);
-            let _ = ops::add_opening(
-                &mut skeleton,
-                building::Opening::new(
-                    face,
-                    0,
-                    1,
-                    building::Inset::new(0.80, 0.80, sill.max(0.0), 0.75),
-                ),
-            );
-        }
-    }
-
-    // **The 木梁头: the beam ends that stand proud of every storey's floor.** A 碉楼's floors are timber and their beams run through the
-    // stone, so each storey's face carries a row of **square beam ends** — the tower's one ornament, and the one thing that says a 碉楼
-    // has floors in it and is not a solid obelisk. Three to a face on the two faces the plate looks at, at every course's own top.
-    for course in 0..COURSES {
-        let level = PLINTH + COURSE * (course + 1) as f32 - BEAM_DROP;
-        let span = half - BATTER * course as f32;
-        for index in 0..BEAMS {
-            let at = -span + 2.0 * span * (index as f32 + 0.5) / BEAMS as f32;
-            // The `+x` face: the member runs out of it, so its `across` is `z`.
-            skeleton.members.push(building::Member::new(
-                building::Anchor::Free {
-                    at: [span - 0.02, level, at],
-                },
-                building::Anchor::Free {
-                    at: [span + BEAM_PROUD, level, at],
-                },
-                [0.0, 1.0],
-                BEAM,
-                BEAM,
-            ));
-            // The `+z` face: the member runs out of that one, so its `across` is `x`.
-            skeleton.members.push(building::Member::new(
-                building::Anchor::Free {
-                    at: [at, level, span - 0.02],
-                },
-                building::Anchor::Free {
-                    at: [at, level, span + BEAM_PROUD],
-                },
-                [1.0, 0.0],
-                BEAM,
-                BEAM,
-            ));
-        }
-    }
-
-    // **The 垛口: the battlements.** Round 150 recorded this as the type's debt — a 碉楼's crown is **a wall with gaps in it**, and a tower
-    // that ends in a plain course is a chimney. The merlons are members: both anchors at the course's own top, the section carrying the
-    // height, which is how this crate draws a parapet. Three to a face on the two faces the plate looks at, with the gaps between them.
-    let crown = half - BATTER * (COURSES - 1) as f32;
-    let top = PLINTH + COURSE * COURSES as f32;
-    for index in 0..MERLONS {
-        let from = -crown + 2.0 * crown * index as f32 / MERLONS as f32;
-        let to = from + 2.0 * crown * (index as f32 + MERLON_FILL) / MERLONS as f32;
-        // The `+x` face: the parapet runs along `z` and is `MERLON_DEEP` thick in `x`.
-        skeleton.members.push(building::Member::new(
-            building::Anchor::Free {
-                at: [crown - MERLON_DEEP * 0.5, top, from],
-            },
-            building::Anchor::Free {
-                at: [crown - MERLON_DEEP * 0.5, top, to],
-            },
-            [1.0, 0.0],
-            MERLON_DEEP,
-            MERLON_HIGH,
-        ));
-        // The `+z` face: the same parapet, turned.
-        skeleton.members.push(building::Member::new(
-            building::Anchor::Free {
-                at: [from, top, crown - MERLON_DEEP * 0.5],
-            },
-            building::Anchor::Free {
-                at: [to, top, crown - MERLON_DEEP * 0.5],
-            },
-            [0.0, 1.0],
-            MERLON_DEEP,
-            MERLON_HIGH,
-        ));
-    }
-
-    // **The crown**: the top course's own crown, so the tower ends in a gabled pair of edges and not in a flat plane.
-    if let Some(roof) = skeleton.roofs.last().cloned() {
-        if let Some(id) = ids.last() {
-            derive::crown_gables(&mut skeleton.masses[id.0], &roof);
-        }
-    }
-
-    // **The 独木梯: the ladder that is taken up behind you.** The door is four metres up for one reason — the stair is **removed**, and a
-    // plank with steps cut in it leaning against the wall is the whole of a 碉楼's access. Two stringers and eight rungs, from the ground
-    // up to the door's own sill, leaning on the face the door is cut in.
-    let sill = DOOR_SILL;
-    let foot = LADDER_FOOT;
-    let head = half - BATTER * DOOR_COURSE as f32;
-    for side in [-1.0_f32, 1.0] {
-        skeleton.members.push(building::Member::new(
-            building::Anchor::Free {
-                at: [foot, 0.0, side * LADDER_WIDE],
-            },
-            building::Anchor::Free {
-                at: [head - 0.10, sill, side * LADDER_WIDE],
-            },
-            [0.0, 1.0],
-            LADDER_POST,
-            LADDER_POST * 1.6,
-        ));
-    }
-    for rung in 1..=LADDER_RUNGS {
-        let t = rung as f32 / (LADDER_RUNGS + 1) as f32;
-        let x = foot + (head - 0.10 - foot) * t;
-        let y = sill * t;
-        skeleton.members.push(building::Member::new(
-            building::Anchor::Free {
-                at: [x, y, -LADDER_WIDE],
-            },
-            building::Anchor::Free {
-                at: [x, y, LADDER_WIDE],
-            },
-            [1.0, 0.0],
-            LADDER_POST * 0.8,
-            LADDER_POST * 1.1,
-        ));
+    for at in [[0.0_f32, 0.0_f32], TOWER_AT[1]] {
+        let mut tower = tower_part();
+        ops::translate(&mut tower, at);
+        assert!(ops::merge(&mut skeleton, tower), "a tower places no parts");
     }
 
     // **The 碉房 beside it.** A 碉楼 is never alone: it stands in a courtyard of stone houses of the same masonry, and a tower on bare
@@ -475,4 +315,178 @@ pub fn document() -> Building {
     ));
 
     Building::new(skeleton)
+}
+
+/// One tower, built once and set down where a village needs it.
+fn tower_part() -> BuildingSkeleton {
+    let mut part = BuildingSkeleton::new(Vec::new(), Vec::new());
+
+    let half = BASE * 0.5;
+
+    // **The plinth**, which is where the tower's batter starts from and what keeps its foot out of the ground.
+    part.slabs.push(building::Slab::floor(
+        ops::wound(vec![
+            [-half - 0.45, -half - 0.45],
+            [half + 0.45, -half - 0.45],
+            [half + 0.45, half + 0.45],
+            [-half - 0.45, half + 0.45],
+        ]),
+        0.0,
+        PLINTH,
+    ));
+
+    // **The eight courses.** `stepped_courses` wants the base's plan, the height of one course, the stack's own top, how many courses
+    // and how far each is set in; it carries each course on the one below and answers their ids in order.
+    let base = [[-half, -half], [half, -half], [half, half], [-half, half]];
+    let ids = derive::stepped_courses(
+        &mut part,
+        base,
+        PLINTH,
+        PLINTH + COURSE * COURSES as f32,
+        COURSES,
+        BATTER,
+        WALL,
+        0.22,
+    );
+
+    // **The door in the air**, cut in the course the sill falls in: a 碉楼 is entered by a plank that is pulled up behind you, which is
+    // why it has a door four metres up and no stair.
+    if let Some(id) = ids.get(DOOR_COURSE) {
+        // **The door faces the plate**: `edge 1` is the plan`s `+x` side, which is the side the camera stands on — round 97 and
+        // round 136 each measured what happens when a face is chosen by the building rather than by the view.
+        let face = building::FaceRef::new(*id, 1);
+        if ops::split_face(
+            &mut part,
+            face,
+            &building::Rhythm::Even { count: 3 },
+            &building::Rhythm::Even { count: 1 },
+        )
+        .is_some()
+        {
+            let sill = DOOR_SILL - (PLINTH + COURSE * DOOR_COURSE as f32);
+            let _ = ops::add_opening(
+                &mut part,
+                building::Opening::new(
+                    face,
+                    0,
+                    1,
+                    building::Inset::new(0.80, 0.80, sill.max(0.0), 0.75),
+                ),
+            );
+        }
+    }
+
+    // **The 木梁头: the beam ends that stand proud of every storey's floor.** A 碉楼's floors are timber and their beams run through the
+    // stone, so each storey's face carries a row of **square beam ends** — the tower's one ornament, and the one thing that says a 碉楼
+    // has floors in it and is not a solid obelisk. Three to a face on the two faces the plate looks at, at every course's own top.
+    for course in 0..COURSES {
+        let level = PLINTH + COURSE * (course + 1) as f32 - BEAM_DROP;
+        let span = half - BATTER * course as f32;
+        for index in 0..BEAMS {
+            let at = -span + 2.0 * span * (index as f32 + 0.5) / BEAMS as f32;
+            // The `+x` face: the member runs out of it, so its `across` is `z`.
+            part.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [span - 0.02, level, at],
+                },
+                building::Anchor::Free {
+                    at: [span + BEAM_PROUD, level, at],
+                },
+                [0.0, 1.0],
+                BEAM,
+                BEAM,
+            ));
+            // The `+z` face: the member runs out of that one, so its `across` is `x`.
+            part.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [at, level, span - 0.02],
+                },
+                building::Anchor::Free {
+                    at: [at, level, span + BEAM_PROUD],
+                },
+                [1.0, 0.0],
+                BEAM,
+                BEAM,
+            ));
+        }
+    }
+
+    // **The 垛口: the battlements.** Round 150 recorded this as the type's debt — a 碉楼's crown is **a wall with gaps in it**, and a tower
+    // that ends in a plain course is a chimney. The merlons are members: both anchors at the course's own top, the section carrying the
+    // height, which is how this crate draws a parapet. Three to a face on the two faces the plate looks at, with the gaps between them.
+    let crown = half - BATTER * (COURSES - 1) as f32;
+    let top = PLINTH + COURSE * COURSES as f32;
+    for index in 0..MERLONS {
+        let from = -crown + 2.0 * crown * index as f32 / MERLONS as f32;
+        let to = from + 2.0 * crown * (index as f32 + MERLON_FILL) / MERLONS as f32;
+        // The `+x` face: the parapet runs along `z` and is `MERLON_DEEP` thick in `x`.
+        part.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [crown - MERLON_DEEP * 0.5, top, from],
+            },
+            building::Anchor::Free {
+                at: [crown - MERLON_DEEP * 0.5, top, to],
+            },
+            [1.0, 0.0],
+            MERLON_DEEP,
+            MERLON_HIGH,
+        ));
+        // The `+z` face: the same parapet, turned.
+        part.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [from, top, crown - MERLON_DEEP * 0.5],
+            },
+            building::Anchor::Free {
+                at: [to, top, crown - MERLON_DEEP * 0.5],
+            },
+            [0.0, 1.0],
+            MERLON_DEEP,
+            MERLON_HIGH,
+        ));
+    }
+
+    // **The crown**: the top course's own crown, so the tower ends in a gabled pair of edges and not in a flat plane.
+    if let Some(roof) = part.roofs.last().cloned() {
+        if let Some(id) = ids.last() {
+            derive::crown_gables(&mut part.masses[id.0], &roof);
+        }
+    }
+
+    // **The 独木梯: the ladder that is taken up behind you.** The door is four metres up for one reason — the stair is **removed**, and a
+    // plank with steps cut in it leaning against the wall is the whole of a 碉楼's access. Two stringers and eight rungs, from the ground
+    // up to the door's own sill, leaning on the face the door is cut in.
+    let sill = DOOR_SILL;
+    let foot = LADDER_FOOT;
+    let head = half - BATTER * DOOR_COURSE as f32;
+    for side in [-1.0_f32, 1.0] {
+        part.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [foot, 0.0, side * LADDER_WIDE],
+            },
+            building::Anchor::Free {
+                at: [head - 0.10, sill, side * LADDER_WIDE],
+            },
+            [0.0, 1.0],
+            LADDER_POST,
+            LADDER_POST * 1.6,
+        ));
+    }
+    for rung in 1..=LADDER_RUNGS {
+        let t = rung as f32 / (LADDER_RUNGS + 1) as f32;
+        let x = foot + (head - 0.10 - foot) * t;
+        let y = sill * t;
+        part.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, y, -LADDER_WIDE],
+            },
+            building::Anchor::Free {
+                at: [x, y, LADDER_WIDE],
+            },
+            [1.0, 0.0],
+            LADDER_POST * 0.8,
+            LADDER_POST * 1.1,
+        ));
+    }
+
+    part
 }
