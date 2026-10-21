@@ -2524,3 +2524,12 @@ the trough, whose nodes are at that height and not at nothing.
 
 **Identity: 37 scenes, 128 544 rows**; `slate_street` 1 962 → **1 968** — the apron's top and its four edges. The document is
 7.69 MB.
+## Round 103: the 朝门's frame
+
+Round 100 hung the 朝门's leaves; a gate whose leaves hang on bare stone has nothing to hang on, and a gate you walk through
+without stepping over anything is not a gate. The opening is **lined in timber** now: two jambs just inside the stone piers, a
+head across them, and a **threshold** a hand's height off the paving — four members `FRAME` square, and the leaves lie against
+them.
+
+**Identity: 37 scenes, 128 568 rows**; `tunpu_village` 1 192 → **1 216** — four frame members with their sections and their
+ends. The document is 7.53 MB.

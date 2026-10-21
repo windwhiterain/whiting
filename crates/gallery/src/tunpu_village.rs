@@ -42,6 +42,8 @@ const WALL_TO: f32 = 23.0;
 const GATE_HALF: f32 = 1.80;
 const PIER: f32 = 0.45;
 const GATE_HEAD: f32 = 2.60;
+/// The 门框 the gate`s leaves hang in: its own square section, in metres.
+const FRAME: f32 = 0.13;
 const GATE_RISE: f32 = 0.55;
 const GATE_EAVE: f32 = 0.70;
 
@@ -133,6 +135,41 @@ pub fn document() -> Building {
         pier.slab = 0.22;
         skeleton.masses.push(pier);
     }
+    // **The 门框: two jambs, a head and a threshold, lining the opening in timber.** The stone piers are the gate's mass and the
+    // frame is its joinery: a gate whose leaves hang on bare stone has nothing to hang on, and a gate you walk through without
+    // stepping over anything is not a gate. The frame stands `FRAME` square, just inside the opening, and the leaves lie
+    // against it.
+    let inner = GATE_HALF - PIER;
+    let face = WALL_Z + WALL_HALF - 0.12;
+    let head = GATE_HEAD - 0.22;
+    for across in [-1.0_f32, 1.0] {
+        let x = across * (inner - FRAME * 0.5);
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free { at: [x, 0.0, face] },
+            building::Anchor::Free {
+                at: [x, head, face],
+            },
+            [1.0, 0.0],
+            FRAME,
+            FRAME,
+        ));
+    }
+    // **The head**, from one jamb to the other; and **the threshold**, the same length a hand's height off the paving, which is
+    // what a foot steps over and what a cart is stopped by.
+    for (y, high) in [(head, FRAME * 0.9), (0.0, 0.18)] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [-inner, y, face],
+            },
+            building::Anchor::Free {
+                at: [inner, y, face],
+            },
+            [0.0, 1.0],
+            FRAME * 1.3,
+            high,
+        ));
+    }
+
     // **The 朝门's two leaves, standing open against the piers** — the same panel `derive::leaf` builds for the 白族巷's gate.
     // A 朝门 closes: that is what makes a garrison's street closable, and a gate whose opening is drawn empty is a hole in a
     // wall. Each leaf is a pier's width and the opening's height, a hand's thickness, lying flat against the pier's inner face.
