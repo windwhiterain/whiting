@@ -2850,3 +2850,15 @@ with a **newel** at the foot and one at the head — and they take the same `RAI
 stair and the deck it climbs to are the same hand's work.
 
 **Identity: 38 scenes, 135 071 rows**; `bamboo_house` 884 → **920** and `dai_hamlet` 5 297 → **5 405**. The document is 4.47 MB.
+## Round 130: the 石栏 round the 塔
+
+A stupa's platform is a **sacred square**, and a square a village walks round is bounded: a low rail of stone posts and two rails on
+the platform's own edge. Twenty-four posts and eight rails — four edges, bays of `STUPA_RAIL_BAY` — at a third of the 塔's height,
+so the fence reads as a boundary and not as a wall.
+
+It is the **third rail** in three rounds and the same shape each time: round 128 gave the 竹楼's deck one, round 129 its stair, and
+this one a 塔's platform. **A rail is an edge that has been given a rail**, and the difference between the three is the material's
+section and how high a hand grips it.
+
+**Identity: 38 scenes, 135 431 rows**; `dai_temple` 2 627 → **2 807** — twenty-four posts and eight rails, with their sections and
+their ends. The document is 31.6 MB.

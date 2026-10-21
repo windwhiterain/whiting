@@ -114,6 +114,10 @@ const STUPA_COURSES: usize = 4;
 const STUPA_BATTER: f32 = 0.21;
 const STUPA_WALL: f32 = 0.34;
 const STUPA_PLINTH: f32 = 0.32;
+/// The 石栏 round the platform: how high it stands above the platform, how wide a bay, and a stone posts section.
+const STUPA_RAIL_HIGH: f32 = 0.78;
+const STUPA_RAIL_BAY: f32 = 1.15;
+const STUPA_RAIL_POST: f32 = 0.13;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
@@ -616,6 +620,54 @@ pub fn document() -> Building {
         0.0,
         STUPA_PLINTH,
     ));
+    // **The 石栏 round the 塔's platform.** A stupa's platform is a sacred square, and a square a village walks round is bounded: a
+    // low rail of stone posts and two rails on the platform's own edge. It is the same shape round 128 gave the 竹楼's deck and round
+    // 129 its stair — **a rail is an edge that has been given a rail** — with a stone post's section and a stone rail's.
+    let plaza = [
+        [base[0][0] - 0.85, base[0][1] - 0.85],
+        [base[1][0] + 0.85, base[1][1] - 0.85],
+        [base[2][0] + 0.85, base[2][1] + 0.85],
+        [base[3][0] - 0.85, base[3][1] + 0.85],
+    ];
+    for edge in 0..4 {
+        let from = plaza[edge];
+        let to = plaza[(edge + 1) % 4];
+        let run = ((to[0] - from[0]).powi(2) + (to[1] - from[1]).powi(2)).sqrt();
+        let bays = (run / STUPA_RAIL_BAY).ceil() as usize;
+        let bays = bays.max(1);
+        for index in 0..=bays {
+            let t = index as f32 / bays as f32;
+            let at = [
+                from[0] + (to[0] - from[0]) * t,
+                from[1] + (to[1] - from[1]) * t,
+            ];
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [at[0], STUPA_PLINTH, at[1]],
+                },
+                building::Anchor::Free {
+                    at: [at[0], STUPA_PLINTH + STUPA_RAIL_HIGH, at[1]],
+                },
+                [1.0, 0.0],
+                STUPA_RAIL_POST,
+                STUPA_RAIL_POST,
+            ));
+        }
+        for high in [STUPA_RAIL_HIGH, STUPA_RAIL_HIGH * 0.55] {
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [from[0], STUPA_PLINTH + high, from[1]],
+                },
+                building::Anchor::Free {
+                    at: [to[0], STUPA_PLINTH + high, to[1]],
+                },
+                [-(to[1] - from[1]), (to[0] - from[0])],
+                STUPA_RAIL_POST * 0.7,
+                STUPA_RAIL_POST * 0.9,
+            ));
+        }
+    }
+
     let courses = derive::stepped_courses(
         &mut skeleton,
         base,
