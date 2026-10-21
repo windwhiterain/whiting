@@ -92,6 +92,16 @@ const PATH_X: f32 = -9.40;
 const PATH_HALF: f32 = 0.75;
 const PATH_FLAGS: usize = 9;
 
+/// The 禾仓: where it stands, its plan, how far its floor is off the ground, its height, a post and the rat-guard, and its roof.
+const GRANARY_AT: [f32; 2] = [-11.60, -19.80];
+const GRANARY: [f32; 2] = [2.70, 2.20];
+const GRANARY_UP: f32 = 1.05;
+const GRANARY_HIGH: f32 = 2.30;
+const GRANARY_POST: f32 = 0.16;
+const GUARD: f32 = 0.62;
+const GRANARY_EAVE: f32 = 0.55;
+const GRANARY_RISE: f32 = 1.15;
+
 const SUN: [f64; 3] = [-26.0, 30.0, 20.0];
 const SUN_IRRADIANCE: f64 = 3.3;
 const SHADOW_EXTENT: f64 = 52.0;
@@ -374,6 +384,65 @@ pub fn document() -> Building {
             0.0,
             PAVING,
         ));
+    }
+
+    // **The 禾仓: the granary.** A Dong village keeps its rice in a small box on **stilts** — off the ground, so the damp and the rats
+    // are both under it — and the stilts carry a **rat-guard**: a flat plate at the post's head that a rat cannot pass. The box is a
+    // mass and the four posts are members, which is the same division the 竹楼 makes between its frame and its room.
+    let [bin_x, bin_z] = GRANARY_AT;
+    for across in [-1.0_f32, 1.0] {
+        for along in [-1.0_f32, 1.0] {
+            let x = bin_x + across * (GRANARY[0] * 0.5 - GRANARY_POST * 0.5);
+            let z = bin_z + along * (GRANARY[1] * 0.5 - GRANARY_POST * 0.5);
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x, 0.0, z] },
+                building::Anchor::Free {
+                    at: [x, GRANARY_UP, z],
+                },
+                [1.0, 0.0],
+                GRANARY_POST,
+                GRANARY_POST,
+            ));
+            // **The rat-guard**, a plate a hand wide at the post's head.
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [x, GRANARY_UP - 0.12, z],
+                },
+                building::Anchor::Free {
+                    at: [x, GRANARY_UP - 0.04, z],
+                },
+                [1.0, 0.0],
+                GUARD,
+                GUARD,
+            ));
+        }
+    }
+    let mut bin = Mass::new(
+        ops::wound(vec![
+            [bin_x - GRANARY[0] * 0.5, bin_z - GRANARY[1] * 0.5],
+            [bin_x + GRANARY[0] * 0.5, bin_z - GRANARY[1] * 0.5],
+            [bin_x + GRANARY[0] * 0.5, bin_z + GRANARY[1] * 0.5],
+            [bin_x - GRANARY[0] * 0.5, bin_z + GRANARY[1] * 0.5],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, GRANARY_UP))
+        .collect(),
+        GRANARY_UP + GRANARY_HIGH,
+    );
+    bin.wall = GRANARY[0].min(GRANARY[1]) * 0.16;
+    bin.slab = 0.16;
+    let bin_id = building::MassId(skeleton.masses.len());
+    skeleton.masses.push(bin);
+    if let Some(roof) = derive::gable_roof_by(
+        bin_id,
+        &skeleton.masses[bin_id.0],
+        GRANARY_EAVE,
+        GRANARY_EAVE,
+        GRANARY_RISE,
+        0.06,
+        0.13,
+    ) {
+        skeleton.roofs.push(roof.with_covering(TILES));
     }
 
     Building::new(skeleton)

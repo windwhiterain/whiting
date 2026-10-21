@@ -3031,3 +3031,14 @@ the scene.
 `OffsetEdgeFolded` and `OffsetInverted { area: -6.37 }` — round 74's rule that a ring's offset stays under half its plan's narrowest span.
 
 **Identity: 40 scenes, 145 876 rows**; `dong_village` 8 072 → **8 098** — two lengths' faces and tops. The document is 9.81 MB.
+## Round 145: the 禾仓
+
+A Dong village keeps its rice in a small box on **stilts** — off the ground, so damp and rats are both under it — and the stilts carry a
+**rat-guard**, a plate at each post's head that a rat cannot pass. The box is a mass with its own gabled roof; the four posts and their
+four guards are members, the same division the 竹楼 makes between its frame and its room.
+
+**A new object class for the village**: a granary is neither a house nor a piece of ground, and the composition had no middle scale
+between the tower, the houses and the racks until it had one.
+
+**Identity: 40 scenes, 146 147 rows**; `dong_village` 8 098 → **8 369** — a box's faces and top, four posts, four guards and a roof
+with its gables. The document is 9.90 MB.
