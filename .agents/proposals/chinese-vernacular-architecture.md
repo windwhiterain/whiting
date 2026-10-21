@@ -1837,3 +1837,22 @@ hamlet has three trees between its houses, and their boles stand a head above th
 **Identity: 27 scenes, 110 245 rows, unchanged**; the hamlet's document is 28.39 MB against 20.63 MB for clumps alone. The
 trees are **sparse** — a crown of blades at a settlement's distance still reads more as branches than as foliage — and the
 dial that would thicken it is the leaf field's density, not its geometry.
+## Round 65: a crown that reads, and trees in both settlements
+
+**The crown was a parameter and not a shape.** Three dials moved it, and every one of them was measured:
+
+| the change | the hamlet's document | the frame |
+| --- | --- | --- |
+| three leaf fields at 18 / 40 / 90 a metre | 28.39 MB | branches with a few sprays |
+| the same at 40 / 90 / 200, blades half again as large | **32.90 MB** | leaves along every bough |
+| **five to seven boughs** a generation instead of three | **43.17 MB** | a crown with a silhouette |
+
+So the geometry was the lever and not the leaf count: a bough generation of three can be as leafy as it likes and still be
+three branches. The tree's rule now puts five to seven boughs on the bole, four or five branches on each, and three or four
+twigs on those.
+
+**Both settlements plant now.** The hill village takes the same scatter it already had and gives **every third seat to a
+tree**, the rest to clumps: a canopy over the yards and brush along the wall.
+
+**Identity: 27 scenes, 110 245 rows, unchanged** — plants are not building elements. Documents: the hamlet at 43.17 MB
+(from 20.63 with clumps alone) and `hillside_village` at **126.28 MB** (from 110.32).

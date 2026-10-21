@@ -550,9 +550,9 @@ pub fn tree(seed: u64) -> Species {
         // boughs bare: measured as a tree whose branches spread wide and carried nothing, at 26.62 MB of document for a
         // figure of twigs. Three fields at 18, 40 and 90 a metre fill it from the bole out.
         fields: vec![
-            tree_leaves(0, 18.0, 0.32),
-            tree_leaves(1, 40.0, 0.30),
-            tree_leaves(2, 90.0, 0.26),
+            tree_leaves(0, 40.0, 0.42),
+            tree_leaves(1, 90.0, 0.38),
+            tree_leaves(2, 200.0, 0.30),
         ],
         decorators: Vec::new(),
     }
@@ -564,8 +564,8 @@ pub fn tree_rule() -> Rule {
         trunk: bole,
         generations: vec![
             Generation {
-                count: (3, 5),
-                station: (0.55, 0.98),
+                count: (5, 7),
+                station: (0.45, 0.98),
                 slot: (0.0, 0.618),
                 cluster: 1,
                 jitter: (0.22, 0.12),
@@ -573,8 +573,8 @@ pub fn tree_rule() -> Rule {
                 shape: bough_one,
             },
             Generation {
-                count: (3, 4),
-                station: (0.30, 0.92),
+                count: (4, 5),
+                station: (0.25, 0.92),
                 slot: (0.0, 0.618),
                 cluster: 1,
                 jitter: (0.20, 0.10),
@@ -583,7 +583,7 @@ pub fn tree_rule() -> Rule {
             },
             Generation {
                 count: (3, 4),
-                station: (0.25, 0.90),
+                station: (0.20, 0.90),
                 slot: (0.1, 0.5),
                 cluster: 1,
                 jitter: (0.20, 0.10),

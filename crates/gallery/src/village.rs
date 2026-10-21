@@ -389,9 +389,24 @@ pub fn hillside_village() -> Value {
             eprintln!("  seat {at:?} y {:.3}", ground(at[0] as f64, at[1] as f64));
         }
     }
-    let scrub = crate::settlement_plants::bamboo_clumps(&seats, &|at: [f32; 2]| {
+    // **Every third seat is a tree and the rest are clumps**: a canopy over the yards and brush along the wall, which is
+    // what a village's own planting looks like.
+    let mut clump_seats: Vec<[f32; 2]> = Vec::new();
+    let mut tree_seats: Vec<[f32; 2]> = Vec::new();
+    for (index, at) in seats.iter().enumerate() {
+        if index % 3 == 1 {
+            tree_seats.push(*at);
+        } else {
+            clump_seats.push(*at);
+        }
+    }
+    let mut scrub = crate::settlement_plants::bamboo_clumps(&clump_seats, &|at: [f32; 2]| {
         ground(at[0] as f64, at[1] as f64) as f32
     });
+    scrub.merge(crate::settlement_plants::trees(
+        &tree_seats,
+        &|at: [f32; 2]| ground(at[0] as f64, at[1] as f64) as f32,
+    ));
     scene_of(
         &scattered,
         &scrub,
