@@ -3927,3 +3927,20 @@ bridge's long roofed gallery at the frame's left. `dong_village` and `dong_squar
 
 **Owed on this composition**: the bridge has **no water under it**. Its deck stands `3.6 m` above a dry plain, which is what a bridge looks like when the
 landscape arc owns the stream and this round did not cross into it — the honest note is that the bridge is placed and its river is not.
+## Round 214: two withdrawals and one granary
+
+The round began as *"give the bridge's dry plain two banks"* — **it had misread round 213's own note**. `rain_bridge`'s document carries **the river it
+crosses** (its own bed, its channel's half width and its water's edge, line 69 of that file), so the banks were refused for overlapping the river the
+bridge already draws: `UnattachedOverlap { 16, 24 }`, `{ 17, 25 }`. **The debt round 213 recorded did not exist.**
+
+The second attempt was a **水井 under a 井亭** for the square — and the village already has a well, the third in the project, at `[-19.40, -18.60]`. Two
+additions, two refusals, both by reading the file rather than by reasoning about it.
+
+**What the village actually lacked was its 禾仓群**: a 侗 village keeps its grain **out of the houses and off the ground** — a row of small stores on
+posts, each with its own cap, standing together at the edge where the village meets its fields. Three of them now stand south of the square, and they
+are the one public work this scene has been without since round 145.
+
+**Identity: 60 scenes, 229 632 rows**; `dong_village` and `dong_square` 10 243 → **10 372** — three stores, their twelve posts and three caps.
+
+**The rule this round paid for twice**: **check what the document already draws before adding what it "lacks"** — and check it by reading, because both
+refusals arrived after the code was written.

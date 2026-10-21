@@ -32,6 +32,19 @@ const LANE_HALF: f32 = 3.0;
 /// The 风雨桥 beyond the lane's east mouth: where it stands, so its span continues the lane past the square.
 const BRIDGE_AT: [f32; 2] = [46.4, LANE_Z];
 
+/// The 禾仓群 at the village's edge: how many stores, where the first stands, how far apart, each one's plan, how high its floor is posted and how tall
+/// the store is, a post's section and how far its cap stands out.
+const STORES: usize = 3;
+const STORE_FROM: f32 = -7.40;
+const STORE_GAP: f32 = 7.40;
+const STORE_Z: f32 = 17.20;
+const STORE_LONG: f32 = 2.40;
+const STORE_DEEP: f32 = 2.00;
+const STORE_UP: f32 = 0.95;
+const STORE_HIGH: f32 = 1.70;
+const STORE_POST: f32 = 0.15;
+const STORE_EAVE: f32 = 0.34;
+
 const LANE_FROM: f32 = -30.0;
 const LANE_TO: f32 = 30.0;
 /// How many flags the lane is laid in, and the joint between them.
@@ -643,6 +656,76 @@ pub fn document() -> Building {
             [1.0, 0.0],
             FLAG_POLE,
             FLAG_POLE,
+        ));
+    }
+
+    // **The 禾仓群: the rice stores at the village's edge.** A 侗 village keeps its grain **out of the houses and off the ground**: a row of small stores
+    // on posts, each with its own stone cap, standing together where the village meets its fields — a village within a village, and the one thing this
+    // scene has lacked since round 145. Four posts, a boxed store and a cap, three times.
+    for store in 0..STORES {
+        let x = STORE_FROM + STORE_GAP * store as f32;
+        for side in [-1.0_f32, 1.0] {
+            for along in [-1.0_f32, 1.0] {
+                skeleton.members.push(building::Member::new(
+                    building::Anchor::Free {
+                        at: [
+                            x + side * STORE_LONG * 0.36,
+                            PAVING,
+                            STORE_Z + along * STORE_DEEP * 0.36,
+                        ],
+                    },
+                    building::Anchor::Free {
+                        at: [
+                            x + side * STORE_LONG * 0.36,
+                            PAVING + STORE_UP,
+                            STORE_Z + along * STORE_DEEP * 0.36,
+                        ],
+                    },
+                    [1.0, 0.0],
+                    STORE_POST,
+                    STORE_POST,
+                ));
+            }
+        }
+        let mut body = Mass::new(
+            ops::wound(vec![
+                [x - STORE_LONG * 0.5, STORE_Z + STORE_DEEP * 0.5],
+                [x + STORE_LONG * 0.5, STORE_Z + STORE_DEEP * 0.5],
+                [x + STORE_LONG * 0.5, STORE_Z - STORE_DEEP * 0.5],
+                [x - STORE_LONG * 0.5, STORE_Z - STORE_DEEP * 0.5],
+            ])
+            .into_iter()
+            .map(|at| building::PlanNode::new(at, PAVING + STORE_UP))
+            .collect(),
+            PAVING + STORE_UP + STORE_HIGH,
+        );
+        // **The ring's offset stays under half the narrow side** (rounds 74, 144, 171).
+        body.wall = STORE_DEEP * 0.26;
+        body.slab = 0.14;
+        skeleton.masses.push(body);
+        let cap = STORE_HIGH;
+        let _ = cap;
+        skeleton.slabs.push(building::Slab::roof(
+            ops::wound(vec![
+                [
+                    x - STORE_LONG * 0.5 - STORE_EAVE,
+                    STORE_Z + STORE_DEEP * 0.5 + STORE_EAVE,
+                ],
+                [
+                    x + STORE_LONG * 0.5 + STORE_EAVE,
+                    STORE_Z + STORE_DEEP * 0.5 + STORE_EAVE,
+                ],
+                [
+                    x + STORE_LONG * 0.5 + STORE_EAVE,
+                    STORE_Z - STORE_DEEP * 0.5 - STORE_EAVE,
+                ],
+                [
+                    x - STORE_LONG * 0.5 - STORE_EAVE,
+                    STORE_Z - STORE_DEEP * 0.5 - STORE_EAVE,
+                ],
+            ]),
+            PAVING + STORE_UP + STORE_HIGH,
+            PAVING + STORE_UP + STORE_HIGH + 0.12,
         ));
     }
 
