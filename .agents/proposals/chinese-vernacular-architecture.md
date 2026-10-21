@@ -2556,3 +2556,16 @@ wall's.**
 
 **Identity: 37 scenes, 128 644 rows**; `benzu_miao` 1 112 → **1 162** — four burner walls and two flagstones' faces and tops. The
 document is 7.41 MB.
+## Round 106: the 香炉 corrected, and its step and lid
+
+Round 105 said the burner's walls were panels. **They were not**: the formatted call had kept the second anchor at
+`BURNER_FOOT + BURNER_HIGH`, so the box was still four posts standing at a box's corners, and the round's own note claimed a fix
+that had landed only in the shorter of two copies of the line. Corrected here — both anchors at one elevation — and the `across`
+direction with it: it was passed as the run's own direction, which the crate answers as `MemberDegenerate { length: 1.25 }`, the
+same lesson the door leaf learned in round 100.
+
+A burner is **two slabs and four walls**, and it has both now: a floor slab `BURNER_FOOT` high that it stands on, the four walls
+between, and a roof slab `LID` thick over the top. A box with a lid is a burner; a box without one is a planter.
+
+**Identity: 37 scenes, 128 656 rows**; `benzu_miao` 1 162 → **1 174** — the step's top and four edges, the lid's two faces and
+four edges. The document is 7.42 MB.

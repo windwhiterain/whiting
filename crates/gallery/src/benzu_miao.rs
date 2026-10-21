@@ -64,7 +64,9 @@ const TILES: Covering = Covering {
 const BURNER_AT: [f32; 2] = [0.0, -0.40];
 const BURNER: f32 = 1.25;
 const BURNER_WALL: f32 = 0.17;
-const BURNER_FOOT: f32 = 0.0;
+const BURNER_FOOT: f32 = 0.16;
+/// The lid over the burner: how thick the stone cap is.
+const LID: f32 = 0.14;
 const BURNER_HIGH: f32 = 1.05;
 
 /// The 旗杆石 pair: their plan, their height, and how far either side of the axis they stand.
@@ -251,19 +253,42 @@ pub fn document() -> Building {
         ([half, half], [-half, half]),
         ([-half, half], [-half, -half]),
     ];
+    // **The 基座 and the 炉盖, and the walls between them.** The walls' two anchors are at **one elevation** — a pair that differ
+    // is a post, and four posts at a box's corners are not a box (rounds 90, 100 and 105 all made that mistake, and the last of
+    // them left it in *this* loop). The step they stand on is a floor slab and the lid over them is a roof slab, which is what a
+    // burner is: two slabs and four walls.
+    let step = BURNER * 0.5 + 0.22;
+    skeleton.slabs.push(building::Slab::floor(
+        ops::wound(vec![
+            [burner_x - step, burner_z - step],
+            [burner_x + step, burner_z - step],
+            [burner_x + step, burner_z + step],
+            [burner_x - step, burner_z + step],
+        ]),
+        0.0,
+        BURNER_FOOT,
+    ));
+    skeleton.slabs.push(building::Slab::roof(
+        vec![
+            [burner_x - half - 0.05, burner_z - half - 0.05],
+            [burner_x + half + 0.05, burner_z - half - 0.05],
+            [burner_x + half + 0.05, burner_z + half + 0.05],
+            [burner_x - half - 0.05, burner_z + half + 0.05],
+        ],
+        BURNER_FOOT + BURNER_HIGH,
+        BURNER_FOOT + BURNER_HIGH + LID,
+    ));
     for (from, to) in corners {
         skeleton.members.push(building::Member::new(
             building::Anchor::Free {
                 at: [burner_x + from[0], BURNER_FOOT, burner_z + from[1]],
             },
             building::Anchor::Free {
-                at: [
-                    burner_x + to[0],
-                    BURNER_FOOT + BURNER_HIGH,
-                    burner_z + to[1],
-                ],
+                at: [burner_x + to[0], BURNER_FOOT, burner_z + to[1]],
             },
-            [(to[0] - from[0]) / BURNER, (to[1] - from[1]) / BURNER],
+            // **The section`s `across` is the run`s perpendicular**: a member whose across lies along its own axis is a
+            // degenerate one, answered as `MemberDegenerate { length: 1.25 }` — the same lesson as the door leaf`s.
+            [-(to[1] - from[1]) / BURNER, (to[0] - from[0]) / BURNER],
             BURNER_WALL,
             BURNER_HIGH,
         ));
