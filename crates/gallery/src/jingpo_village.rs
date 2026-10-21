@@ -76,6 +76,25 @@ pub fn jingpo_village() -> Value {
     )
 }
 
+/// The **close plate**: the lane's mouth, where the gate's posts, the skull posts, the granary and the drying deck stand within a few metres of one
+/// another.
+///
+/// # Why a second camera and not a second document
+///
+/// Round 189 put the drying deck at the north longhouse's own end and recorded that the wide plate could not isolate it. This is round 172's and
+/// round 186's move for the third time: **the document is the same one and only the camera changes**.
+pub fn jingpo_mouth() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [31.0, 7.0, 12.0],
+        [11.0, 2.2, -3.0],
+        FIELD_OF_VIEW * 1.15,
+        "jingpo_mouth",
+    )
+}
+
 /// Returns the document: three longhouses, the lane's paving, the gate's walls, its head and its leaves.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());

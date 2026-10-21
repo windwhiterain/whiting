@@ -3601,3 +3601,15 @@ shows it as a pale patch at the frame's edge. **The evidence is the table**, and
 — which is where the 土掌房 village (round 172) and the 傈僳 village (rounds 186, 188) already are.
 
 **Identity: 49 scenes, 163 300 rows**; `jingpo_village` 2 407 → **2 455** — a deck, six posts and a rail. The document is 7.79 MB.
+## Round 190: the 景颇寨's close plate
+
+Round 189 put the drying deck beyond the north longhouse's own end and recorded that the wide plate could not isolate it. This is the **third** time
+the answer is a second camera on the same document (rounds 172, 186), and the plate pays two debts at once: the **gate's posts**, the **skull
+posts** and the **granary** stand within a few metres of one another at the lane's mouth, and at eye height they are three different objects rather
+than three dark marks on a lane.
+
+**Fifty scenes and five hundred thousand rows of the same few moves.** The gallery now has **fifty scenes** built from **nineteen types**, and the
+last twenty rounds have been almost entirely composition — which is the shape a catalogue reaches when its parts are done: more views, not more
+parts.
+
+**Identity: 50 scenes, 165 755 rows**; `jingpo_mouth` **2 455** (the same document as `jingpo_village`). The document is 7.79 MB.
