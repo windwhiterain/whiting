@@ -400,6 +400,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "compound_court" => crate::compound::document(),
         "stilt" => crate::stilt::document(),
         "dai_temple" => crate::dai_temple::document(),
+        "dong_square" | "dong_village" => crate::dong_village::document(),
         "dong_village" => crate::dong_village::document(),
         "drum_tower" => crate::drum_tower::document(),
         "earthen_house" => crate::earthen::document(),

@@ -144,6 +144,26 @@ pub fn dong_village() -> Value {
     )
 }
 
+/// The **close plate**: the 鼓楼坪 at the tower's foot, where the tower's own door, its flag stones and their poles, the 禾晾 racks and the lane's
+/// gate stand within twenty metres of one another.
+///
+/// # Why a second camera and not a second document
+///
+/// The 侗寨 is the gallery's **largest scene** — eight and a half thousand rows — and until now it had **one plate**, taken from thirty-four metres
+/// out and fifteen up, where nothing smaller than a house is a shape. Round 172 made this move for the 土掌房 village; this is the fourth, and it is
+/// the one the biggest scene needed most.
+pub fn dong_square() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [17.0, 6.5, 17.0],
+        [-1.5, 6.0, -1.5],
+        FIELD_OF_VIEW * 0.92,
+        "dong_square",
+    )
+}
+
 /// Returns the document: the tower, three houses, the square and the lane.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());

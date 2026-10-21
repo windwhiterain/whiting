@@ -3623,3 +3623,15 @@ washing on a wet morning.
 lesson — *a type's round owes every scene that composes it* — is now the standing practice rather than a correction.
 
 **Identity: 50 scenes, 165 881 rows**. The document is 7.28 MB.
+## Round 192: the 侗寨's close plate
+
+The 侗寨 is the gallery's **largest scene** — eight and a half thousand rows — and until now it had **one plate**, taken from thirty-four metres out
+and fifteen up, where nothing smaller than a house is a shape. `dong_square` stands in the square at eye height: the **drum tower** rises through
+its six eaves with its windows and its finials, the two 穿斗 houses stand either side, and the square's paving and the village's flag stones are
+underfoot.
+
+**The best plate this project has produced, and it is a camera.** The tower was drawn in round 139, its eaves, windows and finials over the rounds
+after it, and none of that had ever been looked at from the ground — **the object was complete and unseen for fifty rounds**, which is the strongest
+argument the gallery has for a plate per scene rather than a document per scene.
+
+**Identity: 51 scenes, 174 476 rows**; `dong_square` **8 595** (the same document as `dong_village`). The document is 9.96 MB.
