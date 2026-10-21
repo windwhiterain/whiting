@@ -3856,3 +3856,19 @@ belongs**, and this round moved nothing but a site.
 **The composition rule, written down**: a type that has no site (a tower, a gate, a bridge) is finished when it **stands in a village's document**, not
 when it stands alone in a document of its own. `fengshui_tower` and `slate_street` are now both scenes and both documents, and the tower counts twice
 by design.
+## Round 209: the tower's niches
+
+Round 207 built the type and said plainly what it had not drawn: *"the doors and the windows: a 风水塔's openings are blind niches on seven of its eight
+faces and a single door at its foot — and the round is a stack of eaves first and its faces second."* The faces are second no longer.
+
+**A niche is a recess and this crate has no recess**, so the niche is drawn as its **frame** — four thin members standing `3.5 cm` proud of the wall, on
+each storey's two camera-facing faces, `46 %` of the storey's width and half its height. **That is what a niche's edge looks like from the ground**, and
+it is the one reading a blank wall cannot give: the storey's height is now legible in a picture.
+
+**The type's table more than doubles**: `fengshui_tower` 164 → **500**, and the street that composes it 2 322 → **2 658** — **the same 336 rows in both**,
+which is the check that the composition is exact and not approximate.
+
+**Identity: 60 scenes, 223 383 rows**.
+
+**Still owed on this type**: the **door at its foot**, which is a real opening and wants a grid and a bay on the plinth's mass — the niches were the frame
+this round could draw honestly, and the door is the one it could not.

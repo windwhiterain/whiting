@@ -32,6 +32,9 @@ const EAVE_THICK: f32 = 0.16;
 const PLINTH: f32 = 0.55;
 const SPIRE: f32 = 2.90;
 const SPIRE_WIDE: f32 = 0.34;
+/// The blind niche on each storey's two faces: its frame's section and how far the frame stands proud of the wall.
+const NICHE: f32 = 0.075;
+const NICHE_PROUD: f32 = 0.035;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.52;
 
@@ -100,6 +103,42 @@ pub fn document() -> Building {
         });
         host = building::MassId(skeleton.masses.len());
         skeleton.masses.push(body);
+
+        // **The blind niche on each of the two faces the camera sees.** A 风水塔's walls are not blank: every storey carries a shallow **niche** on its
+        // faces, and the village reads the tower's height by counting them. The crate has no recess, so the niche is drawn as its **frame** — four
+        // thin members standing a centimetre proud of the wall — which is what a niche's edge looks like from the ground.
+        let niche_wide = half * 0.46;
+        let niche_low = low + STOREY_HIGH * 0.26;
+        let niche_high = low + STOREY_HIGH * 0.74;
+        for face in [-1.0_f32, 1.0] {
+            let at = face * (half + NICHE_PROUD * 0.5);
+            for side in [-1.0_f32, 1.0] {
+                skeleton.members.push(building::Member::new(
+                    building::Anchor::Free {
+                        at: [side * niche_wide, niche_low, at],
+                    },
+                    building::Anchor::Free {
+                        at: [side * niche_wide, niche_high, at],
+                    },
+                    [1.0, 0.0],
+                    NICHE,
+                    NICHE_PROUD,
+                ));
+            }
+            for up in [niche_low, niche_high] {
+                skeleton.members.push(building::Member::new(
+                    building::Anchor::Free {
+                        at: [-niche_wide, up, at],
+                    },
+                    building::Anchor::Free {
+                        at: [niche_wide, up, at],
+                    },
+                    [0.0, 1.0],
+                    NICHE,
+                    NICHE_PROUD,
+                ));
+            }
+        }
 
         // **The eave**: a slab standing out from the storey's own top, which is what steps the silhouette.
         let out = half + EAVE;
