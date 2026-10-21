@@ -169,3 +169,29 @@ twenty-two scenes are unchanged to the row**.
 
 **What the note said was wrong is now recorded as wrong in the right place**: a shared plan is not an overlap when a
 relation says why the two are one thing.
+## Stage A landed: the walk takes its points and its ends
+
+The first of the four stages is in, and it is a **pure refactor**: `ring_walk` no longer makes its own vertices and
+no longer decides which ends of a ring it closes.
+
+- **`RingPoints`** is the four point arrays a walk draws on — `authored`/`offset` × `base`/`top` — and it is built by
+  the caller. A mass of several sections has one set of vertices per section, and the two bands that meet there must
+  name the same four; a walk that called `point` again left the ring open at that joint (`SolidOpen { loops: 8 }`, the
+  first banded pier).
+- **`RingEnds { base, crown }`** says whether the walk closes the foot with the base annulus and the crown with the
+  strip of wall top. An interior band of a mass closes **neither**, because its neighbours supply those faces; drawing
+  them twice would put two coincident faces in one solid.
+- **`RingEnds::BOTH`** is a ring standing on its own, which is every ring that existed before: the mass's whole wall
+  and a courtyard's.
+
+**All twenty-four scenes are unchanged to the row — 85 489 — which is the only evidence a refactor can offer.**
+
+### The three stages that remain
+
+| stage | what it needs |
+| --- | --- |
+| **B** | `cut_edge` carries the crown flag so a cut edge's strip is drawn only on the crown |
+| **C** | `banded_mass` builds one `RingPoints` per section and walks each band with the right ends, so a band whose sections share a plan can be cut |
+| **D** | the 骑楼's projecting upper floor: foot plan, a horizontal soffit band, then a vertical band with the shop's windows |
+
+Until C lands, a banded mass still answers `BandedMassCut` by name.
