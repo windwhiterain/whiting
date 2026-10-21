@@ -2221,3 +2221,11 @@ Round 82 gave the tower a fourth storey and left its top floor **reached by noth
 
 **Identity: 35 scenes, 124 089 rows**; `tibetan_house` 349 → **385** (six treads), `plateau_village` 3 041 → **3 185** (four
 towers, each with both flights). The tower's document is 4.35 MB.
+## Round 83b: the same corruption in a second module
+
+The NUL byte found in `tibetan.rs` was not alone: `crates/gallery/src/southwest_wave3.rs` carried **two**, both inside a
+comment — `A colour component, not a constant: \0.318 is the green of a rhizome's section` — where a backtick-and-zero pair from
+a scripted edit in an earlier round had collapsed into a NUL. Both are `0` again, the file reads as UTF-8, and a sweep of every
+scene source finds **no file carrying a NUL byte**.
+
+`cargo build --workspace --examples` clean, **35 scenes / 124 089 rows** unchanged — a comment repair owes a measurement too.

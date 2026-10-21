@@ -1215,7 +1215,7 @@ fn qiong_rule() -> Rule {
 /// is the *lollipop* defect in a bamboo's own dress. At 0.38 of radius the rim is 2.4 m round and the
 /// culms stand 0.19 m apart, the note's own figure.
 #[allow(clippy::approx_constant)]
-// A colour component, not a constant:  .318 is the green of a rhizome's section, and clippy reads it as
+// A colour component, not a constant: 0.318 is the green of a rhizome's section, and clippy reads it as
 // one over pi. The allow is on the item rather than on the number because it is the item that says what
 // the number is.
 fn rhizome() -> (shape::Curve, shape::Scalar) {
@@ -1450,7 +1450,7 @@ fn dress_culms(plant: &mut vegetation::plant::Plant) {
 /// would be least noticed and most wrong: the culms are thin, near-vertical and mostly bare, so the
 /// only colour in the lower two thirds of the frame is the culm's.
 #[allow(clippy::approx_constant)]
-// A palette, and its leaves' green is  .318: the same reading as hizome above, and the same allow.
+// A palette, and its leaves' green is 0.318: the same reading as hizome above, and the same allow.
 pub fn qiong_palette() -> Palette {
     Palette {
         wood: Skin::new([0.232, 0.372, 0.148], 0.60),
