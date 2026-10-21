@@ -4067,3 +4067,19 @@ not stand still. The stones it drives are inside the shed, which is the interior
 **A registration lesson paid again**: the probe's `SCENES` list is not the only list in that file, and a blind replace put `"watermill"` into a **pinned
 tuple table** as well (`error[E0308]` three times). The four registrations are `Gallery::names`, `build`'s match, `naming::building_of` and the probe's
 `SCENES` — and the fourth file has a second table that looks like the first.
+## Round 222: the 水碾房 comes to the village, and two placements were tried first
+
+Round 221 built the mill and left it in a field, which is not where a mill stands. The rule rounds 208, 211 and 213 established — *a type with no site is
+finished when it stands in a village's document* — applies to it, and **two villages were tried before one held**:
+
+1. **the Dai hamlet**, turned a quarter past its west end: the document was clean and **the plate could not show the wheel**, because turning the mill to
+   run its race with the row put the wheel **edge-on to the only camera the hamlet has**. Moving the frame wide enough to include it moved the hamlet off
+   its own plate. Withdrawn;
+2. **the 侗寨, past the bridge**: its first position ran its west bank into the bridge's east abutment (`UnattachedOverlap { 30, 33 }`), and its second was
+   sixty metres beyond the frame. It stands now **left of the drum tower and in front of the bridge**, where the wide plate reads the wheel as a ring.
+
+**The lesson is about cameras and not about geometry**: a type composed correctly can still be **unphotographable from the plate its host already has**,
+and the honest answer is to find a site inside an existing frame rather than to widen the frame past what it was built to show.
+
+**Identity: 61 scenes, 230 767 rows**; `dong_village` and `dong_square` 10 408 → **10 747** — the mill's 339 rows, exactly, which is the composition check
+this project has now made on five villages.

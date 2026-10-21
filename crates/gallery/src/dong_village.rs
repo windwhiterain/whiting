@@ -32,6 +32,9 @@ const LANE_HALF: f32 = 3.0;
 /// The 风雨桥 beyond the lane's east mouth: where it stands, so its span continues the lane past the square.
 const BRIDGE_AT: [f32; 2] = [46.4, LANE_Z];
 
+/// The 水碾房 below the bridge, on the stream's own line: its race runs in the stream's direction, which is the lane's.
+const MILL_AT: [f32; 2] = [40.0, 12.0];
+
 /// The 禾仓群 at the village's edge: how many stores, where the first stands, how far apart, each one's plan, how high its floor is posted and how tall
 /// the store is, a post's section and how far its cap stands out.
 const STORES: usize = 3;
@@ -737,6 +740,16 @@ pub fn document() -> Building {
     assert!(
         ops::merge(&mut skeleton, bridge),
         "the bridge places no parts, so the merge always happens"
+    );
+
+    // **The 水碾房 beyond the bridge, on the same water.** Round 221 built the mill and left it standing in a field; a 侗 village's water works are a
+    // **group** — the bridge carries the lane over the stream and the mill takes the stream's fall below it, so the two stand on one line and the mill's
+    // race runs in the stream's own direction. Its own document, translated, with none of its numbers restated.
+    let mut mill = crate::watermill::document().skeleton;
+    ops::translate(&mut mill, MILL_AT);
+    assert!(
+        ops::merge(&mut skeleton, mill),
+        "the mill places no parts, so the merge always happens"
     );
 
     Building::new(skeleton)
