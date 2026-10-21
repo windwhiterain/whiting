@@ -4232,3 +4232,18 @@ siblings — which are not architecture and carry no `naming` arm by design. A n
 named, and the corrected form is *every name the gallery publishes **and `naming` answers for** must be measured here.*
 
 **Identity: 68 scenes, 243 590 rows.**
+## Round 233: the 牌坊, the twenty-fifth type
+
+A 牌坊 is the one structure here that **is only a face**: it has no inside, no floor and no door that shuts, and every part of it exists to be read from the road.
+A village raises one for a degree, a chaste widow or a merchant's gift, and **the stone says which** — so the type is a wall turned inside out.
+
+**Four posts on their 夹杆石**, three bays, **two lintels to a bay** (a 牌坊's beam is a stack and not a single beam), **a roof per bay seated on the top
+lintel**, the middle one a step higher, and **the blank plaque** between the middle pair where the inscription is cut — blank because a text is not a solid.
+
+**The first plate measured the round's one mistake**: the three roofs were laid at the posts' own heads, so they floated **above** the gateway as three lines in
+the sky. A 牌坊's roof is a roof **between** the posts and it stands on the lintels; seated there, the gate reads as one solid across its three bays.
+
+**Identity: 69 scenes, 243 726 rows**; `paifang` **136**.
+
+**And the registration is now checked by the instrument rather than by the round's care**: `82 names, 69 of them buildings, 69 listed, unmeasured [], unknown
+[]`, and `the walk asked for 69 and 69 printed a table` — the two lines round 232 added, doing their work on the first scene added after them.
