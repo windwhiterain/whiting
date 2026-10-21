@@ -67,7 +67,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::expand::{self, Problem, Solid, ring_walk};
+use crate::expand::{self, Problem, RingEnds, RingPoints, Solid, ring_walk};
 use crate::grid::FaceRef;
 use crate::mass::{AuthoredLoop, Mass, MassId};
 use crate::math::Vec3;
@@ -179,7 +179,8 @@ pub(crate) fn ring(
     };
     let ring = loops.ring(loop_of, wall, top, &crowns);
     let mut solid = Solid::default();
-    ring_walk(&mut solid, &ring, skeleton, grouped, problems);
+    let points = RingPoints::of(&mut solid, &ring);
+    ring_walk(&mut solid, &ring, &points, RingEnds::BOTH, skeleton, grouped, problems);
     if !problems.is_empty() {
         return Err(Vec::new());
     }

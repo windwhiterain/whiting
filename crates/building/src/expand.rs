@@ -1288,7 +1288,8 @@ fn expand_mass(
     if mass.levels.len() > 2 {
         banded_mass(&mut solid, mass, id, skeleton, &grouped, &mut problems);
     } else {
-        ring_walk(&mut solid, &ring, skeleton, &grouped, &mut problems);
+        let points = RingPoints::of(&mut solid, &ring);
+    ring_walk(&mut solid, &ring, &points, RingEnds::BOTH, skeleton, &grouped, &mut problems);
     }
     // **A courtyard is built before anything is spliced, and refused with the mass.** The ring is
     // built in its own point numbering by the module that owns it, and only the ones that came back
@@ -1332,6 +1333,69 @@ fn expand_mass(
 /// quad on it must be — because a walk that assumed the mass's arrangement would wind every face of
 /// a courtyard backwards, and a courtyard with no hole in it is exactly the case that would have
 /// looked right while it was wrong.
+/// The point indices one ring walk draws on: four per node, made by whoever owns the vertices.
+///
+/// # Invariants
+///
+/// **A walk does not make its own points, because a solid closes on shared indices and never on equal
+/// coordinates.** A mass of several sections has one set of vertices per section and the two bands that meet
+/// there must name the same four; a walk that called `point` again would leave the ring open at that joint --
+/// measured as `SolidOpen { loops: 8 }` on the first banded pier this crate drew.
+#[derive(Debug, Clone)]
+pub(crate) struct RingPoints {
+    /// The point over every authored node, at the ring`s own ground.
+    pub(crate) authored_base: Vec<u32>,
+    /// The point over every authored node, at the wall`s top.
+    pub(crate) authored_top: Vec<u32>,
+    /// The point over every offset node, at the ring`s own ground.
+    pub(crate) offset_base: Vec<u32>,
+    /// The point over every offset node, at the wall`s top.
+    pub(crate) offset_top: Vec<u32>,
+}
+
+impl RingPoints {
+    /// Builds the four arrays by making the points, which is what a single-band walk needs.
+    pub(crate) fn of(solid: &mut Solid, ring: &Ring) -> Self {
+        let count = ring.walked.len();
+        let mut points = Self {
+            authored_base: Vec::with_capacity(count),
+            authored_top: Vec::with_capacity(count),
+            offset_base: Vec::with_capacity(count),
+            offset_top: Vec::with_capacity(count),
+        };
+        for node in 0..count {
+            points.authored_base.push(solid.point(lift(
+                ring.walked[node].position,
+                ring.walked[node].elevation,
+            )));
+            points.authored_top.push(solid.point(lift(ring.walked[node].position, ring.top_at(node))));
+            points.offset_base.push(solid.point(lift(ring.offset[node], ring.walked[node].elevation)));
+            points.offset_top.push(solid.point(lift(ring.offset[node], ring.top_at(node))));
+        }
+        points
+    }
+}
+
+/// Which ends of a ring a walk closes: the foot`s annulus and the crown`s strip.
+///
+/// # Invariants
+///
+/// **An interior band of a mass closes neither**, because its neighbours supply those faces: the band under it
+/// carries the plan top at this section and the band over it starts there. Drawing them twice would put two
+/// coincident faces in one solid, which reads as non-manifold rather than as a doubled surface.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RingEnds {
+    /// Whether the walk closes the foot with the base annulus.
+    pub(crate) base: bool,
+    /// Whether the walk closes the crown with the strip of wall top.
+    pub(crate) crown: bool,
+}
+
+impl RingEnds {
+    /// Both ends, which is a ring standing on its own: a mass`s whole wall, a courtyard`s ring.
+    pub(crate) const BOTH: Self = Self { base: true, crown: true };
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Ring<'a> {
     /// Which authored loop this ring is built from, which is what every fault about it names.
@@ -1820,7 +1884,9 @@ fn banded_mass(
 
 pub(crate) fn ring_walk(
     solid: &mut Solid,
-    ring: &Ring<'_>,
+    ring: &Ring,
+    points: &RingPoints,
+    ends: RingEnds,
     skeleton: &BuildingSkeleton,
     grouped: &BTreeMap<FaceRef, Vec<usize>>,
     problems: &mut Vec<Problem>,
@@ -1828,24 +1894,8 @@ pub(crate) fn ring_walk(
     let count = ring.walked.len();
     let mass = ring.loop_of.mass();
     let authored_is_outer = ring.authored_is_outer();
-    let mut authored_base = Vec::with_capacity(count);
-    let mut authored_top = Vec::with_capacity(count);
-    let mut offset_base = Vec::with_capacity(count);
-    let mut offset_top = Vec::with_capacity(count);
-    for node in 0..count {
-        // **The ring's bottom is one elevation, on both loops.** The plate is its own solid below it, so the wall
-        // does not reach down to the plate's underside: a ring whose base sat a plate thickness lower on one face would make
-        // its base strip a slanted band, and the band is a warped quad wherever an opening's stations land unevenly
-        // (measured as `FaceNotPlanar { departure: 0.19 }` on the shed, which is half a plate). The two were a plate
-        // thickness apart until 2026-10-27, and that difference is what warped every base strip quad.
-        authored_base.push(solid.point(lift(
-            ring.walked[node].position,
-            ring.walked[node].elevation,
-        )));
-        authored_top.push(solid.point(lift(ring.walked[node].position, ring.top_at(node))));
-        offset_base.push(solid.point(lift(ring.offset[node], ring.walked[node].elevation)));
-        offset_top.push(solid.point(lift(ring.offset[node], ring.top_at(node))));
-    }
+    let (authored_base, authored_top) = (&points.authored_base, &points.authored_top);
+    let (offset_base, offset_top) = (&points.offset_base, &points.offset_top);
     let faces: Vec<WallFace> = (0..count)
         .map(|edge| ring.face(edge, LoopSide::Authored))
         .collect();
