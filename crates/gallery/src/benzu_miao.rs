@@ -73,6 +73,11 @@ const FLAGSTONE: f32 = 0.58;
 const FLAGSTONE_HIGH: f32 = 0.86;
 const FLAGSTONE_AT: f32 = 3.40;
 
+/// The 台口栏杆 on the stages mouth: how high it stands above the stages floor, how many bays, and a posts section.
+const STAGE_RAIL_HIGH: f32 = 0.86;
+const STAGE_RAIL_BAYS: usize = 6;
+const STAGE_RAIL_POST: f32 = 0.085;
+
 /// The 山门: how wide it is either side of the axis, how thick, how high, the wall in it, and where it stands.
 const SHANMEN_HALF: f32 = 6.20;
 const SHANMEN_THICK: f32 = 0.60;
@@ -99,6 +104,20 @@ pub fn benzu_miao() -> Value {
     )
 }
 
+/// The court's own plate: **from the 大殿's step, looking at the 戏台's mouth** — the seat the audience takes. A temple's compound plate
+/// sees roofs; what a stage's mouth is for is only visible from where the village sits, so the type has two scenes: the compound and
+/// the court.
+pub fn court() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [0.9, 3.10, 5.40],
+        [-0.4, 2.05, -7.40],
+        FIELD_OF_VIEW * 0.92,
+        "benzu_miao_court",
+    )
+}
 /// Returns the document: the two plinths, the 大殿, the 戏台, the court's paving and the two side walls.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
@@ -247,6 +266,40 @@ pub fn document() -> Building {
             &mut skeleton,
             building::Opening::new(mouth, 0, 0, building::Inset::new(0.62, 0.62, 0.0, 0.70)),
         );
+    }
+
+    // **The 台口栏杆 across the stage's mouth.** A stage a metre up with an open mouth is a stage a child walks off the front of; the
+    // rail runs across the mouth inside it, on the stage's own floor, with a post every `STAGE_RAIL_BAY` and two rails. It is the
+    // same edge-given-a-rail the 竹楼's deck got in round 128 and the 塔's platform in round 130 — only here the material is timber
+    // and the rail stands where the audience sees it.
+    let rail_half = STAGE_WIDTH * 0.5 - 0.70;
+    let rail_z = STAGE_Z + STAGE_DEPTH * 0.5 - 0.30;
+    for index in 0..=STAGE_RAIL_BAYS {
+        let x = -rail_half + rail_half * 2.0 * index as f32 / STAGE_RAIL_BAYS as f32;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, STAGE_PLINTH, rail_z],
+            },
+            building::Anchor::Free {
+                at: [x, STAGE_PLINTH + STAGE_RAIL_HIGH, rail_z],
+            },
+            [1.0, 0.0],
+            STAGE_RAIL_POST,
+            STAGE_RAIL_POST,
+        ));
+    }
+    for high in [STAGE_RAIL_HIGH, STAGE_RAIL_HIGH * 0.52] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [-rail_half, STAGE_PLINTH + high, rail_z],
+            },
+            building::Anchor::Free {
+                at: [rail_half, STAGE_PLINTH + high, rail_z],
+            },
+            [0.0, 1.0],
+            STAGE_RAIL_POST * 0.6,
+            STAGE_RAIL_POST * 0.8,
+        ));
     }
 
     // **The 香炉 in the court's middle**: a square stone box on a step, which is what a temple's court is arranged around. Four

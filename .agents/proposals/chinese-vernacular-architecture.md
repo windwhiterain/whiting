@@ -2862,3 +2862,15 @@ section and how high a hand grips it.
 
 **Identity: 38 scenes, 135 431 rows**; `dai_temple` 2 627 → **2 807** — twenty-four posts and eight rails, with their sections and
 their ends. The document is 31.6 MB.
+## Round 131: the 台口栏杆, and the court's own plate
+
+A stage a metre up with an open mouth is a stage a child walks off the front of. The 戏台 has its rail now: across the mouth, on the
+stage's own floor, a post every `STAGE_RAIL_BAYS`-th of its width and two rails — **the fourth edge given a rail in four rounds**, after
+the 竹楼's deck, its stair and the 塔's platform, and here in timber where the audience sees it.
+
+**And the compound plate cannot show it.** The mouth faces the 大殿 and the compound camera stands behind the stage — so the temple
+gets a **second scene**, `benzu_miao_court`, taken from the 大殿's step where the audience sits. This is not the round-121 dead end: a
+court has daylight on it, so the plate is legible, and the rail reads against the shaded mouth exactly as it does on site.
+
+**Identity: 39 scenes, 137 088 rows**; `benzu_miao` 1 603 → **1 657** — eight members' sections and ends — and the new
+`benzu_miao_court` **1 603**, the same document under a second camera. The document is 7.55 MB.
