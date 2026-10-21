@@ -2977,3 +2977,14 @@ of a village is a picture of **the village**, not of the tower, and the second c
 
 **Identity: 40 scenes, 145 516 rows**; `dong_village` **7 738** — a tower, three houses, a square and twenty flags. The document is
 9.70 MB.
+## Round 140: the 禾晾, loaded
+
+The module said these racks wait "because a frame with nothing on it reads as scaffolding" — so they are drawn **loaded**: three racks
+of two posts and a head beam, and **four sheaves hanging from each beam** to a hand's width above the paving. A sheaf is a member
+too — a panel hung from the beam — and the load is the whole difference between a rack and a scaffold.
+
+**Where they stand was decided by the plate again.** Built along the square's east edge they were behind the east house and invisible;
+they run across the square's **west half** now, which is the side the camera looks past.
+
+**Identity: 40 scenes, 145 642 rows**; `dong_village` 7 738 → **7 864** — six posts, three beams and twelve sheaves. The document is
+9.74 MB.

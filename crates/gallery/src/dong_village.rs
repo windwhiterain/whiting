@@ -47,6 +47,19 @@ const HOUSES: [(f32, f32, f32); 3] = [
     (-2.0, -17.0, 0.0),
 ];
 
+/// The 禾晾: how many racks, where the first stands, how far apart, the racks own length, its height and a posts section.
+const RACKS: usize = 3;
+const RACK_X: f32 = -11.20;
+const RACK_FROM: f32 = -11.40;
+const RACK_GAP: f32 = 5.40;
+const RACK_LONG: f32 = 3.60;
+const RACK_HIGH: f32 = 2.90;
+const RACK_POST: f32 = 0.14;
+/// How many sheaves hang from each rack, how wide one is and how far off the paving its foot hangs.
+const RACK_SHEAVES: usize = 4;
+const SHEAF_WIDE: f32 = 0.58;
+const SHEAF_FOOT: f32 = 0.55;
+
 const SUN: [f64; 3] = [-26.0, 30.0, 20.0];
 const SUN_IRRADIANCE: f64 = 3.3;
 const SHADOW_EXTENT: f64 = 52.0;
@@ -119,6 +132,53 @@ pub fn document() -> Building {
             0.0,
             PAVING,
         ));
+    }
+
+    // **The 禾晾: the rice-drying racks at the square's east edge.** This module said they wait "because a frame with nothing on it
+    // reads as scaffolding" — so they are drawn **loaded**: two posts and a head beam, and four bundles of rice hanging from the beam,
+    // which is what the rack is for and what makes it a rack. The bundles are members too: a sheaf of rice is a panel, and it hangs
+    // from the beam to a hand's width above the paving.
+    for rack in 0..RACKS {
+        let z = RACK_FROM + RACK_GAP * rack as f32;
+        for x in [RACK_X, RACK_X + RACK_LONG] {
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x, 0.0, z] },
+                building::Anchor::Free {
+                    at: [x, RACK_HIGH, z],
+                },
+                [0.0, 1.0],
+                RACK_POST,
+                RACK_POST,
+            ));
+        }
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [RACK_X, RACK_HIGH, z],
+            },
+            building::Anchor::Free {
+                at: [RACK_X + RACK_LONG, RACK_HIGH, z],
+            },
+            [0.0, 1.0],
+            RACK_POST * 0.8,
+            RACK_POST * 0.9,
+        ));
+        // **The sheaves**, hung from the beam's own line and set a hand apart.
+        for index in 0..RACK_SHEAVES {
+            let x = RACK_X
+                + RACK_POST
+                + (RACK_LONG - RACK_POST * 2.0) * (index as f32 + 0.5) / RACK_SHEAVES as f32;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [x, RACK_HIGH - 0.06, z],
+                },
+                building::Anchor::Free {
+                    at: [x, SHEAF_FOOT, z],
+                },
+                [1.0, 0.0],
+                SHEAF_WIDE,
+                0.11,
+            ));
+        }
     }
 
     Building::new(skeleton)
