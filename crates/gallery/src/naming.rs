@@ -439,6 +439,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "slate_gate" => crate::slate_street::document(),
         "slate_street" => crate::slate_street::document(),
         "slate_house" => crate::tunpu::document(),
+        "tunpu_gate" | "tunpu_village" => crate::tunpu_village::document(),
         "tunpu_village" => crate::tunpu_village::document(),
         "tibetan_house" => crate::tibetan::document(),
         "wing" => crate::wing::document(),

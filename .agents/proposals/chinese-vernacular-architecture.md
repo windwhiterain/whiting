@@ -3768,3 +3768,15 @@ covering takes away about sixty rows of relief — **the roof now has fewer line
 where a picture would only say "it looks different".
 
 **Identity: 57 scenes, 213 380 rows**; `jingpo_village` and `jingpo_mouth` 2 509 → **2 347**. The document is 7.27 MB.
+## Round 203: the 屯堡 朝门
+
+Round 130's plate looks obliquely down the lane from seventeen metres, and the gate is a shape between two houses. The 屯堡 gate is **the most
+detailed single object in this village** — more numbers than any of its four houses — and it had never been photographed. `tunpu_gate` stands outside
+the compound's wall: the wall, the two piers, the gate's own wide roof over the gap, its leaves, and the two **drums** at the piers' feet, with the
+village's roofs behind.
+
+**First attempt was inside the wall and gave the gate's edge**, which is the same lesson round 194 learned on the 缅寺's stupa: **a plate of an object
+is a plate of its line of sight**, and a gate is drawn to be seen from the lane outside it. The second position is the one where the face is toward
+the lens.
+
+**Identity: 58 scenes, 214 622 rows**; `tunpu_gate` **1 242** (the same document as `tunpu_village`). The document is 7.24 MB.

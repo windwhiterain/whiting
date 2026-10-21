@@ -60,6 +60,27 @@ const TOWER_MERLON_HIGH: f32 = 0.75;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
+/// The **close plate**: the 朝门 from the lane, where its two piers, its head, its drums and its own little roof are the frame and the 碉楼 stands
+/// behind it.
+///
+/// # Why a second camera and not a second document
+///
+/// Round 130's plate looks obliquely down the lane from seventeen metres and the 朝门 is a shape between two houses. The 屯堡 gate is the most
+/// detailed single object in this village — it has more numbers than any of the houses — and it had never been photographed. Rounds 190, 194, 195,
+/// 196 and 200 are the same move.
+pub fn tunpu_gate() -> Value {
+    let building = document();
+    crate::village::scene_of(
+        &building,
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [1.9, 2.5, 14.2],
+        [-0.6, 2.1, 7.0],
+        FIELD_OF_VIEW * 1.10,
+        "tunpu_gate",
+    )
+}
+
 /// Builds the village: four houses, the compound's wall and the gate.
 pub fn tunpu_village() -> Value {
     let building = document();
