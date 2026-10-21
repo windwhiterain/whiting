@@ -92,6 +92,7 @@ pub mod landscape;
 mod lanterns;
 pub mod log_house;
 mod monoliths;
+pub mod mushroom_house;
 pub mod rain_bridge;
 /// The shed scene: the facade — a rhythm, holes cut in it, and parts standing in the bays.
 pub mod shed;
@@ -211,6 +212,7 @@ impl Gallery {
             "log_house",
             "village_square",
             "hillside_village",
+            "mushroom_house",
             "rain_bridge",
             "stilt_gallery",
             "street",
@@ -320,6 +322,7 @@ impl Gallery {
             "log_house" => log_house::log_house(),
             "village_square" => village::village_square(),
             "hillside_village" => village::hillside_village(),
+            "mushroom_house" => mushroom_house::mushroom_house(),
             "rain_bridge" => rain_bridge::rain_bridge(),
             "stilt_gallery" => stilt::stilt_gallery(),
             "terrace" => terrace::terrace(),
