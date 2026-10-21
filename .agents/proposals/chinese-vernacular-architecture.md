@@ -2372,3 +2372,27 @@ it needs a host this crate can give it — a dedicated fascia mass, or a roof th
 
 **Identity: 36 scenes, 126 329 rows**; `chuandou_house` 1 066 → **1 072** — the porch floor's top and its four edges. The
 document is 7.39 MB.
+## Round 93: the wall plate, and where the 腰檐's warp really comes from
+
+Round 92 blamed the 腰檐's refusal on its **host**: "a `lean_to` hosted by a crowned mass warps that mass's wall top". This round
+put the roof on a **plate of its own** — a thin uncrowned mass against the body's wall — and the same `FaceNotPlanar
+{ departure: 0.11 }` came back on **`Mass(0)`**, the crowned body. So the host is not what is raised.
+
+Then the plate alone, with the roof dropped:
+
+| what is in the document | what the crate says |
+| --- | --- |
+| body + porch floor + **plate** | clean, 7 392 939 bytes |
+| body + porch floor + plate + **腰檐** | `Mass(0) WallTop { edge: 3, half: 0 }` departs `0.11 m` |
+
+**It is the lean-to roof itself, not its host, that raises the wall top it stands against** — the roof reads the mass its high
+edge abuts and lifts that wall's top to the crest, and a crowned wall top has no room for the lift. A dedicated host does not
+help, because the abutting mass is found from the plan and not from the `host` field.
+
+So the plate stays and the eave does not. **And the plate is worth keeping on its own account**: it is the 穿斗 frame's wall
+plate, the beam a purlin sits on, standing `0.22 m` deep against the boards from the posts' heads to the eave line. The second
+eave needs one of two things this crate does not have yet — a roof that does not lift its neighbour's wall top, or a wall top
+that can be lifted above a crown.
+
+**Identity: 36 scenes, 126 342 rows**; `chuandou_house` 1 072 → **1 085** — the plate's four faces and its top. The document is
+7.39 MB.

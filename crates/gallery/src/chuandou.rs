@@ -33,6 +33,10 @@ const POSTS: usize = 6;
 const POST: f32 = 0.17;
 /// The porch's floor: one step above the ground, because a 穿斗 house's porch is a floor and not a pavement.
 const PORCH_FLOOR: f32 = 0.34;
+/// The 腰檐`s own readings: the wall plate`s foot, the eave`s high edge against it, and how low it reaches past the posts.
+const PLATE_FOOT: f32 = 2.90;
+const EAVE_HIGH: f32 = 3.22;
+const EAVE_LOW: f32 = 2.64;
 
 /// The body's boards and its floor plate: a board wall is thin, which is why the eaves are deep.
 const WALL: f32 = 0.22;
@@ -128,6 +132,31 @@ pub fn document() -> Building {
         0.0,
         PORCH_FLOOR,
     ));
+    // **The wall plate along the body's front, which is what a 穿斗 frame hangs its purlins on.** It is a beam and not a wall: a
+    // thin mass `0.22 m` deep standing against the boards, `0.32 m` tall, from the posts' heads up to the main roof's eave line.
+    //
+    // It was built to carry the 腰檐, and the 腰檐 is still not drawn — see the round's record: **it is the lean-to roof itself,
+    // not its host, that raises the wall top it stands against.** Measured twice: with the roof dropped, this same plate is a
+    // clean document; with it, `Mass(0)`'s `WallTop { edge: 3, half: 0 }` departs by `0.11 m`, whether the roof is hosted by the
+    // body or by this plate.
+    let plate = [
+        [-half - 0.55, deep + 0.02],
+        [half + 0.55, deep + 0.02],
+        [half + 0.55, deep + 0.24],
+        [-half - 0.55, deep + 0.24],
+    ];
+    let mut wall_plate = Mass::new(
+        ops::wound(plate.to_vec())
+            .into_iter()
+            .map(|at| PlanNode::new(at, PLATE_FOOT))
+            .collect(),
+        EAVE_HIGH,
+    );
+    wall_plate.wall = 0.07;
+    wall_plate.slab = 0.12;
+    let plate_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(wall_plate);
+    let _ = (plate_id, EAVE_LOW, EAVE_HIGH);
     // **The porch's own beam**: one member laid across the posts' heads, which is what a 穿斗 frame's purlin is at this scale.
     skeleton.members.push(building::Member::new(
         building::Anchor::Free {
