@@ -52,11 +52,25 @@ const SUN_IRRADIANCE: f64 = 3.2;
 const SHADOW_EXTENT: f64 = 40.0;
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
-/// Builds the hamlet: three 竹楼 along the lane and the well in front of them.
+/// Builds the hamlet: three 竹楼 along the lane, the well in front of them, and the bamboo clumps a Dai hamlet lives in.
 pub fn hamlet() -> Value {
     let building = document();
+    // **The clumps stand where a hamlet's do**: behind the row, along the lane's ends, and one by the well. The species is
+    // grown once and placed at every seat, so five clumps cost one plant.
+    let clumps = crate::settlement_plants::bamboo_clumps(
+        &[
+            [-17.5, 4.5],
+            [-6.5, 7.5],
+            [6.0, 8.0],
+            [17.0, 5.0],
+            [11.5, -7.0],
+            [-14.0, -7.5],
+        ],
+        &|at| grade(at[0] as f64, at[1] as f64) as f32,
+    );
     crate::village::scene_of(
         &building,
+        &clumps,
         &grade,
         [-8.0, 6.2, 26.0],
         [0.0, 3.2, 1.0],

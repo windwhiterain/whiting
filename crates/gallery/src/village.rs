@@ -298,6 +298,7 @@ pub fn village_west() -> Value {
 fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Value {
     scene_of(
         &document(),
+        &crate::settlement_plants::Extra::none(),
         &|x, z| grade(x, z),
         eye,
         target,
@@ -330,6 +331,7 @@ pub fn hillside_village() -> Value {
     let target = [2.0, f64::from(platform) + 4.0, -6.0];
     scene_of(
         &hillside_document(),
+        &crate::settlement_plants::Extra::none(),
         &ground,
         eye,
         target,
@@ -357,6 +359,7 @@ fn ground_scale(name: &str) -> (usize, f64) {
 /// settlement reuses it rather than writing a fourth copy of the same twelve material declarations.
 pub(crate) fn scene_of(
     building: &Building,
+    plants: &crate::settlement_plants::Extra,
     ground_at: &dyn Fn(f64, f64) -> f64,
     eye: [f64; 3],
     target: [f64; 3],
@@ -465,6 +468,13 @@ pub(crate) fn scene_of(
         })
         .collect::<Vec<_>>()
     };
+    // **A settlement's plants are placed per stage like everything else**, and a scene with none adds nothing: the
+    // extra's instance list is empty and the stage's list is the one it always was.
+    let grown = |stage: &str| {
+        let mut all = placed(stage);
+        all.extend(plants.instances(stage));
+        all
+    };
 
     let extras = building_extras();
     let point = extras.point_schema();
@@ -526,26 +536,39 @@ pub(crate) fn scene_of(
         ("outputs".to_owned(), outputs_field()),
         (
             "meshes".to_owned(),
-            Value::List(vec![
-                mesh("walls", "Triangles", point.clone(), walls),
-                mesh("roofs", "Triangles", point.clone(), roofs),
-                mesh("flats", "Triangles", point.clone(), flats),
-                mesh("timber", "Triangles", point.clone(), timbers),
-                mesh("ground", "Triangles", plain.point_schema(), ground),
-            ]),
+            Value::List({
+                let mut all = vec![
+                    mesh("walls", "Triangles", point.clone(), walls),
+                    mesh("roofs", "Triangles", point.clone(), roofs),
+                    mesh("flats", "Triangles", point.clone(), flats),
+                    mesh("timber", "Triangles", point.clone(), timbers),
+                    mesh("ground", "Triangles", plain.point_schema(), ground),
+                ];
+                for (label, packed) in plants.meshes() {
+                    all.push(mesh(&label, "Triangles", plain.point_schema(), packed));
+                }
+                all
+            }),
         ),
         (
             "screen_materials".to_owned(),
             Value::List(vec![screen_material("post", "post")]),
         ),
         ("post_processes".to_owned(), post_processes(&["post"])),
-        ("mesh_materials".to_owned(), Value::List(materials)),
+        (
+            "mesh_materials".to_owned(),
+            Value::List({
+                let mut all = materials;
+                all.extend(plants.materials());
+                all
+            }),
+        ),
         (
             "instances".to_owned(),
             instances(vec![
-                (Stage::Shadowing, placed("cast")),
-                (Stage::Depthing, placed("depth")),
-                (Stage::Lighting, placed("shade")),
+                (Stage::Shadowing, grown("cast")),
+                (Stage::Depthing, grown("depth")),
+                (Stage::Lighting, grown("shade")),
             ]),
         ),
     ])

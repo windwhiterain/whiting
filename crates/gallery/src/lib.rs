@@ -96,6 +96,7 @@ pub mod log_house;
 mod monoliths;
 pub mod mushroom_house;
 pub mod rain_bridge;
+pub mod settlement_plants;
 /// The shed scene: the facade — a rhythm, holes cut in it, and parts standing in the bays.
 pub mod shed;
 /// The trees of the Hengduan: one species at a time, each drawn to the bar the proposal sets.

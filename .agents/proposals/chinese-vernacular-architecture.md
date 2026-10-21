@@ -1717,3 +1717,32 @@ The beam runs between each plot's two posts at `base + FLOOR - 0.22`, on the pro
 six faces a plot, ten plots.
 
 **27 scenes, 110 245 rows**, the other twenty-six unchanged.
+## Round 60: plants in a settlement — the bridge
+
+The gallery has had plants since the vegetation arc, and no *building* scene has ever shown one: a plant lives in
+`vegetation`'s world of lofts and leaf placements, a building in `building`'s world of solids, and nothing carried a plant
+into a settlement. **`settlement_plants` is that bridge**, and it is small because both halves already existed:
+
+- **`vegetation_mesh::wood_points_of`** packs the culms into one `PackedList`, with the placement baked in — the wood is
+  one mesh for the whole row of clumps;
+- **`vegetation_mesh::template_points`** packs one blade, and every leaf of every clump is an **instance** of it, with the
+  transform `vegetation_instancing::standing_at` already knew how to make;
+- **`vegetation::expand::expand`** grows one species once, so six clumps cost one plant.
+
+`village::scene_of` takes an `Extra` — meshes, materials, and every instance of them per stage — and the village passes
+`Extra::none()`, which adds nothing at all: **the mountain village's scene is byte-identical to yesterday's**.
+
+The Dai hamlet grows six bamboo clumps behind the row, by the well and at the lane's ends.
+
+### What reads and what does not
+
+The clumps are **bare culms with their leaves at the top**, which is the species: `derive::bamboo` puts a handful of blades
+on the upper nodes, and a *picture* of bamboo is dense because it draws a grove of hundreds. Getting a single clump to
+read as a clump is a **leaf-field** question (density and the nodes a field is allowed to reach), not this module's, and it
+is recorded as the next step.
+
+Drawings are scaled for the distance: clumps at `1.3`, blades at `3.0`, because a blade at the species' own scale is under
+a pixel from the lane.
+
+**Identity: 27 scenes, 110 245 rows, unchanged** — a plant is not a building element and does not enter the building's own
+table. The hamlet's document grew from 7.75 MB to 12.57 MB, which is the wood and the leaves.
