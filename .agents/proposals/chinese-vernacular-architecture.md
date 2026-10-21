@@ -3065,3 +3065,15 @@ foreground beside the pond, where a rim on its platform and a frame over it read
 
 **Identity: 40 scenes, 146 335 rows**; `dong_village` 8 520 → **8 557** — a rim's four faces, its top and inner loop, a platform and
 three windlass members. The document is 9.96 MB.
+## Round 148: the 旗杆石, and the pole that makes them
+
+Round 105 gave the 本主庙 a pair of **旗杆石** — a stone with a foot and a slot, where a banner pole is stepped — and the 侗寨's 鼓楼坪 has
+the same pair for the same purpose: the village's banners go up beside the tower on the days it dances. **The same object in its second
+scene**, drawn identically.
+
+**The stones alone did not read.** Two `0.56 m` blocks at the tower's foot are two pale specks at this distance, and the first plate came
+back **byte-identical to the one without them** — a change the frame could not see. What makes the pair legible is what the stone is
+*for*: the **pole**. With a `5.6 m` pole in each slot the pair reads as 旗杆石 and not as two bollards, and the plate shows them in
+front of the tower.
+
+**Identity: 40 scenes, 146 373 rows**; `dong_village` 8 557 → **8 595** — two stones and two poles. The document is 9.97 MB.

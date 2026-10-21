@@ -116,6 +116,15 @@ const WELL_WALL: f32 = 0.24;
 const WELL_HIGH: f32 = 0.85;
 const WELL_PLINTH: f32 = 0.24;
 
+/// The 旗杆石 in front of the tower: how far either side of the axis, how far down the square, its plan and its foot.
+const FLAG_STONE_AT: f32 = 2.30;
+const FLAG_STONE_Z: f32 = -5.60;
+const FLAG_STONE: f32 = 0.56;
+const FLAG_STONE_FOOT: f32 = 0.88;
+/// The poles the stones hold: how high they stand and their section.
+const FLAG_POLE_HIGH: f32 = 5.60;
+const FLAG_POLE: f32 = 0.13;
+
 const SUN: [f64; 3] = [-26.0, 30.0, 20.0];
 const SUN_IRRADIANCE: f64 = 3.3;
 const SHADOW_EXTENT: f64 = 52.0;
@@ -582,6 +591,41 @@ pub fn document() -> Building {
         0.11,
         0.15,
     ));
+
+    // **The 旗杆石: the two stones in front of the tower.** Round 105 gave the 本主庙 a pair — a stone with a foot and a slot, where a
+    // banner pole is stepped — and a 侗寨's 鼓楼坪 has the same pair for the same purpose: the village's own banners go up beside the
+    // tower on the days it dances. **The same object, its second scene**, drawn identically: a mass `FLAG_STONE` square with a foot.
+    for across in [-1.0_f32, 1.0] {
+        let stone_x = across * FLAG_STONE_AT;
+        let mut stone = Mass::new(
+            ops::wound(vec![
+                [stone_x - FLAG_STONE * 0.5, FLAG_STONE_Z - FLAG_STONE * 0.5],
+                [stone_x + FLAG_STONE * 0.5, FLAG_STONE_Z - FLAG_STONE * 0.5],
+                [stone_x + FLAG_STONE * 0.5, FLAG_STONE_Z + FLAG_STONE * 0.5],
+                [stone_x - FLAG_STONE * 0.5, FLAG_STONE_Z + FLAG_STONE * 0.5],
+            ])
+            .into_iter()
+            .map(|at| PlanNode::new(at, 0.0))
+            .collect(),
+            FLAG_STONE_FOOT,
+        );
+        stone.wall = FLAG_STONE * 0.34;
+        stone.slab = 0.12;
+        skeleton.masses.push(stone);
+        // **The pole the stone is for.** A stone with a slot and no pole is a bollard: the pair only reads as 旗杆石 with the poles in
+        // them, and at this distance the poles are what the plate can see at all.
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [stone_x, FLAG_STONE_FOOT, FLAG_STONE_Z],
+            },
+            building::Anchor::Free {
+                at: [stone_x, FLAG_POLE_HIGH, FLAG_STONE_Z],
+            },
+            [1.0, 0.0],
+            FLAG_POLE,
+            FLAG_POLE,
+        ));
+    }
 
     Building::new(skeleton)
 }
