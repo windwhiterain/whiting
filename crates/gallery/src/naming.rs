@@ -406,6 +406,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "dai_temple" => crate::dai_temple::document(),
         "dong_water" | "dong_square" | "dong_village" => crate::dong_village::document(),
         "drum_tower" => crate::drum_tower::document(),
+        "dragon_kiln" => crate::dragon_kiln::document(),
         "earthen_house" => crate::earthen::document(),
         "bai_court" => crate::bai_court::document(),
         "bai_gate" => crate::bai_lane::document(),

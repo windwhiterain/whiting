@@ -83,6 +83,7 @@ pub mod dai_temple;
 /// The dawn over the rice terraces, held as numbers so a tracer can be handed it as a world.
 mod dawn;
 pub mod dong_village;
+pub mod dragon_kiln;
 pub mod drum_tower;
 mod dunes;
 pub mod earthen;
@@ -247,6 +248,7 @@ impl Gallery {
             "dong_village",
             "dai_stupa",
             "drum_tower",
+            "dragon_kiln",
             "earthen_house",
             "bai_gate",
             "bai_court",
@@ -399,6 +401,7 @@ impl Gallery {
             "dong_village" => dong_village::dong_village(),
             "dai_stupa" => dai_temple::dai_stupa(),
             "drum_tower" => drum_tower::drum_tower(),
+            "dragon_kiln" => dragon_kiln::dragon_kiln(),
             "earthen_house" => earthen::earthen_house(),
             "bai_gate" => bai_lane::bai_gate(),
             "bai_court" => bai_court::bai_court(),

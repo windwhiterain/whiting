@@ -4185,3 +4185,18 @@ two-storey house read as one from the yard.
 
 **And the debt is retired rather than carried**: `caravan_inn.rs`'s "what it does not draw" now says the upstairs **is** drawn and that the interior behind it
 is not — which is the distinction the last ten rounds kept confusing.
+## Round 230: the 龙窑, the twenty-fourth type
+
+A 龙窑 is the one building in this catalogue that is **a machine and a hill at once**: its chamber is thirty metres of masonry laid **up a slope**, so the draught
+comes from the doors at the bottom and the heat climbs to the chimney at the top. The potter's shed over the doors is the only part that is a building.
+
+**The barrel's climb cost the round its one refusal.** Five chambers were first laid as a chain of `Join::Storey` attachments — and the crate answered
+`StoreyNotOnTop` and `StoreyOverhangs` five times over, because **an attached storey must nest inside its host's plan** and a kiln **runs along `x`**, it does
+not stack. The chambers now stand **side by side on the same ground with rising crowns**, and the slope is in the crown line, which is what a 龙窑's slope
+looks like from outside. **Attachment is for a volume standing over another volume; a chain along the ground is not that**, and this is the fourth round
+(169, 207, 229 and this one) to learn where the boundary is.
+
+**Identity: 67 scenes, 243 405 rows**; `dragon_kiln` **111** — five chambers, a chimney, a mouth and a shed, and the cheapest type in the gallery.
+
+**The camera was too high and was lowered on the second try**: at six metres the plate looks **into** the chambers' own crowns and reads five open boxes; at
+three metres it looks **along** them and reads a stair, which is what the building is.
