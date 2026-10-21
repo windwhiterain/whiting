@@ -57,6 +57,13 @@ const GALLERY_HALF: f32 = 8.20;
 const GALLERY: f32 = 0.95;
 const GALLERY_DECK: f32 = 0.12;
 
+/// The thatch: a coarse covering — four times a tiles period, nearly closed, and deep enough to read as a thatchs own thickness.
+const THATCH: building::Covering = building::Covering {
+    period: 0.46,
+    fill: 0.94,
+    height: 0.11,
+};
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the scene: from the side and low, because a longhouse is a length and a roof and both are read along the long wall.
@@ -78,6 +85,17 @@ pub fn document() -> building::Building {
     // **Up onto the stilts.** The starter builds a body standing on the ground; a 干栏's floor is `LEG` above it, and every part rises
     // together — mass, roof, slab and the gable crowns — which is what `ops::raise` is for.
     building::ops::raise(&mut skeleton, LEG);
+
+    // **The roof is thatch, not tile.** A longhouse is the one type here whose roof is **grass**: a straight slope of bundled thatch, laid
+    // coarse, with no 举架 ladder in it and no glazed course on it. Two numbers say so — the covering's own period, which is more than twice a
+    // tile's, and the **empty profile**, which makes the slope a straight plane instead of a stepped one. Everything else about the roof,
+    // its pitch and its gable ends, is the starter's and stays.
+    for roof in &mut skeleton.roofs {
+        for plane in &mut roof.planes {
+            plane.profile.clear();
+        }
+        *roof = roof.clone().with_covering(THATCH);
+    }
 
     // **The posts.** Two rows under the floor's long edges, as many as the length needs, each from the ground to the floor.
     let half = STARTER.width * 0.5;

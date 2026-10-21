@@ -3473,3 +3473,14 @@ between them, and three skull posts along the lane's edge.
 taller than the houses, and they read at once.
 
 **Identity: 46 scenes, 157 300 rows**; `jingpo_village` 720 → **756** — two gate posts, a beam and three skull posts. The document is 7.30 MB.
+## Round 179: the thatch
+
+A longhouse is the one type here whose roof is **grass**: a straight slope of bundled thatch, laid coarse, with no 举架 ladder in it and no glazed
+course. Two numbers say so — the covering's own period, more than twice a tile's, and the **empty profile**, which makes the slope a straight
+plane instead of a stepped one. Pitch, gable ends and all the rest are the starter's and stay.
+
+**And it revealed that rounds 174–178 had no covering at all.** `longhouse` goes 221 → **721** rows: `derive::starter` leaves the covering to its
+author, and the stripes the earlier plates showed were the roof's own profile steps, not tiles. The plates of the last five rounds were of a **bare
+roof**, and no one could have known from the frame — the table is what said so.
+
+**Identity: 46 scenes, 159 300 rows**; `longhouse` 221 → **721** and `jingpo_village` three longhouses the same way. The document is 7.30 MB.
