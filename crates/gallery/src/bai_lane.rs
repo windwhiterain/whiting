@@ -110,6 +110,24 @@ pub fn bai_lane() -> Value {
     )
 }
 
+/// The **close plate**: a court's gate from the lane, where its 题额, its four 门簪 and its two 抱鼓石 are the frame.
+///
+/// # Why a second camera and not a second document
+///
+/// Round 132's lane plate is a view down twenty-six metres of lane, and at that distance the 门簪 (round 136) and the 抱鼓石 (round 137) are three
+/// pixels each — they were built to be looked at from the lane's own width. This is round 190's, 194's and 195's move for the fourth time.
+pub fn bai_gate() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [10.2, 2.7, -23.4],
+        [3.2, 2.0, -16.2],
+        FIELD_OF_VIEW * 1.15,
+        "bai_gate",
+    )
+}
+
 /// Returns the document: three courts, and the lane's paving between them.
 pub fn document() -> building::Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());

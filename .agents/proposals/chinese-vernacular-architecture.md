@@ -3670,3 +3670,14 @@ arm**, and a missing one answers
 scene and prints the contract it violated — and the round records it because the list is easy to forget and impossible to misread.
 
 **Identity: 54 scenes, 181 632 rows**; `slate_gate` **2 158** (the same document as `slate_street`). The document is 7.76 MB.
+## Round 196: the 白族 gate
+
+Round 132's lane plate is a view down twenty-six metres of lane, and at that distance the **门簪** (round 136) and the **抱鼓石** (round 137) are three
+pixels each — they were built to be looked at from the lane's own width. `bai_gate` stands five metres off a court's gate: the gate house with its
+roof, its two piers, the 题额 with its four 门簪 above the opening, a 抱鼓石 at the foot of the jamb, the leaves, and the court showing through.
+
+**Four rounds of small objects, one plate to hold them.** Rounds 136 and 137 each added a piece to this gate and each was measured in the table; this
+is the plate where they are objects, and it is the fifth such plate in twelve rounds — **the gallery's scene count is growing faster than its type
+count, which is what a finished catalogue looks like**.
+
+**Identity: 55 scenes, 187 426 rows**; `bai_gate` **5 794** (the same document as `bai_lane`). The document is 8.16 MB.
