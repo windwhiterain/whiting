@@ -1844,7 +1844,17 @@ fn banded_mass(
         let mut in_loop = Vec::with_capacity(count);
         for node in 0..count {
             let at = level.outline[node];
-            let shared = index > 0 && levels[index - 1].outline[node].position == at.position;
+            let below = match index {
+                0 => None,
+                _ => Some(levels[index - 1].outline[node]),
+            };
+            // **The whole node, and not merely its plan position.** Two sections that stand on one plan at two
+            // elevations are two different corners: sharing them collapsed the band between them to no height at all
+            // and left the solid open at every edge of it (measured: `open boundary edges: 12` on a four-section mass,
+            // with `[2.6, 0.0, -2.1] -> [2.6, 3.16, 4.3]` the slanted inner edge of a band that had no floor).
+            let shared = below.is_some_and(|below| {
+                below.position == at.position && below.elevation == at.elevation
+            });
             out_loop.push(match shared {
                 true => outer[index - 1][node],
                 false => solid.point(lift(at.position, at.elevation)),

@@ -271,3 +271,25 @@ three corners are all at the *base* elevation — which says the crown vector ha
 **section below's** elevations where the section above's were meant. That is the next thing to read, and it is one
 instrumented run away: print the `crown` vector and the level elevations for a four-section mass after `site::seat`,
 which is the one step between authoring and expansion that this scene applies and the bridge's abutments do not.
+## Round 40: the probe, and the defect it found in one run
+
+`crates/building/examples/band_probe` builds **one mass of four sections** — a 骑楼's — and prints the boundary edges
+nothing claims. It is the smallest document that can answer "does the band walk close such a solid at all", and it
+answered a defect in its first run:
+
+**A shared corner was compared by plan position alone.** Two consecutive sections that stand on the same plan at two
+*elevations* are two different corners, and sharing them collapsed the band between them to no height at all: the probe
+reported `open boundary edges: 12` with the slanted inner edge `[2.6, 0.0, -2.1] -> [2.6, 3.16, 4.3]` — the side of a
+band that had no floor. The test is the whole node now, position **and** elevation, and the count went to 16 open edges
+of a different shape: the *soffit band*'s two horizontal seams, which is a real question about which band closes which
+seam and not a defect in sharing.
+
+**All twenty-four scenes are unchanged at 85 489 rows** — the sharing is inert for every mass the gallery has, because
+no scene yet carries two sections on one plan at two elevations.
+
+### What the probe says the next step is
+
+With every band closing its own crown the seams move but do not close, and the warped faces name the reason:
+`WallTop { edge: 0, band: 0 }` departs its plane by `0.2` and `OuterWall { edge: 2, band: 0 }` by `0.99`, on a band
+whose two sections are **the same plan at two elevations** — a band that cannot warp at all. That is the thread to pull
+next, and the probe is the instrument that shows it in one run instead of in a five-building street.
