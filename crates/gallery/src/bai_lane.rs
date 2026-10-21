@@ -19,7 +19,7 @@
 //! - **the lane's other end**: a village street is longer than three plots, and three is this scene's frame;
 //! - **the village's 本主庙**, which is the settlement's public building and not a house.
 
-use building::BuildingSkeleton;
+use building::{BuildingSkeleton, ops};
 use definition::Value;
 
 /// The plots: two west of the lane, one east, and how far each is turned. **The gate of a court faces `+x`**, so the west
@@ -32,6 +32,9 @@ const PLOTS: [(f32, f32, f32); 3] = [
 
 /// The lane: how wide, and how far it runs past the plots.
 const LANE_HALF: f32 = 3.20;
+/// The 文笔塔 past the lane's north end: where it stands, measured from the lane's own origin.
+const TOWER_AT: [f32; 2] = [8.0, 26.0];
+
 const LANE_FROM: f32 = -21.0;
 const LANE_TO: f32 = 21.0;
 /// How many flags the lane is laid in, the joint between them, and how thick a flag is.
@@ -434,6 +437,16 @@ pub fn document() -> building::Building {
         0.0,
         STELE_FOOT,
     ));
+
+    // **The 文笔塔 at the lane's north end.** A 白族 village raises its tower where the lane leaves it, and this one stands past the last gate rather than
+    // beside it: the tower's own document, translated, with none of its numbers restated. **The same type in a second village** — round 208 put one at
+    // the 屯堡's east mouth, and the two are the same construction read against two different streets.
+    let mut tower = crate::fengshui_tower::document().skeleton;
+    ops::translate(&mut tower, TOWER_AT);
+    assert!(
+        ops::merge(&mut skeleton, tower),
+        "the tower places no parts, so the merge always happens"
+    );
 
     building::Building::new(skeleton)
 }

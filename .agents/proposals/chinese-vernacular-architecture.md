@@ -3883,3 +3883,17 @@ the difference between an ornament and an entrance.
 building *is* — **the cheapest change in this gallery's history and the only one in two hundred rounds that turned a wall into a way in**.
 
 **Identity: 60 scenes, 223 392 rows**.
+## Round 211: the tower in a second village
+
+Round 208 put the 文笔塔 at the 屯堡's east mouth and wrote the rule: *a type that has no site is finished when it stands in a village's document.* A
+白族 village raises the same tower at the end of its lane, and this round proves the rule is about **the type's site and not about one street**: the
+lane's own plate now looks through its 门楼 and down a paved lane that terminates in the tower, and **not one of the tower's numbers was restated to
+put it there**.
+
+**The two villages read differently through the same construction**, which is the point of a catalogue: in the 屯堡 the tower rises past the end of a
+walled street; in the 白族 lane it rises past a gate that frames it. **One type, two sites, two pictures.**
+
+**Identity: 60 scenes, 224 398 rows**; `bai_lane` and `bai_gate` 5 794 → **6 297** — the tower's 503 rows exactly, which is the same check round 209
+made on the 屯堡's street: **a composed type's rows appear once per scene that composes it, and the difference is the type**.
+
+The document is **20.59 MB** — the largest here, because this lane is three 三坊一照壁 courts and now a tower.
