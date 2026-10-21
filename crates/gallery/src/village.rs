@@ -61,6 +61,10 @@ const GATE_HEIGHT: f32 = 3.4;
 const GATE_WALL: f32 = 0.42;
 const GATE_HEAD: f32 = 0.25;
 
+/// The 寨门's two wings: how far they run out from its corners, and how high they stand.
+const GATE_WING: f32 = 5.4;
+const GATE_WING_HEIGHT: f32 = 1.9;
+
 /// How steeply the ground falls away outside the square, in metres of drop per metre, and how far it is
 /// allowed to fall.
 ///
@@ -742,6 +746,22 @@ pub fn compose(ground: impl Fn(f64, f64) -> f64, lane: bool, platform: f32) -> B
             }));
         }
         let _ = deep_gate;
+        // **And the gate's two wings**: a gate standing alone in a field is a porch, and what makes it a gate is
+        // that it closes something. Two runs of wall go out from its own corners along the lane, on the ground at
+        // their own feet — the same construction as the terrace's kerb, because a village wall is a fence and not a
+        // building, and this crate keeps the two apart.
+        for side in [-1.0_f32, 1.0] {
+            let x = middle[0] + side * half_gate;
+            let from = [x, GATE_DEPTH[1]];
+            let to = [x, GATE_DEPTH[1] + GATE_WING];
+            let foot = seated_ground(from) as f32;
+            skeleton.walls.push(building::wall::Wall::new(
+                PlanNode::new(from, foot),
+                PlanNode::new(to, foot),
+                0.42,
+                foot + GATE_WING_HEIGHT,
+            ));
+        }
     }
     // **The terrace is held up by a wall**, one run to a side, standing on the ground at the foot of each drop:
     // a plateau cut into a hill is a cut face, and the village's own edge is what a person on the square sees
