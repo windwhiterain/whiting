@@ -45,6 +45,14 @@ const SOUTH_HIGH: f32 = 2.30;
 const GATE_CLEAR: f32 = 2.40;
 const GATE_HEAD: f32 = 0.46;
 
+/// The 厦子 in front of the 正房: its half width, its edge (where its posts stand), how far back it reaches, its height and its posts.
+const XIAZI_HALF: f32 = 5.20;
+const XIAZI_EDGE: f32 = -COURT_Z + 2.30;
+const XIAZI_BACK: f32 = -COURT_Z + 0.10;
+const XIAZI_HIGH: f32 = 3.05;
+const XIAZI_POSTS: usize = 4;
+const XIAZI_POST: f32 = 0.17;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// Builds the scene: from the court's south-east, where the three roofs and the screen read as one room without a ceiling.
@@ -194,6 +202,39 @@ pub fn document() -> Building {
         skeleton.roofs.push(roof);
     }
     let _ = screen_id;
+
+    // **The 厦子: the deep veranda in front of the 正房.** A 纳西 house is not a box with a porch — its front is a **second roof**, lower and
+    // shallower, carried on a row of posts and reaching out over the court. It is what a 丽江 court is seen by from inside, and the court
+    // plate's whole near edge was bare without it.
+    //
+    // It is **posts and a roof slab** and not a `lean_to`: a lean-to needs a host mass and this veranda is carried by its own row, which is
+    // what a 厦子 is.
+    for index in 0..XIAZI_POSTS {
+        let x = -XIAZI_HALF + 2.0 * XIAZI_HALF * index as f32 / (XIAZI_POSTS - 1) as f32;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, 0.0, XIAZI_EDGE],
+            },
+            building::Anchor::Free {
+                at: [x, XIAZI_HIGH, XIAZI_EDGE],
+            },
+            [1.0, 0.0],
+            XIAZI_POST,
+            XIAZI_POST,
+        ));
+    }
+    // **The corners wind counter-clockwise in `(x, z)`**: listed the other way the veranda's slab came out inside out
+    // (`SolidInsideOut { volume: -1.94 }`, `SolidOpen { loops: 2 }`), which is a winding and not a shape.
+    skeleton.slabs.push(building::Slab::roof(
+        vec![
+            [-XIAZI_HALF - 0.35, XIAZI_BACK],
+            [XIAZI_HALF + 0.35, XIAZI_BACK],
+            [XIAZI_HALF + 0.35, XIAZI_EDGE - 0.45],
+            [-XIAZI_HALF - 0.35, XIAZI_EDGE - 0.45],
+        ],
+        XIAZI_HIGH,
+        XIAZI_HIGH + 0.15,
+    ));
 
     Building::new(skeleton)
 }

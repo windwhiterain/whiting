@@ -3273,3 +3273,17 @@ gap: a stone head resting on the screen's end and the wall's end, two leaves, an
 head spans exactly the gap so it owns no wall's plan (round 114), and the leaves are `derive::leaf`'s panels — the **sixth** gate to hang them.
 
 **Identity: 42 scenes, 151 100 rows**; `naxi_court` 3 522 → **3 553** — a head, two leaves and a gate roof. The document is 8.16 MB.
+## Round 164: the 厦子
+
+A 纳西 house's front is **a second roof** — lower, shallower, carried on a row of posts and reaching out over the court — and that second roof is
+what a 丽江 court is recognised by from inside. Four posts and a `Slab::roof` in front of the 正房, and the court plate's whole near edge has
+something over it now.
+
+**It is posts and a slab and not a `lean_to`**: a lean-to needs a **host mass** and a 厦子 is carried by its own row, which is exactly what a
+厦子 is.
+
+**And the slab came out inside out**: `SolidInsideOut { volume: -1.94 }`, `SolidOpen { loops: 2 }`, `SolidNotManifold` — its corners listed
+with the z running the other way from the x. A slab's corners must **wind counter-clockwise in `(x, z)`**, which is a winding and not a shape,
+and the two failed edits before it were both a `Replace` that did not match and a `wound` that does not reorder.
+
+**Identity: 42 scenes, 151 130 rows**; `naxi_court` 3 553 → **3 583** — four posts and a roof slab. The document is 8.17 MB.
