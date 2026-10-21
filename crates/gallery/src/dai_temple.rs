@@ -68,6 +68,8 @@ const WALL_THICK: f32 = 0.40;
 const WALL_WALL: f32 = 0.16;
 const GATE_HALF: f32 = 1.60;
 const YARD_PAVING: f32 = 0.06;
+/// The 寺门`s piers: how wide one is, in metres.
+const GATE_PIER: f32 = 0.52;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
@@ -269,6 +271,72 @@ pub fn document() -> Building {
         0.0,
         YARD_PAVING,
     ));
+
+    // **The 寺门: the compound's own gate, over the gap the wall leaves.** A lintel is the **host** and the two piers are `Under`
+    // it — the crate's reading of a carried mass, which round 89 found by needing it: a mass whose top meets the host's foot and
+    // whose plan stands inside the host's plan is a mass that *carries* the host, so the thing over the gap names the things under
+    // it. That is the only relation this crate has for a gateway, and it is why a gate is a lintel with piers beneath and not two
+    // piers with a beam between.
+    //
+    // **The gate stands in front of the wall and not in its gap**: a lintel wide enough to contain two piers reaches past the
+    // gap`s own edges, and the wall lengths either side of it own that square metre — measured as
+    // `UnattachedOverlap { mass: 4, other: 6 }` and `{ 5, 6 }`. A gate porch set `0.62 m` out is the same gate and overlaps
+    // nothing.
+    let gate_z = yard_z + 0.62;
+    let mut lintel = Mass::new(
+        ops::wound(vec![
+            [-GATE_HALF - 0.55, gate_z - 0.42],
+            [GATE_HALF + 0.55, gate_z - 0.42],
+            [GATE_HALF + 0.55, gate_z + 0.42],
+            [-GATE_HALF - 0.55, gate_z + 0.42],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, WALL_HIGH + 1.20))
+        .collect(),
+        WALL_HIGH + 1.20 + 0.55,
+    );
+    lintel.wall = 0.26;
+    lintel.slab = 0.20;
+    let lintel_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(lintel);
+    for across in [-1.0_f32, 1.0] {
+        let x = across * (GATE_HALF - GATE_PIER * 0.5);
+        let mut pier = Mass::new(
+            ops::wound(vec![
+                [x - GATE_PIER * 0.5, gate_z - 0.36],
+                [x + GATE_PIER * 0.5, gate_z - 0.36],
+                [x + GATE_PIER * 0.5, gate_z + 0.36],
+                [x - GATE_PIER * 0.5, gate_z + 0.36],
+            ])
+            .into_iter()
+            .map(|at| PlanNode::new(at, 0.0))
+            .collect(),
+            WALL_HIGH + 1.20,
+        );
+        pier.wall = 0.18;
+        pier.slab = 0.16;
+        pier.attachment = Some(building::Attachment {
+            host: lintel_id,
+            join: building::Join::Under,
+        });
+        skeleton.masses.push(pier);
+    }
+    // **The gate's roof**: a lean-to over the lintel, shedding away from the yard, hosted by the lintel itself.
+    let plan = [
+        [-GATE_HALF - 0.95, gate_z + 0.80],
+        [GATE_HALF + 0.95, gate_z + 0.80],
+        [GATE_HALF + 0.95, gate_z - 0.42],
+        [-GATE_HALF - 0.95, gate_z - 0.42],
+    ];
+    if let Some(roof) = derive::lean_to(
+        lintel_id,
+        plan,
+        WALL_HIGH + 1.20 + 0.55,
+        WALL_HIGH + 1.20 + 1.05,
+        0.14,
+    ) {
+        skeleton.roofs.push(roof.with_covering(TILES));
+    }
 
     Building::new(skeleton)
 }

@@ -2652,3 +2652,16 @@ are two masses both owning the same square metre, which `validate` names `Unatta
 
 **Identity: 38 scenes, 130 637 rows**; `dai_temple` 1 492 → **1 563** — five wall lengths' faces and tops, and a yard's paving.
 The document is 7.53 MB.
+## Round 114: the 缅寺's 寺门
+
+The compound's wall left a gap and the gap was empty. It has a gate now, and it is **round 89's reading**: a **lintel is the
+host** and the two piers are `Under` it — a mass whose top meets the host's foot and whose plan stands inside the host's plan is a
+mass that *carries* the host, so the thing over the gap names the things under it. That is the only relation this crate has for a
+gateway, and it is why a gate is a lintel with piers beneath rather than two piers with a beam between them.
+
+**The gate porch stands `0.62 m` in front of the wall and not in its gap.** A lintel wide enough to contain two piers reaches
+past the gap's own edges, and the wall lengths either side of that gap own the square metre it reaches into: `UnattachedOverlap
+{ mass: 4, other: 6 }` and `{ 5, 6 }`, measured on the first attempt. Set out in front, the same gate overlaps nothing.
+
+**Identity: 38 scenes, 130 847 rows**; `dai_temple` 1 563 → **1 773** — a lintel's faces and top, two piers' and their joins, and
+the gate's own roof. The document is 7.60 MB.
