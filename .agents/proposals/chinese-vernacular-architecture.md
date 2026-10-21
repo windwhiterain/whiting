@@ -3377,3 +3377,19 @@ one: two side lengths and a front split by the gap.
   length starts at the inner face of the one it meets.
 
 **Identity: 43 scenes, 153 750 rows**; `tuzhang_village` 1 291 → **1 551** — twenty lengths' faces and tops. The document is 7.60 MB.
+## Round 171: the 水窖 and the 柴垛
+
+A 彝族 village on a dry ridge lives on the rain it catches, so its one irreplaceable work is a **stone rimmed cistern** sunk into the terrace and
+standing open to the sky; and every yard keeps a **woodpile** under a stone cap. Two cistern rims by the flights of flags, two woodpiles in the
+front yards.
+
+**Two rules paid again, both familiar:**
+- the woodpile's first depth **reached into the yard's front wall** by `0.04 m` (`UnattachedOverlap { 15, 35 }`);
+- its ring's offset was `STACK * 0.30 = 0.57` against a half-depth of `0.525` — `OffsetEdgeFolded`, rounds 74 and 144, the twelfth time:
+  **the offset is a fraction of the narrow side**, never of the length.
+
+**What the plate can say, and what it cannot**: at this camera a `0.46 m` curb and a `1.45 m` woodpile are a few pixels, and the three
+placements tried all read as blocks in the yards rather than as a cistern and a stack. **The round's evidence is the table**; the honest note is
+that the village's camera is composed for its terraces and its roofs, and these objects need a closer plate of their own.
+
+**Identity: 43 scenes, 153 802 rows**; `tuzhang_village` 1 551 → **1 603** — two rims and two stacks. The document is 7.62 MB.

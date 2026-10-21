@@ -49,6 +49,14 @@ const STAIR_HALF: f32 = 1.60;
 const STAIR_FLAGS: usize = 7;
 const JOINT: f32 = 0.06;
 const PAVING: f32 = 0.07;
+/// The 水窖 on the lowest terrace: where the pair stands, the rim's plan and the curb's height above the paving.
+const CISTERN_AT: [f32; 2] = [-4.60, -3.40];
+const CISTERN: f32 = 1.55;
+const CISTERN_HIGH: f32 = 0.46;
+/// The 柴垛 in a yard: its length, how deep it lies and how high it is stacked.
+const STACK: f32 = 1.90;
+const STACK_DEEP: f32 = 1.05;
+const STACK_HIGH: f32 = 1.45;
 /// The terrace's own retaining face, how high it stands above the step it holds, and how thick.
 const RETAIN_HIGH: f32 = 2.10;
 const RETAIN_THICK: f32 = 0.55;
@@ -166,6 +174,59 @@ pub fn document() -> Building {
             wall.slab = 0.14;
             skeleton.masses.push(wall);
         }
+    }
+
+    // **The 水窖: the cistern that makes the hill habitable.** A 彝族 village on a dry ridge lives on the rain it catches, so its one
+    // irreplaceable work is a **stone rimmed cistern** sunk into the terrace, standing open to the sky with its stone curb above the paving.
+    for (cistern_x, cistern_z, level) in [
+        (CISTERN_AT[0], CISTERN_AT[1], 0.0_f32),
+        (CISTERN_AT[0] + 1.60, CISTERN_AT[1] - 1.10, 0.0),
+    ] {
+        let mut rim = building::Mass::new(
+            ops::wound(vec![
+                [cistern_x - CISTERN * 0.5, cistern_z - CISTERN * 0.5],
+                [cistern_x + CISTERN * 0.5, cistern_z - CISTERN * 0.5],
+                [cistern_x + CISTERN * 0.5, cistern_z + CISTERN * 0.5],
+                [cistern_x - CISTERN * 0.5, cistern_z + CISTERN * 0.5],
+            ])
+            .into_iter()
+            .map(|at| building::PlanNode::new(at, level + PAVING))
+            .collect(),
+            level + PAVING + CISTERN_HIGH,
+        );
+        rim.wall = CISTERN * 0.22;
+        rim.slab = 0.12;
+        skeleton.masses.push(rim);
+    }
+
+    // **The 柴垛: the woodpile in the yard.** Every 土掌房 yard keeps one — a stack of split wood under a stone cap — and it is the object
+    // that says a yard is lived in rather than swept.
+    for (across, _, step) in [
+        (HOUSES[0].1, 0.0_f32, HOUSES[0].0),
+        (HOUSES[1].1, 0.0, HOUSES[1].0),
+    ] {
+        let level = STEP_RISE * step as f32 + PAVING;
+        let front = -STEP_DEPTH * step as f32 - STEP_SETBACK * step as f32;
+        let house_front = front - STEP_DEPTH * 0.5 + HOUSE_FRONT;
+        let stack_x = across - YARD_HALF + 1.40;
+        let stack_z = house_front + STACK_DEEP * 0.5 + 0.10;
+        let mut stack = building::Mass::new(
+            ops::wound(vec![
+                [stack_x - STACK * 0.5, stack_z - STACK_DEEP * 0.5],
+                [stack_x + STACK * 0.5, stack_z - STACK_DEEP * 0.5],
+                [stack_x + STACK * 0.5, stack_z + STACK_DEEP * 0.5],
+                [stack_x - STACK * 0.5, stack_z + STACK_DEEP * 0.5],
+            ])
+            .into_iter()
+            .map(|at| building::PlanNode::new(at, level))
+            .collect(),
+            level + STACK_HIGH,
+        );
+        // **The ring's offset is a fraction of the NARROW side**, not of the length: 'STACK * 0.30' is '0.57' against a half-depth of
+        // '0.525' and folds the inner loop (rounds 74 and 144, and this is the twelfth time the rule has been paid for).
+        stack.wall = STACK_DEEP * 0.30;
+        stack.slab = 0.10;
+        skeleton.masses.push(stack);
     }
 
     // **The flights of flags** between the terraces, at the village's own crossing point: seven flags to a flight, up the retaining face.
