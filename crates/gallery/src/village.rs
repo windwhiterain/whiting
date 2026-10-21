@@ -277,6 +277,23 @@ pub fn village_square() -> Value {
     )
 }
 
+/// Builds the village from the west, where the sixth building stands, instead of from the south.
+///
+/// # Invariants
+///
+/// **A village of six buildings needs a view that holds six.** The south view is the one the square earned — the tower
+/// on its axis, the gate behind the camera — and it stands 16 m east of the 蘑菇房's own ground, so the third house
+/// type is behind the western 土掌房 in it. This view is the same document and the same terrace seen along the other
+/// diagonal: the 蘑菇房 in the foreground, the earthen houses and the tower behind it.
+pub fn village_west() -> Value {
+    scene(
+        [-34.0, 9.5, 22.0],
+        [-4.0, 6.0, -8.0],
+        FIELD_OF_VIEW,
+        "village_west",
+    )
+}
+
 /// Builds the scene from one camera, on the terrace.
 fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Value {
     scene_of(

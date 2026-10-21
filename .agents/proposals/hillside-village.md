@@ -92,3 +92,14 @@ scenes unchanged.
 **What this round did not do**: the village's own cameras do not frame the new house — it stands 16 m west of the
 square, past the western 土掌房, which is where the hill has room for it. The composition now has six buildings and a
 frame that shows five.
+## Round 46: a view that holds six
+
+`village_west` is the same document as `village_square` seen along the other diagonal — from the south-west, low, so the
+蘑菇房 is in the foreground, the two 土掌房 stand behind it, and the tower rises over both. **The gallery's twenty-fifth
+scene, and the first frame in which all six buildings of the settlement are visible**: the tower, two earthen houses,
+two log houses, the 骑楼 row and the Hani house down the hill.
+
+It is a *view* and not a building, and that is the honest description: the geometry is the square's to the row, and what
+this scene adds is the reading — a village of several peoples is only a village when one frame can hold it.
+
+Identity: 25 scenes, **105 876 rows**, of which `village_west` is the same **18 205** as the square's own document.
