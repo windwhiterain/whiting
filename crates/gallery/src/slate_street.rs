@@ -29,6 +29,9 @@ const ROW: f32 = 9.40;
 
 /// The lane: half its width, and how far it runs past the last house.
 const LANE_HALF: f32 = 3.10;
+/// The 文笔塔 beyond the east mouth: where it stands, measured from the street's own origin.
+const TOWER_AT: [f32; 2] = [31.0, 12.0];
+
 const LANE_FROM: f32 = -26.0;
 const LANE_TO: f32 = 26.0;
 /// How many flags it is laid in, the joint between them, and how thick a flag is.
@@ -274,6 +277,16 @@ pub fn document() -> Building {
     trough.wall = TROUGH_WALL;
     trough.slab = 0.14;
     skeleton.masses.push(trough);
+
+    // **The 文笔塔 beyond the street's east mouth.** A 屯堡 puts its **风水塔** where the lane leaves the village and the ground falls away — the tower is
+    // the last thing a traveller sees and the first thing a returning one does. It is the tower type's own document, translated, and it composes here
+    // without a single one of its numbers being restated: the street supplies the site and the tower supplies itself.
+    let mut tower = crate::fengshui_tower::document().skeleton;
+    ops::translate(&mut tower, TOWER_AT);
+    assert!(
+        ops::merge(&mut skeleton, tower),
+        "the tower places no parts, so the merge always happens"
+    );
 
     Building::new(skeleton)
 }

@@ -3841,3 +3841,18 @@ nothing else.
 **And ten warnings turned out to be round 197's own**: that round's dead-code removal deleted the functions its imports served and left the imports
 behind, so `cargo build` had **ten unused imports** and one **duplicated `paved_stone`** in `yikeyin.rs`, left by an earlier replace. All are gone; the
 build is silent again.
+## Round 208: the street ends at the tower
+
+Round 207 built the 风水塔 as a type standing in an empty plain — **which is not where a tower stands**. A 屯堡 puts its **文笔塔** where the lane leaves the
+village and the ground falls away: it is the last thing a traveller sees and the first thing a returning one does. The street's own document now merges
+the tower's, translated to the east mouth beyond the village's wall, **without restating a single one of the tower's numbers**.
+
+**And the plate that has been this project's plainest for fifty rounds is now its best**: the lane's flags run to the village's gate and the seven
+stepped eaves of the tower rise behind it between the two rows of slate houses. **A settlement's plate changes when a type is put where the type
+belongs**, and this round moved nothing but a site.
+
+**Identity: 60 scenes, 222 375 rows**; `slate_street` and `slate_gate` 2 158 → **2 322** — the tower's 164 rows exactly.
+
+**The composition rule, written down**: a type that has no site (a tower, a gate, a bridge) is finished when it **stands in a village's document**, not
+when it stands alone in a document of its own. `fengshui_tower` and `slate_street` are now both scenes and both documents, and the tower counts twice
+by design.
