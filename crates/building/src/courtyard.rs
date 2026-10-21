@@ -180,7 +180,15 @@ pub(crate) fn ring(
     let ring = loops.ring(loop_of, wall, top, &crowns);
     let mut solid = Solid::default();
     let points = RingPoints::of(&mut solid, &ring);
-    ring_walk(&mut solid, &ring, &points, RingEnds::BOTH, skeleton, grouped, problems);
+    ring_walk(
+        &mut solid,
+        &ring,
+        &points,
+        RingEnds::BOTH,
+        skeleton,
+        grouped,
+        problems,
+    );
     if !problems.is_empty() {
         return Err(Vec::new());
     }

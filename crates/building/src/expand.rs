@@ -1289,7 +1289,15 @@ fn expand_mass(
         banded_mass(&mut solid, mass, id, skeleton, &grouped, &mut problems);
     } else {
         let points = RingPoints::of(&mut solid, &ring);
-    ring_walk(&mut solid, &ring, &points, RingEnds::BOTH, skeleton, &grouped, &mut problems);
+        ring_walk(
+            &mut solid,
+            &ring,
+            &points,
+            RingEnds::BOTH,
+            skeleton,
+            &grouped,
+            &mut problems,
+        );
     }
     // **A courtyard is built before anything is spliced, and refused with the mass.** The ring is
     // built in its own point numbering by the module that owns it, and only the ones that came back
@@ -1368,9 +1376,15 @@ impl RingPoints {
                 ring.walked[node].position,
                 ring.walked[node].elevation,
             )));
-            points.authored_top.push(solid.point(lift(ring.walked[node].position, ring.top_at(node))));
-            points.offset_base.push(solid.point(lift(ring.offset[node], ring.walked[node].elevation)));
-            points.offset_top.push(solid.point(lift(ring.offset[node], ring.top_at(node))));
+            points
+                .authored_top
+                .push(solid.point(lift(ring.walked[node].position, ring.top_at(node))));
+            points
+                .offset_base
+                .push(solid.point(lift(ring.offset[node], ring.walked[node].elevation)));
+            points
+                .offset_top
+                .push(solid.point(lift(ring.offset[node], ring.top_at(node))));
         }
         points
     }
@@ -1393,7 +1407,10 @@ pub(crate) struct RingEnds {
 
 impl RingEnds {
     /// Both ends, which is a ring standing on its own: a mass`s whole wall, a courtyard`s ring.
-    pub(crate) const BOTH: Self = Self { base: true, crown: true };
+    pub(crate) const BOTH: Self = Self {
+        base: true,
+        crown: true,
+    };
 }
 
 #[derive(Debug, Clone)]
