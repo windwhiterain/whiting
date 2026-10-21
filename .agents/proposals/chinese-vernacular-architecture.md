@@ -3077,3 +3077,17 @@ back **byte-identical to the one without them** — a change the frame could not
 front of the tower.
 
 **Identity: 40 scenes, 146 373 rows**; `dong_village` 8 557 → **8 595** — two stones and two poles. The document is 9.97 MB.
+## Round 149: the 门枕石, and the family of five gates closed
+
+Round 104 gave the 屯堡 朝门 a pair of **门枕石**, round 137 the 白族巷's gate, and the street's two gates take the same two stones now —
+drawn by the same function, in `fn gate`, so both gateways get them from one implementation. They stand **clear of the lintel's plan**
+(round 137's measurement: the validator compares plans and not volumes).
+
+**The family is closed**: every gate this gallery draws — the 白族巷's, the 屯堡's 朝门, the 本主庙's 山门, the street's two — now carries its
+stones, its leaves and its threshold. What the five share is *one* vocabulary; what differs is only which face the plate looks at.
+
+**What the plate can and cannot say**: the street's gate stands fifty metres down the lane, so a `0.44 m` stone is a pixel and the frame
+shows nothing new. **The round's evidence is the table**, and the honest record is that the frame could not confirm it — the third time in
+twelve rounds that a small object has gone in where the composition is larger than it.
+
+**Identity: 40 scenes, 146 425 rows**; `slate_street` 2 106 → **2 158** — two gates' four stones. The document is 7.76 MB.

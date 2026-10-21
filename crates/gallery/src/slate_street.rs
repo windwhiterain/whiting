@@ -64,6 +64,9 @@ const MOUTH: f32 = 3.30;
 const GATE_HEAD: f32 = 3.05;
 const GATE_PIER: f32 = 0.52;
 const GATE_OUT: f32 = 0.66;
+/// The 门枕石 at each leafs hinge: its plan and its height.
+const DRUM: f32 = 0.44;
+const DRUM_HIGH: f32 = 0.50;
 
 const SUN: [f64; 3] = [-26.0, 30.0, 18.0];
 const SUN_IRRADIANCE: f64 = 3.3;
@@ -335,4 +338,26 @@ fn gate(skeleton: &mut BuildingSkeleton, gate_x: f32, inward: f32) {
         0.24,
         0.17,
     ));
+
+    // **The 门枕石**: the two stones each leaf swings back against. Round 104 gave the 屯堡 朝门 a pair and round 137 the 白族巷's gate;
+    // the street's two gates take the same two stones, drawn by the same function. They stand **clear of the lintel's plan** — the
+    // validator compares plans and not volumes, so a stone under the lintel is a stone inside it (round 137's measurement).
+    for across in [-1.0_f32, 1.0] {
+        let z = across * (DRUM * 0.5 + 0.52);
+        let mut stone = Mass::new(
+            ops::wound(vec![
+                [gate_x - DRUM * 0.5, z - DRUM * 0.5],
+                [gate_x + DRUM * 0.5, z - DRUM * 0.5],
+                [gate_x + DRUM * 0.5, z + DRUM * 0.5],
+                [gate_x - DRUM * 0.5, z + DRUM * 0.5],
+            ])
+            .into_iter()
+            .map(|at| PlanNode::new(at, 0.0))
+            .collect(),
+            DRUM_HIGH,
+        );
+        stone.wall = DRUM * 0.28;
+        stone.slab = 0.14;
+        skeleton.masses.push(stone);
+    }
 }
