@@ -2809,3 +2809,12 @@ camera looks down the lane to.
 
 **Identity: 38 scenes, 134 372 rows**; `slate_street` 1 992 → **2 031** — a lintel's faces and top, two piers' and their joins. The
 document is 7.71 MB.
+## Round 126: the 街门's leaves
+
+A gate that cannot close is a doorway, and a 屯堡's street gate is the thing the garrison closed. Two **leaves** hang from the
+lintel's underside to a hand's width above the flags, swung open into the street, and a **threshold** lies between them.
+
+It is the **fourth gate** built from `derive::leaf` — after the 白族巷's, the 屯堡村's 朝门 and the 本主庙's 山门 — and the reason that
+helper exists has not changed: **both anchors at one elevation, the section's height the opening's**, or the leaf is a rod.
+
+**Identity: 38 scenes, 134 390 rows**; `slate_street` 2 031 → **2 049** — two leaves and the threshold. The document is 7.72 MB.

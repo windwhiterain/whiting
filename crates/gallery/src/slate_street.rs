@@ -214,6 +214,32 @@ pub fn document() -> Building {
         skeleton.masses.push(pier);
     }
 
+    // **The gate's two leaves and its threshold.** A gate that cannot close is a doorway, and a 屯堡's street gate is the thing the
+    // garrison closed. The leaves hang from the lintel's underside to a hand's width above the flags, swung open into the street;
+    // they are `derive::leaf`'s panels, the fourth gate to hang them.
+    for across in [-1.0_f32, 1.0] {
+        if let Some(panel) = building::derive::leaf(
+            [gate_x - 0.05, 0.10, across * (MOUTH * 0.5 - GATE_PIER)],
+            MOUTH * 0.5 - GATE_PIER - 0.06,
+            GATE_HEAD - 0.22,
+            0.07,
+            [-1.0, 0.0],
+        ) {
+            skeleton.members.push(panel);
+        }
+    }
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [gate_x, 0.0, -(MOUTH * 0.5 - GATE_PIER)],
+        },
+        building::Anchor::Free {
+            at: [gate_x, 0.0, MOUTH * 0.5 - GATE_PIER],
+        },
+        [-1.0, 0.0],
+        0.24,
+        0.17,
+    ));
+
     // **The street's water: a well and a trough, at the east mouth.** A 屯堡 street's houses have no wells of their own — the
     // water is at the place the street widens, and it is one place. The well is a **mass whose wall is thick enough to be a ring**
     // (`0.24 m` in a `1.44 m` plan), the same answer the 白族 lane's well gave; the trough beside it is the same idea at a
