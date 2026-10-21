@@ -414,6 +414,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "tuzhang_village" => crate::tuzhang_village::document(),
         "village_square" => crate::village::document(),
         "hillside_village" => crate::village::hillside_document(),
+        "longhouse" => crate::longhouse::document(),
         "mushroom_house" => crate::mushroom_house::document(),
         "naxi_court" => crate::naxi_court::document(),
         "plateau_village" => crate::plateau::document(),

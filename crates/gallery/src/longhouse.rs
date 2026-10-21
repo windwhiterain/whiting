@@ -1,0 +1,87 @@
+//! A **景颇/傈僳干栏长屋**: one house the length of a village street, standing on stilts with its gable roof reaching down over both long sides.
+//!
+//! # What this scene is for
+//!
+//! The gallery's **nineteenth type** and the first from **滇西**. The 景颇 and the 傈僳 of the 德宏 hills build the opposite of a courtyard: a
+//! **single house twenty metres long**, where a whole extended household lives in one room under one ridge, and the roof is low and wide enough
+//! that from outside the house is mostly roof.
+//!
+//! # How it is built, and what it borrows
+//!
+//! `derive::starter` builds a gabled body, and this type is that body **lifted onto stilts**: the starter's own skeleton is raised by `LEG`
+//! with [`ops::raise`] — round 169's helper, used here for its second purpose — and two rows of posts are dropped under it. **The roof does not
+//! need building**: a long gable is a gable with a longer ridge, and the starter already draws the profile, the gable crowns and the covering.
+//!
+//! # What it does not draw
+//!
+//! - **the thatch**: the covering is the crate's tile rolls at a coarse period. A thatched ridge is a different material and a different
+//!   profile, and it is the one thing this type would be recognised by at a glance;
+//! - **the 火塘 and the partition**: a longhouse is divided by low partitions and each household has its own hearth, and this crate has no
+//!   interior light to show them (round 121).
+
+use building::derive::{self, RoofStyle, Starter};
+use definition::Value;
+
+/// The house: one long body under one ridge.
+const STARTER: Starter = Starter {
+    width: 21.0,
+    depth: 5.60,
+    height: 2.45,
+    wall: 0.28,
+    slab: 0.26,
+    overhang: 1.05,
+    sink: 0.12,
+    rise: 2.00,
+    roof_thickness: 0.24,
+    roof: RoofStyle::Gable,
+    seed: 9,
+};
+
+/// The 干栏: how high the floor stands on its posts, the posts' section, how far apart they are and how far in from the floor's edge.
+const LEG: f32 = 1.75;
+const POST: f32 = 0.22;
+const POST_SPACING: f32 = 2.60;
+const POST_INSET: f32 = 0.40;
+
+const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
+
+/// Builds the scene: from the side and low, because a longhouse is a length and a roof and both are read along the long wall.
+pub fn longhouse() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [27.0, 8.5, 24.0],
+        [0.0, 4.2, 0.0],
+        FIELD_OF_VIEW,
+        "longhouse",
+    )
+}
+
+/// Returns the document: a gabled body raised onto two rows of posts.
+pub fn document() -> building::Building {
+    let mut skeleton = derive::starter(&STARTER).skeleton;
+    // **Up onto the stilts.** The starter builds a body standing on the ground; a 干栏's floor is `LEG` above it, and every part rises
+    // together — mass, roof, slab and the gable crowns — which is what `ops::raise` is for.
+    building::ops::raise(&mut skeleton, LEG);
+
+    // **The posts.** Two rows under the floor's long edges, as many as the length needs, each from the ground to the floor.
+    let half = STARTER.width * 0.5;
+    let rows = STARTER.depth * 0.5 - POST_INSET;
+    let span = STARTER.width - 2.0 * POST_INSET;
+    let bays = (span / POST_SPACING).round().max(1.0) as usize;
+    for bay in 0..=bays {
+        let x = -half + POST_INSET + span * bay as f32 / bays as f32;
+        for z in [-rows, rows] {
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x, 0.0, z] },
+                building::Anchor::Free { at: [x, LEG, z] },
+                [1.0, 0.0],
+                POST,
+                POST,
+            ));
+        }
+    }
+
+    building::Building::new(skeleton)
+}

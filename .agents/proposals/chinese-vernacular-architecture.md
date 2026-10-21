@@ -3418,3 +3418,19 @@ and the type has been one until now. Every scene that composes the house gains t
 
 **Identity: 44 scenes, 156 323 rows**; `earthen_house` 230 → **284**, `tuzhang_village` and `tuzhang_mouth` 1 603 → **1 873** each (five houses'
 racks). The `tuzhang_mouth` document is 7.72 MB.
+## Round 174: the 干栏长屋, the nineteenth type
+
+**The first type from 滇西.** The 景颇 and the 傈僳 of the 德宏 hills build the opposite of a courtyard: **one house twenty metres long**, where a
+whole extended household lives under one ridge, and the roof is low and wide enough that from outside the house is mostly roof.
+
+**It borrows the whole body and adds only the legs.** `derive::starter` draws a gabled body — profile, gable crowns, covering and all — and this
+type is that body **lifted onto stilts**: the starter's skeleton is raised by `LEG` with `ops::raise` (round 169's helper, second use) and two
+rows of posts are dropped under it. **A long gable is a gable with a longer ridge**, so the roof needed no new code at all — the round's whole
+addition is `STARTER`'s four numbers, `LEG`, and nineteen posts.
+
+**What it still owes**: the **thatch**. The covering is the crate's tile rolls at the default period, and a thatched ridge is a different material
+and a different profile — that is the one thing this type would be recognised by at a glance.
+
+**Identity: 45 scenes, 156 460 rows**; `longhouse` **137** — a body, its roof and nineteen posts. The document is 7.10 MB. **The small table is
+itself the measurement**: this type is one room, and everything the gallery's other houses spend their rows on (courts, galleries, eaves, sills)
+a longhouse does not have.

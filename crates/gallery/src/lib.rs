@@ -99,6 +99,7 @@ pub mod house;
 pub mod landscape;
 mod lanterns;
 pub mod log_house;
+pub mod longhouse;
 mod monoliths;
 pub mod mushroom_house;
 pub mod naxi_court;
@@ -242,6 +243,7 @@ impl Gallery {
             "tuzhang_village",
             "village_square",
             "hillside_village",
+            "longhouse",
             "mushroom_house",
             "naxi_court",
             "plateau_village",
@@ -372,6 +374,7 @@ impl Gallery {
             "tuzhang_village" => tuzhang_village::tuzhang_village(),
             "village_square" => village::village_square(),
             "hillside_village" => village::hillside_village(),
+            "longhouse" => longhouse::longhouse(),
             "mushroom_house" => mushroom_house::mushroom_house(),
             "naxi_court" => naxi_court::naxi_court(),
             "plateau_village" => plateau::plateau_village(),
