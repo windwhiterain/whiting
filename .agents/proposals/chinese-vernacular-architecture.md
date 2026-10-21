@@ -2206,3 +2206,18 @@ The camera rose with the house — a four-storey 碉房 is 10.4 m and the plate 
 **Identity: 35 scenes, 123 909 rows**; `tibetan_house` 323 → **349** (the fourth storey's walls, its slits and its roof
 floor), `plateau_village` 2 265 → **3 041** (four towers, each a storey taller). The tower's document is 4.14 MB, and the
 module's own note no longer has to apologise for the number.
+## Round 83: the stranded top storey, and a NUL byte in the module's own doc
+
+Round 82 gave the tower a fourth storey and left its top floor **reached by nothing**: the one external flight climbs to
+`lower_top`, which is the threshing roof, and the storey above it had no way in.
+
+- **a second flight now climbs the east wall** from the threshing floor to the top roof, `SECOND_STEPS` treads to a storey
+  instead of the first flight's `STEPS` to two. It lands through the top roof's parapet, which is where the storey above the
+  threshing floor is entered.
+- **and a defect in the file itself is fixed**: `crates/gallery/src/tibetan.rs` carried **one NUL byte** inside its own module
+  documentation, left by a line-surgery edit in round 81 — `At \0.15 m a course` — which made the file *binary* to every tool
+  that reads it and silently swallowed the backtick that was meant to quote the number. It is gone, and the sentence it broke is
+  rewritten: the lean is six per cent in four courses and that is why the tower is four storeys tall.
+
+**Identity: 35 scenes, 124 089 rows**; `tibetan_house` 349 → **385** (six treads), `plateau_village` 3 041 → **3 185** (four
+towers, each with both flights). The tower's document is 4.35 MB.
