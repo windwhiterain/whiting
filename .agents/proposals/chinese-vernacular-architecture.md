@@ -3124,3 +3124,15 @@ here on the first try.
 
 **Identity: 41 scenes, 146 827 rows**; `qiang_tower` 114 → **402** — forty-eight beam ends with their sections and their ends, which is more
 than three times the whole tower before them. The document is 7.20 MB.
+## Round 152: the 垛口, and the type's debt paid
+
+Round 150 recorded this as what the type owed: a 碉楼's crown is **a wall with gaps in it**, and a tower that ends in a plain course is a
+chimney. Six merlons now stand on the crown — three to a face on the two faces the plate looks at, each filling `MERLON_FILL` of its bay
+with the gap between as the parapet.
+
+**The merlons are members**: both anchors at the course's own top and the section carrying the height, which is how this crate draws a
+parapet and why `crown_gables` — a *roof's* edge — was never the answer. The type's record in round 150 said the crate had nothing for
+battlements; it had the wrong word for them, and the right one is `Member`.
+
+**Identity: 41 scenes, 146 863 rows**; `qiang_tower` 402 → **438** — six merlons with their sections and their ends. The document is
+7.21 MB.

@@ -43,6 +43,12 @@ const BEAM: f32 = 0.15;
 const BEAM_PROUD: f32 = 0.24;
 const BEAM_DROP: f32 = 0.42;
 
+/// The 垛口 on the crown: how many merlons to a face, what fraction of a bay each fills, and its thickness and height.
+const MERLONS: usize = 3;
+const MERLON_FILL: f32 = 0.58;
+const MERLON_DEEP: f32 = 0.34;
+const MERLON_HIGH: f32 = 0.82;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.5;
 
 /// Builds the scene: from the ground's own level, close enough that the batter reads.
@@ -149,6 +155,40 @@ pub fn document() -> Building {
                 BEAM,
             ));
         }
+    }
+
+    // **The 垛口: the battlements.** Round 150 recorded this as the type's debt — a 碉楼's crown is **a wall with gaps in it**, and a tower
+    // that ends in a plain course is a chimney. The merlons are members: both anchors at the course's own top, the section carrying the
+    // height, which is how this crate draws a parapet. Three to a face on the two faces the plate looks at, with the gaps between them.
+    let crown = half - BATTER * (COURSES - 1) as f32;
+    let top = PLINTH + COURSE * COURSES as f32;
+    for index in 0..MERLONS {
+        let from = -crown + 2.0 * crown * index as f32 / MERLONS as f32;
+        let to = from + 2.0 * crown * (index as f32 + MERLON_FILL) / MERLONS as f32;
+        // The `+x` face: the parapet runs along `z` and is `MERLON_DEEP` thick in `x`.
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [crown - MERLON_DEEP * 0.5, top, from],
+            },
+            building::Anchor::Free {
+                at: [crown - MERLON_DEEP * 0.5, top, to],
+            },
+            [1.0, 0.0],
+            MERLON_DEEP,
+            MERLON_HIGH,
+        ));
+        // The `+z` face: the same parapet, turned.
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [from, top, crown - MERLON_DEEP * 0.5],
+            },
+            building::Anchor::Free {
+                at: [to, top, crown - MERLON_DEEP * 0.5],
+            },
+            [0.0, 1.0],
+            MERLON_DEEP,
+            MERLON_HIGH,
+        ));
     }
 
     // **The crown**: the top course's own crown, so the tower ends in a gabled pair of edges and not in a flat plane.
