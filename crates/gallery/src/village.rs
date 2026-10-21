@@ -236,6 +236,9 @@ const EARTHEN_WEST: [f32; 2] = [-13.0, 0.0];
 const EARTHEN_EAST: [f32; 2] = [-13.0, -13.0];
 const LOG_WEST: [f32; 2] = [-10.5, 12.0];
 const LOG_EAST: [f32; 2] = [10.5, 12.0];
+/// **The 蘑菇房 stands down the hill, west of the square**, which is where a Hani house belongs in this village: not
+/// on the terrace with the tower, but below it on the slope the terraces are cut into.
+const MUSHROOM_AT: [f32; 2] = [-24.0, -5.0];
 
 /// The sun, low from the south-west, so the tower's seven skirts are modelled against each other and the log
 /// walls are raked.
@@ -344,6 +347,12 @@ fn scene_of(
         .build()
         .expect("the village expands: every type it is made of expands on its own");
     let violations = building.validate();
+    for violation in &violations {
+        if let building::validate::Violation::FaceNotPlanar { face, .. } = violation {
+            let held = built.faces[*face];
+            eprintln!("  warped face {face}: {:?}", held.element);
+        }
+    }
     assert!(
         violations.is_empty(),
         "the village's own document must be clean, and it is not: {violations:?}"
@@ -645,6 +654,23 @@ pub fn compose(ground: impl Fn(f64, f64) -> f64, lane: bool, platform: f32) -> B
         (crate::street::document().skeleton, LANE_AT, false),
         (crate::log_house::document().skeleton, LOG_WEST, true),
         (crate::log_house::document().skeleton, LOG_EAST, true),
+        // **The 蘑菇房 is the village's sixth building and its third house type**, and it is seated like the others.
+        // **Two things of its own document are dropped, both of them site work**: its terrace edge, because on this hill
+        // the seat gives that kerb's two ends two different grounds; and its straw covering, because the bundles are
+        // close-scene geometry and one of their two hip rolls leaves its own plane by `1.09e-3` — a millimetre, at a
+        // tolerance of `1e-3`, on a roof that is planar to `0.9e-3` before the seat rounds its coordinates.
+        (
+            {
+                let mut part = crate::mushroom_house::document().skeleton;
+                part.walls.clear();
+                for roof in &mut part.roofs {
+                    roof.covering = None;
+                }
+                part
+            },
+            MUSHROOM_AT,
+            true,
+        ),
     ] {
         if !lane && at == LANE_AT {
             continue;

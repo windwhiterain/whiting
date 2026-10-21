@@ -72,3 +72,23 @@ village's way out of its square is.
 
 **Identity is unchanged (16 521 and 4 667)**, and that is the point of keeping the number: the defect was not a
 missing plate but a misplaced one, so a count of the document could not have found it and only the frame could.
+## Round 45: the village's sixth building
+
+The 蘑菇房 joins the settlement, down the hill west of the square, seated like the other houses (its own pads, its own
+posts, `pad_plinth`). It is the village's **third house type** — a Hani house beside two 土掌房 and two 木楞房 under one
+侗族 tower — which is what a 西南 village on a road between peoples actually looks like.
+
+**Two things of its document are dropped, both of them site work**, and both were found by the village refusing to
+build:
+
+- **its terrace kerb**, because on a hill the seat gives that kerb's two ends two different grounds;
+- **its straw covering**, because one of the two hip rolls leaves its own plane by `1.09e-3` — a millimetre, against a
+  tolerance of `1e-3`, on a roof that is planar to `0.9e-3` before the seat rounds its coordinates. **A covering is
+  close-scene geometry**; the far view does not need the bundles, and the near scene keeps them.
+
+Identity: `village_square` 18 026 → **18 205 rows**, `hillside_village` 5 572 → **5 775**, and the other twenty-two
+scenes unchanged.
+
+**What this round did not do**: the village's own cameras do not frame the new house — it stands 16 m west of the
+square, past the western 土掌房, which is where the hill has room for it. The composition now has six buildings and a
+frame that shows five.
