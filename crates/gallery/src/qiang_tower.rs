@@ -79,7 +79,8 @@ const CISTERN_HIGH: f32 = 0.72;
 
 /// The 木廊 on the 碉房: how far out the deck stands in the houses own coordinates, its depth, its length, its level, its slab, its
 /// posts, a posts section and the rails height above the deck.
-const HOUSE_AT: [f32; 2] = [14.20, 2.60];
+/// Where the yard's **two** 碉房 stand. A 羌寨 is a household's tower and the village's, and each has its house.
+const HOUSES: [[f32; 2]; 2] = [[14.20, 4.60], [15.00, -4.60]];
 const TOWER_AT: [[f32; 2]; 2] = [[0.0, 0.0], [-6.60, 8.20]];
 const GALLERY_X: f32 = -5.10;
 const GALLERY_DEEP: f32 = 1.30;
@@ -120,75 +121,76 @@ pub fn document() -> Building {
     // ground is a monument. The house is the `tibetan` type's own document — the 羌 and the 藏 build the same coursed-stone box with a
     // flat roof — merged in at the tower's east and turned to face the camera, which is the composition this gallery uses everywhere
     // else: **a settlement is made of types it already has.**
-    let mut house = crate::tibetan::document().skeleton;
-    // **The 木廊: the timber gallery the house wears.** It stands on the local -x face, because the house is turned a quarter and that
-    // face is the one the camera sees — round 97's and round 136's rule, read a third time. A 碉房's stone box is broken on one face by a **wooden gallery** — a deck
-    // cantilevered out at the first floor, its posts and its rail — and that gallery is the only timber on the building. It is drawn in
-    // the house's own coordinates, before the house is turned, so it turns with it.
-    let gallery = [
-        [GALLERY_X, -GALLERY_LONG * 0.5],
-        [GALLERY_X + GALLERY_DEEP, -GALLERY_LONG * 0.5],
-        [GALLERY_X + GALLERY_DEEP, GALLERY_LONG * 0.5],
-        [GALLERY_X, GALLERY_LONG * 0.5],
-    ];
-    house.slabs.push(building::Slab::floor(
-        ops::wound(gallery.to_vec()),
-        GALLERY_LEVEL - GALLERY_SLAB,
-        GALLERY_LEVEL,
-    ));
-    for index in 0..=GALLERY_POSTS {
-        let z = -GALLERY_LONG * 0.5 + GALLERY_LONG * index as f32 / GALLERY_POSTS as f32;
-        // The posts stand on the ground and carry the deck's outer edge.
+    for at in HOUSES {
+        let mut house = crate::tibetan::document().skeleton;
+        // **The 木廊: the timber gallery the house wears.** It stands on the local -x face, because the house is turned a quarter and that
+        // face is the one the camera sees — round 97's and round 136's rule, read a third time. A 碉房's stone box is broken on one face by a **wooden gallery** — a deck
+        // cantilevered out at the first floor, its posts and its rail — and that gallery is the only timber on the building. It is drawn in
+        // the house's own coordinates, before the house is turned, so it turns with it.
+        let gallery = [
+            [GALLERY_X, -GALLERY_LONG * 0.5],
+            [GALLERY_X + GALLERY_DEEP, -GALLERY_LONG * 0.5],
+            [GALLERY_X + GALLERY_DEEP, GALLERY_LONG * 0.5],
+            [GALLERY_X, GALLERY_LONG * 0.5],
+        ];
+        house.slabs.push(building::Slab::floor(
+            ops::wound(gallery.to_vec()),
+            GALLERY_LEVEL - GALLERY_SLAB,
+            GALLERY_LEVEL,
+        ));
+        for index in 0..=GALLERY_POSTS {
+            let z = -GALLERY_LONG * 0.5 + GALLERY_LONG * index as f32 / GALLERY_POSTS as f32;
+            // The posts stand on the ground and carry the deck's outer edge.
+            house.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [GALLERY_X + 0.12, 0.0, z],
+                },
+                building::Anchor::Free {
+                    at: [GALLERY_X + 0.12, GALLERY_LEVEL, z],
+                },
+                [1.0, 0.0],
+                GALLERY_POST,
+                GALLERY_POST,
+            ));
+            // The rail above the deck.
+            house.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [GALLERY_X + 0.12, GALLERY_LEVEL, z],
+                },
+                building::Anchor::Free {
+                    at: [GALLERY_X + 0.12, GALLERY_LEVEL + GALLERY_RAIL, z],
+                },
+                [1.0, 0.0],
+                GALLERY_POST * 0.6,
+                GALLERY_POST * 0.6,
+            ));
+        }
         house.members.push(building::Member::new(
             building::Anchor::Free {
-                at: [GALLERY_X + 0.12, 0.0, z],
+                at: [
+                    GALLERY_X + 0.12,
+                    GALLERY_LEVEL + GALLERY_RAIL,
+                    -GALLERY_LONG * 0.5,
+                ],
             },
             building::Anchor::Free {
-                at: [GALLERY_X + 0.12, GALLERY_LEVEL, z],
+                at: [
+                    GALLERY_X + 0.12,
+                    GALLERY_LEVEL + GALLERY_RAIL,
+                    GALLERY_LONG * 0.5,
+                ],
             },
             [1.0, 0.0],
-            GALLERY_POST,
-            GALLERY_POST,
+            GALLERY_POST * 0.7,
+            GALLERY_POST * 0.9,
         ));
-        // The rail above the deck.
-        house.members.push(building::Member::new(
-            building::Anchor::Free {
-                at: [GALLERY_X + 0.12, GALLERY_LEVEL, z],
-            },
-            building::Anchor::Free {
-                at: [GALLERY_X + 0.12, GALLERY_LEVEL + GALLERY_RAIL, z],
-            },
-            [1.0, 0.0],
-            GALLERY_POST * 0.6,
-            GALLERY_POST * 0.6,
-        ));
+        ops::rotate(&mut house, [0.0, 0.0], -core::f32::consts::FRAC_PI_2);
+        ops::translate(&mut house, [at[0], at[1]]);
+        assert!(
+            ops::merge(&mut skeleton, house),
+            "the house places no parts, so the merge always happens"
+        );
     }
-    house.members.push(building::Member::new(
-        building::Anchor::Free {
-            at: [
-                GALLERY_X + 0.12,
-                GALLERY_LEVEL + GALLERY_RAIL,
-                -GALLERY_LONG * 0.5,
-            ],
-        },
-        building::Anchor::Free {
-            at: [
-                GALLERY_X + 0.12,
-                GALLERY_LEVEL + GALLERY_RAIL,
-                GALLERY_LONG * 0.5,
-            ],
-        },
-        [1.0, 0.0],
-        GALLERY_POST * 0.7,
-        GALLERY_POST * 0.9,
-    ));
-    ops::rotate(&mut house, [0.0, 0.0], -core::f32::consts::FRAC_PI_2);
-    ops::translate(&mut house, [HOUSE_AT[0], HOUSE_AT[1]]);
-    assert!(
-        ops::merge(&mut skeleton, house),
-        "the house places no parts, so the merge always happens"
-    );
-
     // **The 院墙: the courtyard the tower stands in.** A 碉楼 and its 碉房 are one household's yard, and a yard is what a wall makes. Three
     // lengths close the south and the west sides with a **gate gap** on the axis the camera looks through, so the plate reads a courtyard
     // with a way into it and not two buildings on a plain.

@@ -3320,3 +3320,15 @@ answers `MiterTooLong`, the angle it now prints is the thread to pull.
 
 **Identity: 42 scenes, 151 628 rows**; `qiang_tower` 1 122 → **1 620** — a second tower's courses, beam ends, merlons, door, plinth and
 ladder. The document is 7.65 MB.
+## Round 167: the yard's second 碉房
+
+Two towers and one house is a watch post; **two of each is a household and its village**. The 碉房 is now built from an array like the tower —
+`for at in HOUSES` — so the second is the same document, its gallery turning with it, set down along the yard's east side.
+
+**The first placement overlapped the south wall** (`UnattachedOverlap { 22..26, 30 }`, six masses at once): the house is `7.6 × 6.4` turned a
+quarter, so its footprint reaches further in `z` than the plan suggests, and at `z = -4.6` it fitted only once the first house moved north to
+make the gap. **A reused type's footprint is not its plan** — a rotated house is `6.4` wide and `7.6` deep, and the yard's spacing has to be
+laid out in the turned frame.
+
+**Identity: 42 scenes, 152 139 rows**; `qiang_tower` 1 620 → **2 131** — a whole house's courses, parapet, windows, door and gallery. The
+document is 7.86 MB.
