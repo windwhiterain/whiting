@@ -22,7 +22,7 @@
 
 use definition::{PackedList, Value};
 use document::kit::{instance, mesh, mesh_material, surface};
-use vegetation::derive::{Species, clump};
+use vegetation::derive::{Species, clump, shrub};
 use vegetation::expand::{Detail, expand};
 use vegetation::plant::Placement;
 
@@ -41,8 +41,14 @@ pub(crate) struct Extra {
     leaves: Vec<Instance>,
 }
 
-/// One instanced draw: which mesh, where, and how big.
-type Instance = (String, [f64; 3], [f64; 3], [f64; 3]);
+/// One instanced draw: which mesh, which material, where, and how big.
+///
+/// # Invariants
+///
+/// **The material is named in the tuple and not derived from the mesh.** A leaf mesh is `clump-leaf-0` and its material is
+/// `clump-leaf`, so a name built from the mesh asks for `clump-leaf-0-leaf-depth`, which no scene declares — measured the
+/// first time two species stood in one scene.
+type Instance = (String, String, [f64; 3], [f64; 3], [f64; 3]);
 
 impl Extra {
     /// A scene with no plants.
@@ -53,6 +59,19 @@ impl Extra {
             wood: Vec::new(),
             leaves: Vec::new(),
         }
+    }
+
+    /// Absorbs another extra: what a settlement with two species has after growing both.
+    ///
+    /// # Invariants
+    ///
+    /// **The mesh labels are the prefix, so two species never collide**: a clump`s wood is `clump-wood` and a tree`s is
+    /// `tree-wood`, and each instance names its own mesh`s material, so a merged extra needs no second bookkeeping.
+    pub fn merge(&mut self, other: Extra) {
+        self.meshes.extend(other.meshes);
+        self.materials.extend(other.materials);
+        self.wood.extend(other.wood);
+        self.leaves.extend(other.leaves);
     }
 
     /// Whether this extra draws nothing at all, which is what lets a scene stay byte-identical without plants.
@@ -73,24 +92,26 @@ impl Extra {
     /// Returns every instance of the extra for one stage.
     pub fn instances(&self, stage: &str) -> Vec<Value> {
         let mut placed = Vec::with_capacity(self.wood.len() + self.leaves.len());
-        for (mesh, translation, rotation, scale) in &self.wood {
+        for (mesh, material, translation, rotation, scale) in &self.wood {
             placed.push(instance(
                 format!("{mesh}-{stage}"),
                 mesh,
                 *translation,
                 *rotation,
                 *scale,
-                &format!("stem-{stage}"),
+                &format!("{material}-{stage}"),
             ));
         }
-        for (index, (mesh, translation, rotation, scale)) in self.leaves.iter().enumerate() {
+        for (index, (mesh, material, translation, rotation, scale)) in
+            self.leaves.iter().enumerate()
+        {
             placed.push(instance(
                 format!("{mesh}-{stage}-{index}"),
                 mesh,
                 *translation,
                 *rotation,
                 *scale,
-                &format!("leaf-{stage}"),
+                &format!("{material}-{stage}"),
             ));
         }
         placed
@@ -114,38 +135,69 @@ fn standing(origin: [f32; 3], yaw: f32, scale: f32) -> Placement {
     }
 }
 
-/// Returns a settlement's plants: bamboo clumps at `seats`, seated on `ground`.
+/// Returns a settlement's **bamboo clumps**: the scrub a Dai hamlet keeps at its edges.
 ///
 /// # Invariants
 ///
-/// **One species and one expansion carry every clump**: the plant is grown once and the same culms are placed at each
-/// seat, which is what makes four clumps four instances of one plant rather than four plants. A settlement's clumps are
-/// meant to look like one another, and a scene that grew them separately would pay four times the expansion for a
-/// difference nobody asked for.
-/// How much larger a planted clump is than the species it was grown from: a settlement`s bamboo is a clump a person
-/// walks past, and the species` own scale is a plant in a study.
-const SCALE: f32 = 3.4;
-
-/// How much larger a blade is drawn than the species makes it, so that a clump twenty metres away still shows foliage.
-const LEAF: f32 = 1.8;
-
+/// **One species and one expansion carry every clump**: the plant is grown once and the same culms are placed at each seat,
+/// which is what makes six clumps six placements of one plant. A settlement's clumps are meant to look like one another,
+/// and a scene that grew them separately would pay six times the expansion for a difference nobody asked for.
 pub(crate) fn bamboo_clumps(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32) -> Extra {
-    let species: Species = clump(7);
+    // **`clump` and not `bamboo`**: `derive::bamboo` is a *culm* — a few blades on its upper nodes, which is what a grove
+    // is made of and not what one plant is. `clump` puts six limbs at every node and dense leaves on them, and a settlement
+    // needs the plant a person walks past.
+    plants("clump", clump(7), seats, ground, 3.4, 1.8)
+}
+
+/// Returns a settlement's **trees** — and there is no tree species to give it.
+///
+/// # Why it is not used yet
+///
+/// The vegetation crate has five species: **bamboo** (a culm), **tuft**, **clump**, **shrub** and **sculpted** (which is a
+/// bamboo with a hand's edits). Stretched to a tree's height a **shrub is a twig** — measured at `11.0`, where its limbs
+/// are nine metres of bare wood with a shrub's leaves on them — and no dial makes a crown out of a species that has no
+/// crown. A settlement's tree needs a species of its own: more generations, a bough that divides at the top, and a leaf
+/// field dense enough to be a canopy. This entry point is the seam that species will use.
+///
+/// # Invariants
+///
+/// `derive::shrub` is three generations of self-similar limbs, each a fraction of its parent's radius — the same rule a
+/// tree obeys, grown to a shrub's height. At `5.5` it is a tree of eight or nine metres with a crown the width of a house,
+/// which is the size of the trees a 傣寨 or a 山村 keeps between its plots.
+pub(crate) fn trees(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32) -> Extra {
+    plants("tree", shrub(11), seats, ground, 11.0, 2.2)
+}
+
+/// Returns `seats` worth of one species, under a `prefix` that names its meshes and materials.
+///
+/// # Invariants
+///
+/// **The prefix is the mesh label**, so two species in one scene never collide and a merged extra needs no bookkeeping: a
+/// clump's wood is `clump-wood` and a tree's is `tree-wood`, and each instance names the material of its own mesh.
+fn plants(
+    prefix: &str,
+    species: Species,
+    seats: &[[f32; 2]],
+    ground: &dyn Fn([f32; 2]) -> f32,
+    scale: f32,
+    leaf_scale: f32,
+) -> Extra {
     let expansion = expand(&species.plant, Detail::DEFAULT, &species.fields);
     let ids = node_ids(&species.plant);
     let mut extra = Extra::none();
+    let wood_label = format!("{prefix}-wood");
 
-    // The wood: one mesh for every clump, because every culm's loft is packed by the placement that stands it.
+    // The wood: one mesh for every plant, because every solid's loft is packed by the placement that stands it.
     let placements: Vec<Placement> = seats
         .iter()
         .enumerate()
         .map(|(index, at)| {
             let yaw = index as f32 * 1.7;
-            standing([at[0], ground(*at), at[1]], yaw, SCALE)
+            standing([at[0], ground(*at), at[1]], yaw, scale)
         })
         .collect();
     extra.meshes.push((
-        "plants-wood".to_owned(),
+        wood_label.clone(),
         wood_points_of(
             placements
                 .iter()
@@ -156,9 +208,15 @@ pub(crate) fn bamboo_clumps(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32
     // placement into the points it packs, so a second translation by that same placement adds the seat twice: measured on
     // the hillside as a village's clumps drawn at twice their plan coordinate and forty metres above a plateau that stands
     // at twenty, and in the flat hamlet as only the clumps nearest the origin being visible at all.
-    extra
-        .wood
-        .push(("plants-wood".to_owned(), [0.0; 3], [0.0; 3], [1.0; 3]));
+    let stem_material = format!("{wood_label}-stem");
+    let leaf_material = format!("{prefix}-leaf");
+    extra.wood.push((
+        wood_label.clone(),
+        stem_material.clone(),
+        [0.0; 3],
+        [0.0; 3],
+        [1.0; 3],
+    ));
 
     // The blades: one template per its own index, and one instance per leaf.
     let mut labels: Vec<Option<String>> = vec![None; species.templates.len()];
@@ -167,7 +225,7 @@ pub(crate) fn bamboo_clumps(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32
         let label = match &labels[template] {
             Some(label) => label.clone(),
             None => {
-                let label = format!("plants-leaf-{template}");
+                let label = format!("{prefix}-leaf-{template}");
                 extra
                     .meshes
                     .push((label.clone(), template_points(&species.templates[template])));
@@ -178,13 +236,16 @@ pub(crate) fn bamboo_clumps(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32
         for leaf in &group.leaves {
             for placement in &placements {
                 let world = placement.then(&leaf.placement);
-                // **A settlement`s blades are drawn larger than a study`s**: a clump seen from the lane is a hundred
-                // pixels high, and a blade at the species` own scale is under one. The placement is the plant`s; only what
-                // is drawn of a leaf is scaled.
-                let (translation, rotation, scale) = standing_at(&world, leaf.scale * LEAF);
-                extra
-                    .leaves
-                    .push((label.clone(), translation, rotation, scale));
+                // **A settlement's blades are drawn larger than a study's**: a leaf seen from the lane is under a pixel at
+                // the species' own scale. The placement is the plant's; only what is drawn of a leaf is scaled.
+                let (translation, rotation, scale) = standing_at(&world, leaf.scale * leaf_scale);
+                extra.leaves.push((
+                    label.clone(),
+                    leaf_material.clone(),
+                    translation,
+                    rotation,
+                    scale,
+                ));
             }
         }
     }
@@ -193,7 +254,10 @@ pub(crate) fn bamboo_clumps(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32
     // than from the vertex: a settlement does not name its plants' nodes, so a blade has no node to be shaded from.
     let stem = || surface([0.42, 0.44, 0.24], 0.0, 0.86, [0.0; 3]);
     let blade = || surface([0.24, 0.38, 0.18], 0.0, 0.82, [0.0; 3]);
-    for (label, body) in [("stem", stem as fn() -> Value), ("leaf", blade)] {
+    for (label, body) in [
+        (stem_material, stem as fn() -> Value),
+        (leaf_material, blade),
+    ] {
         for (stage, shader) in [
             ("cast", "plain_shadowing"),
             ("depth", "plain_depthing"),

@@ -1796,3 +1796,25 @@ six in the hamlet's yards.
 
 **Identity: 27 scenes, 110 245 rows, unchanged.** The hillside's document is **110.32 MB** against 94.86 MB, and the
 hamlet's is 20.62 MB.
+## Round 63: a bridge for two species, and no tree to grow
+
+The bridge was one species hard-coded. It is now **parameterised by a prefix, a species, and two scales**, and an `Extra` can
+absorb another, so a settlement holds a clump and a tree in one scene:
+
+- **every mesh label carries the prefix** — `clump-wood`, `tree-wood`, `clump-leaf-0` — so two species never collide;
+- **each instance names its own material in the tuple**, and that was a defect worth finding: the name had been *derived*
+  from the mesh, so a leaf drew with `clump-leaf-0-leaf-depth`, which no scene declares. The first scene with two species
+  refused to write at all: `instance 'clump-leaf-0-depth-0' names material 'clump-leaf-0-leaf-depth', which the scene does
+  not declare`.
+
+### There is no tree species, and that is the finding
+
+The vegetation crate has five: **bamboo** (a culm), **tuft**, **clump**, **shrub**, and **sculpted** — which is a *bamboo*
+with a hand's edits, not a tree. Measured: a shrub at `11.0` is **nine metres of bare wood with a shrub's leaves on it**,
+and it draws as a twig above the roofs. No dial makes a crown out of a species that has no crown.
+
+`settlement_plants::trees` is the seam and is **unused**: a settlement's tree needs a species of its own — more generations,
+a bough that divides at the top, and a leaf field dense enough to be a canopy — and that is a vegetation-crate job, not a
+scene's.
+
+**Identity: 27 scenes, 110 245 rows, unchanged**; the hamlet's document is 20.63 MB, as before.
