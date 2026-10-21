@@ -4155,3 +4155,18 @@ answers and this is the sixth time it has been taken.
 **What the close plate proves that the wide one could not**: the pans are **solids standing in the bench's own top**, not drawn lines on a floor, and the
 卤池 is a **box with an inside** — the well-head's cap and the shed's cap are two separate roofs at two heights, which the wide plate merges into one
 silhouette.
+## Round 228: the 马店, the twenty-third type
+
+Every 西南 road town on the 茶马古道 has one building the others are not: an inn that takes **mules as well as men**. Its yard is not a garden and not a
+temple court — it is a **working yard**, and everything in it is addressed to an animal: **the trough** along the stable's front, **four hitching posts**
+along the opposite wall, **the stable's open front** of five posts over a low wall, and **a gate wide enough that a loaded mule walks through it
+standing up**. It is the first type here whose user is **travelling**.
+
+**The inn itself is the weakest part and the round records why**: the rooms over the gallery are the interior this crate does not have, so the gallery is
+drawn as **a floor and a rail** — which is what a man standing in the yard can see — and the inn reads as a low block with a shelf on it. **That is the
+honest state of a two-storey building in a catalogue with no upstairs**, and it is the same debt round 197 and the 穿斗's interior have carried.
+
+**Identity: 66 scenes, 243 275 rows**; `caravan_inn` **159** — an inn, a stable, a trough, four posts and a gate.
+
+**The first camera was too high and the second is at a man's height**, which is the third time this half of the gallery has learned that **a yard is
+photographed from inside it and not from above it** (rounds 195, 203 and 225 are the others).

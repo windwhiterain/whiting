@@ -70,6 +70,7 @@ pub mod bai_court;
 pub mod bai_lane;
 pub mod bamboo_house;
 pub mod benzu_miao;
+pub mod caravan_inn;
 /// The shell phase's proof scene: one authored building, derived and expanded, standing in a frame.
 ///
 /// Public so a session iterating on the phase's acceptance picture can call it directly, and
@@ -227,6 +228,7 @@ impl Gallery {
             "dai_hamlet",
             "hall_large",
             "chuandou_house",
+            "caravan_inn",
             "compound",
             "compound_court",
             "house",
@@ -372,6 +374,7 @@ impl Gallery {
             "hermite" => hermite::hermite(),
             "hermite_massif" => hermite_massif::hermite_massif(),
             "chuandou_house" => chuandou::chuandou_house(),
+            "caravan_inn" => caravan_inn::caravan_inn(),
             "compound" => compound::compound(),
             "compound_court" => compound::compound_court(),
             "fengshui_tower" => fengshui_tower::fengshui_tower(),

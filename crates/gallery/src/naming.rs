@@ -397,6 +397,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "saltworks" => crate::saltworks::document(),
         "shed" => crate::shed::document(),
         "chuandou_house" => crate::chuandou::document(),
+        "caravan_inn" => crate::caravan_inn::document(),
         "compound" => crate::compound::document(),
         // **Two cameras, one document**: the court view is the same expansion.
         "compound_court" => crate::compound::document(),
