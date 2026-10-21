@@ -3332,3 +3332,13 @@ laid out in the turned frame.
 
 **Identity: 42 scenes, 152 139 rows**; `qiang_tower` 1 620 → **2 131** — a whole house's courses, parapet, windows, door and gallery. The
 document is 7.86 MB.
+## Round 168: the 巷道
+
+The yard's floor is **paving** and the way through it is **flags** — ten of them, laid with the 石板街's own joint, from the gate north past the
+towers to the houses. A yard with no lane is a yard with no way through it, and the plate reads the flags as exactly that.
+
+**Its first placement ran under the tower's plinth.** Laid on the yard's axis at `x = 0` the lane disappeared: the plinth is `0.55 m` high and
+`7.1 m` across, so the flags were *inside* it for the middle seven metres and only the ends showed. Moved to `LANE_X` east of the plinth it
+runs between the tower and the houses, which is where a lane in a yard that has a tower in the middle actually goes.
+
+**Identity: 42 scenes, 152 199 rows**; `qiang_tower` 2 131 → **2 191** — ten flags' tops and edges. The document is 7.87 MB.

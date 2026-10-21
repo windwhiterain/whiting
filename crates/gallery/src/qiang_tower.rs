@@ -66,6 +66,15 @@ const YARD_THICK: f32 = 0.48;
 const YARD_HIGH: f32 = 2.05;
 /// The yard's paving: how thick the flags lie.
 const PAVING: f32 = 0.07;
+/// The 巷道 through the yard: its half width, where it starts and ends, how many flags and the joint between them, and how far the flags
+/// stand above the yard's paving.
+const LANE_X: f32 = 5.10;
+const LANE_HALF: f32 = 1.20;
+const LANE_FROM: f32 = YARD_SOUTH + YARD_THICK;
+const LANE_TO: f32 = 7.60;
+const LANE_FLAGS: usize = 10;
+const LANE_JOINT: f32 = 0.06;
+const LANE_HIGH: f32 = 0.05;
 /// The gates head: how deep it lies on the walls own head.
 const GATE_HEAD: f32 = 0.42;
 /// The 散水 round the tower's foot: how wide the band lies and how thick.
@@ -303,6 +312,27 @@ pub fn document() -> Building {
     tank.wall = CISTERN * 0.20;
     tank.slab = 0.14;
     skeleton.masses.push(tank);
+    // **The 巷道: the flagged lane through the yard**, east of the tower's plinth and west of the houses — a lane laid *through* a plinth is a
+    // lane nobody sees, which is what its first placement was.
+    // The yard's floor is paving and the lane over it is **flags** — one band of them from
+    // the gate to the houses, laid with the joint the 石板街 uses, so the plate reads a way through the yard and not a yard with a stripe on
+    // it. Ten flags, each `LANE_JOINT` short of the next.
+    let run = (LANE_TO - LANE_FROM) / LANE_FLAGS as f32;
+    for flag in 0..LANE_FLAGS {
+        let from = LANE_FROM + run * flag as f32 + LANE_JOINT * 0.5;
+        let to = LANE_FROM + run * (flag + 1) as f32 - LANE_JOINT * 0.5;
+        skeleton.slabs.push(building::Slab::paving(
+            ops::wound(vec![
+                [-LANE_HALF, from],
+                [LANE_HALF, from],
+                [LANE_HALF, to],
+                [-LANE_HALF, to],
+            ]),
+            PAVING,
+            PAVING + LANE_HIGH,
+        ));
+    }
+
     // **The yard's floor.** A courtyard is a floor and not a field: the 羌 pave the yard with flat stones, and the plate reads the walls as
     // enclosing something the moment there is a surface inside them. It runs to the walls' inner faces, so no paving stands under a wall.
     skeleton.slabs.push(building::Slab::paving(
