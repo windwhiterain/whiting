@@ -66,6 +66,8 @@ const YARD_THICK: f32 = 0.48;
 const YARD_HIGH: f32 = 2.05;
 /// The yard's paving: how thick the flags lie.
 const PAVING: f32 = 0.07;
+/// The gates head: how deep it lies on the walls own head.
+const GATE_HEAD: f32 = 0.42;
 
 /// The 碉房 beside the tower: where it stands in the towers own coordinates.
 const HOUSE_AT: [f32; 2] = [14.20, 2.60];
@@ -297,6 +299,52 @@ pub fn document() -> Building {
         wall.slab = 0.16;
         skeleton.masses.push(wall);
     }
+
+    // **The gate's head, its leaves and its threshold.** The gap in the south wall is a way in; a way in is a **doorway**, and a doorway
+    // has three parts: a stone head across it, two boards that close it, and a sill it is stepped over. The head spans **exactly the gap**
+    // and no more — a head that reached into either wall would own part of its plan (round 114's measurement) — and it sits on the two
+    // lengths' own heads.
+    let mut head = building::Mass::new(
+        ops::wound(vec![
+            [-YARD_GATE, YARD_SOUTH],
+            [YARD_GATE, YARD_SOUTH],
+            [YARD_GATE, YARD_SOUTH + YARD_THICK],
+            [-YARD_GATE, YARD_SOUTH + YARD_THICK],
+        ])
+        .into_iter()
+        .map(|at| building::PlanNode::new(at, YARD_HIGH))
+        .collect(),
+        YARD_HIGH + GATE_HEAD,
+    );
+    head.wall = YARD_THICK * 0.34;
+    head.slab = 0.14;
+    skeleton.masses.push(head);
+    for side in [-1.0_f32, 1.0] {
+        if let Some(leaf) = building::derive::leaf(
+            [
+                side * (YARD_GATE - 0.06),
+                0.12,
+                YARD_SOUTH + YARD_THICK * 0.5,
+            ],
+            YARD_GATE - 0.12,
+            YARD_HIGH - 0.26,
+            0.07,
+            [-side, 0.0],
+        ) {
+            skeleton.members.push(leaf);
+        }
+    }
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [-YARD_GATE, 0.0, YARD_SOUTH + YARD_THICK * 0.5],
+        },
+        building::Anchor::Free {
+            at: [YARD_GATE, 0.0, YARD_SOUTH + YARD_THICK * 0.5],
+        },
+        [0.0, 1.0],
+        0.30,
+        0.16,
+    ));
 
     // **The yard's floor.** A courtyard is a floor and not a field: the 羌 pave the yard with flat stones, and the plate reads the walls as
     // enclosing something the moment there is a surface inside them. It runs to the walls' inner faces, so no paving stands under a wall.

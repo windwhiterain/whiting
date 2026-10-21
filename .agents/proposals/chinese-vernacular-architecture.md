@@ -3184,3 +3184,14 @@ there is a surface inside them. The paving runs to the walls' inner faces so no 
 gave the walls themselves.
 
 **Identity: 41 scenes, 147 419 rows**; `qiang_tower` 988 → **994** — a floor's top and its edges. The document is 7.44 MB.
+## Round 157: the yard's gate
+
+The gap in the south wall is a way in; a **doorway** has three parts — a stone head across it, two boards that close it, and a sill it is
+stepped over — and the yard has all three now.
+
+**The head spans exactly the gap and no more.** A head that reached into either wall would own part of its plan (`UnattachedOverlap`, round
+114) and a head that rests on the two lengths' own heads is what a stone gate head is anyway. The leaves are `derive::leaf`'s panels, the
+**fifth gate** this project has hung them in.
+
+**Identity: 41 scenes, 147 450 rows**; `qiang_tower` 994 → **1 025** — a head's faces and top, two leaves and a sill. The document is
+7.45 MB.
