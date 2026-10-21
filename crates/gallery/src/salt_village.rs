@@ -38,6 +38,14 @@ const PAVING: f32 = 0.08;
 const RETAIN_HALF: f32 = 11.0;
 const RETAIN_HIGH: f32 = 1.05;
 const RETAIN_THICK: f32 = 0.52;
+/// The 盐仓 at the yard's south end: where it stands, its plan and height, how far its cap oversails, and its door's jamb and head.
+const STORE_AT: f32 = 9.20;
+const STORE_LONG: f32 = 7.40;
+const STORE_DEEP: f32 = 4.60;
+const STORE_HIGH: f32 = 4.10;
+const STORE_EAVE: f32 = 0.42;
+const STORE_JAMB: f32 = 0.62;
+const STORE_HEAD: f32 = 0.55;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
@@ -109,6 +117,70 @@ pub fn document() -> Building {
         ops::merge(&mut skeleton, works),
         "the works place no parts, so the merge always happens"
     );
+
+    // **The 盐仓 at the yard's south end.** Salt is not boiled and eaten: it is **weighed, stored and taxed**, and a works without a store is a works
+    // whose product stands in the open. The store faces the works down the yard's own axis, so the two ends of the yard are the two ends of the process —
+    // **the brine at the head and the salt at the foot** — and its door is a real opening, cut in the face that looks up the yard (round 210's answer for
+    // the 塔门: `split_face` and an `Opening`).
+    let mut store = Mass::new(
+        ops::wound(vec![
+            [-STORE_LONG * 0.5, STORE_AT - STORE_DEEP * 0.5],
+            [STORE_LONG * 0.5, STORE_AT - STORE_DEEP * 0.5],
+            [STORE_LONG * 0.5, STORE_AT + STORE_DEEP * 0.5],
+            [-STORE_LONG * 0.5, STORE_AT + STORE_DEEP * 0.5],
+        ])
+        .into_iter()
+        .map(|at| building::PlanNode::new(at, PAVING))
+        .collect(),
+        PAVING + STORE_HIGH,
+    );
+    // **The ring's offset stays under half the narrow side** (rounds 74, 144, 171): the narrow side is the store's own depth.
+    store.wall = STORE_DEEP * 0.22;
+    store.slab = 0.18;
+    let store_id = building::MassId(skeleton.masses.len());
+    skeleton.masses.push(store);
+    skeleton.slabs.push(building::Slab::roof(
+        ops::wound(vec![
+            [
+                -STORE_LONG * 0.5 - STORE_EAVE,
+                STORE_AT - STORE_DEEP * 0.5 - STORE_EAVE,
+            ],
+            [
+                STORE_LONG * 0.5 + STORE_EAVE,
+                STORE_AT - STORE_DEEP * 0.5 - STORE_EAVE,
+            ],
+            [
+                STORE_LONG * 0.5 + STORE_EAVE,
+                STORE_AT + STORE_DEEP * 0.5 + STORE_EAVE,
+            ],
+            [
+                -STORE_LONG * 0.5 - STORE_EAVE,
+                STORE_AT + STORE_DEEP * 0.5 + STORE_EAVE,
+            ],
+        ]),
+        PAVING + STORE_HIGH,
+        PAVING + STORE_HIGH + 0.16,
+    ));
+    // Face 0 is the store's `-z` side, which is the side that looks up the yard at the works.
+    let face = building::FaceRef::new(store_id, 0);
+    if ops::split_face(
+        &mut skeleton,
+        face,
+        &building::Rhythm::Even { count: 3 },
+        &building::Rhythm::Even { count: 1 },
+    )
+    .is_some()
+    {
+        let _ = ops::add_opening(
+            &mut skeleton,
+            building::Opening::new(
+                face,
+                0,
+                1,
+                building::Inset::new(STORE_JAMB, STORE_JAMB, 0.0, STORE_HEAD),
+            ),
+        );
+    }
 
     Building::new(skeleton)
 }

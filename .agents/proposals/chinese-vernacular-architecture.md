@@ -4127,3 +4127,17 @@ showed **a shelf, a wall and two roofs at an angle** — the works was behind a 
 visitor enters it, and the plate is symmetrical: two houses, the works between them at the head, the retaining wall in front.
 
 **Identity: 64 scenes, 242 357 rows**; `salt_village` **715** — two houses of 293, the works' 128, a yard and a wall.
+## Round 226: the 盐仓
+
+Salt is not boiled and eaten: it is **weighed, stored and taxed**, and a works without a store is a works whose product stands in the open. The 盐村 now
+has both ends of its process — **the brine at the head of the yard and the salt at its foot** — and its store faces the works down the yard's own axis.
+
+**That door is the round's one interesting measurement**: it is a real opening (`split_face` and an `Opening`, round 210's answer for the 塔门), cut in the
+face that looks **up the yard** — which is the face **the camera cannot see**, because the plate looks down the yard from the south. The door is in the
+document, in the table and in no frame, which is the same note rounds 200 and 209 made about small objects and the same one `workshop.rs` made in its own
+header about its bench: **an opening is oriented by its building and not by the view.**
+
+**Identity: 64 scenes, 242 379 rows**; `salt_village` 715 → **737** — a store of a hundred and fifty rows' fabric and one door of twenty-two.
+
+**The village is now four sides and a process**: works at the head, two 土掌房 along the sides, the store at the foot, the retaining wall behind. **It is
+the first complete courtyard in this gallery whose corners are three different types.**
