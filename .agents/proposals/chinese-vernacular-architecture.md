@@ -2533,3 +2533,13 @@ them.
 
 **Identity: 37 scenes, 128 568 rows**; `tunpu_village` 1 192 → **1 216** — four frame members with their sections and their
 ends. The document is 7.53 MB.
+## Round 104: the 抱鼓石
+
+A gate frame standing on nothing but its own two posts has no foot. The 朝门 has two now — **抱鼓石**, one at each jamb's foot
+inside the opening: `DRUM` square, knee high, the stone a leaf swings back against and the stone that holds a jamb upright.
+
+They stand **inside the opening** and against the jamb's inner face, so neither overlaps a stone pier: a drum that reached past
+the jamb would be a mass inside a mass.
+
+**Identity: 37 scenes, 128 594 rows**; `tunpu_village` 1 216 → **1 242** — two drums' four faces and their tops. The document is
+7.54 MB.

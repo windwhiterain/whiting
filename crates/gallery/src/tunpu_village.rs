@@ -44,6 +44,9 @@ const PIER: f32 = 0.45;
 const GATE_HEAD: f32 = 2.60;
 /// The 门框 the gate`s leaves hang in: its own square section, in metres.
 const FRAME: f32 = 0.13;
+/// The 抱鼓石 at each jamb: its plan and its height.
+const DRUM: f32 = 0.46;
+const DRUM_HIGH: f32 = 0.52;
 const GATE_RISE: f32 = 0.55;
 const GATE_EAVE: f32 = 0.70;
 
@@ -168,6 +171,26 @@ pub fn document() -> Building {
             FRAME * 1.3,
             high,
         ));
+    }
+
+    // **The 抱鼓石: a stone at each jamb's foot, in the opening.** It is what a gate's leaf swings back against and what holds the
+    // jamb upright — a gate frame standing on nothing but its own two posts has no foot, and the drum is the foot. Each is a mass
+    // `DRUM` square, knee high, standing against the jamb's inner face and **inside the opening**, so it overlaps no pier.
+    for across in [-1.0_f32, 1.0] {
+        let centre = across * (inner - DRUM * 0.5 - 0.02);
+        let mut drum = Mass::new(
+            [
+                PlanNode::new([centre - DRUM * 0.5, WALL_Z - DRUM * 0.5], 0.0),
+                PlanNode::new([centre + DRUM * 0.5, WALL_Z - DRUM * 0.5], 0.0),
+                PlanNode::new([centre + DRUM * 0.5, WALL_Z + DRUM * 0.5], 0.0),
+                PlanNode::new([centre - DRUM * 0.5, WALL_Z + DRUM * 0.5], 0.0),
+            ]
+            .to_vec(),
+            DRUM_HIGH,
+        );
+        drum.wall = DRUM * 0.28;
+        drum.slab = 0.14;
+        skeleton.masses.push(drum);
     }
 
     // **The 朝门's two leaves, standing open against the piers** — the same panel `derive::leaf` builds for the 白族巷's gate.
