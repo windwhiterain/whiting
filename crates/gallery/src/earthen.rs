@@ -60,6 +60,13 @@ const ROOF_THICK: f32 = 0.35;
 const PARAPET: f32 = 0.28;
 const PARAPET_HIGH: f32 = 0.55;
 
+/// The 晒架 on the roof: how many racks, how far in from the roofs edge they stand, how long each runs and how high, and a posts section.
+const RACKS: usize = 3;
+const RACK_INSET: f32 = 0.70;
+const RACK_LONG: f32 = 2.60;
+const RACK_HIGH: f32 = 1.50;
+const RACK_POST: f32 = 0.085;
+
 /// The 厦子: how far its roof reaches out from the door's wall, and the elevations of its eave and its crest.
 const PORCH_DEPTH: f32 = 1.9;
 const PORCH_LOW: f32 = 2.55;
@@ -380,6 +387,43 @@ pub fn document() -> Building {
         )
         .with_host(upper_id),
     );
+
+    // **The 晒架: the drying racks on the roof.** The roof of a 土掌房 is not a lid — it is the household's **drying floor**, and every such
+    // house in Yunnan carries a small frame of posts and head beams on it for the maize, the chillies and the tobacco. Without them the type
+    // is a flat-roofed box, which is what a plate of it has been until now.
+    //
+    // **The racks stand on the upper room's own roof and not on the terrace**: the terrace is planted with the room already, and the roof is
+    // the open floor the racks are for.
+    for rack in 0..RACKS {
+        let x = -half
+            + SETBACK
+            + RACK_INSET
+            + (2.0 * (half - SETBACK - RACK_INSET)) * rack as f32 / (RACKS - 1).max(1) as f32;
+        let from = -deep + SETBACK + RACK_INSET;
+        let to = from + RACK_LONG;
+        for z in [from, to] {
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x, top, z] },
+                building::Anchor::Free {
+                    at: [x, top + RACK_HIGH, z],
+                },
+                [1.0, 0.0],
+                RACK_POST,
+                RACK_POST,
+            ));
+        }
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, top + RACK_HIGH, from],
+            },
+            building::Anchor::Free {
+                at: [x, top + RACK_HIGH, to],
+            },
+            [1.0, 0.0],
+            RACK_POST * 0.8,
+            RACK_POST * 0.9,
+        ));
+    }
 
     // **The parapet: four low members standing on the slab's own edge**, one to a side. They are members and
     // not a second mass because a mass is a closed volume with its own floor, and a parapet has no floor —

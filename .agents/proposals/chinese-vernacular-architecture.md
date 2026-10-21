@@ -3404,3 +3404,17 @@ is the point: a plate is a composition of a document, and a document can carry m
 document each; two of them now share one deliberately.
 
 **Identity: 44 scenes, 155 405 rows**; `tuzhang_mouth` **1 603** (the same document as `tuzhang_village`). The document is 7.62 MB.
+## Round 173: the 晒架, and a withdrawal reversed
+
+Round 155 built drying racks on a 碉房's roof and **withdrew them**: that type's roof already carries a dark beam frame and the racks could not be
+told from it. A 土掌房's roof is the opposite case — an earth slab with a plain parapet round it — and the racks are exactly what the type was
+missing. **The idea was right and the building was wrong**; this round puts it where the roof is empty.
+
+Three racks of two posts and a head beam on the upper room's roof, `RACK_HIGH` above it, set in from the parapet. They stand on the **upper
+room's roof and not on the terrace**: the terrace is already planted with the room, and the roof is the open floor the racks are for.
+
+**And they are in the type, not in the village**: `earthen_house` gains them too, because a 土掌房 without its drying racks is a flat-roofed box
+and the type has been one until now. Every scene that composes the house gains them at once — measured on all three.
+
+**Identity: 44 scenes, 156 323 rows**; `earthen_house` 230 → **284**, `tuzhang_village` and `tuzhang_mouth` 1 603 → **1 873** each (five houses'
+racks). The `tuzhang_mouth` document is 7.72 MB.
