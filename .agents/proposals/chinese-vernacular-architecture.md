@@ -2704,3 +2704,17 @@ stands in the near corner now, where a wat's 塔 actually is — the first thing
 
 **Identity: 38 scenes, 131 463 rows**; `dai_temple` 2 292 → **2 389** — four courses' faces, three bands' and the platform's. The
 document is 7.79 MB.
+## Round 117: the hamlet's wat
+
+A Dai hamlet is not a row of houses: it is a row of houses **and a temple**, and the temple stands **behind** the row so that its
+roof rises over theirs — which is what a Dai village looks like from its lane. The whole `dai_temple::document()` is translated
+into place and merged, nothing re-authored, the same answer the hamlet gave for its three 竹楼 in round 40.
+
+Three buildings, a well and a wat on one plate: the 竹楼s' pyramidal roofs in front, and behind them the wat's long steep roof,
+the 戒堂's smaller one, and the **塔** standing between the houses' roofs as a village's landmark should.
+
+The shadow extent goes from `40 m` to `64 m`: the wat adds twenty metres of depth behind the row, and a shadow map that stops at the
+row draws a temple with no shadow.
+
+**Identity: 38 scenes, 133 857 rows**; `dai_hamlet` 2 305 → **4 699** — the wat's two buildings, its compound, its gate, its 塔 and
+its yard. The document is 46.0 MB.

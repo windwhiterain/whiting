@@ -47,9 +47,12 @@ const WELL_HALF: f32 = 1.0;
 const WELL_WALL: f32 = 0.28;
 const WELL_HIGH: f32 = 0.95;
 
+/// The wat`s place in the hamlet: behind the row, so its roof rises over the houses` own.
+const WAT_AT: [f32; 2] = [4.0, -21.0];
+
 const SUN: [f64; 3] = [-22.0, 26.0, 18.0];
 const SUN_IRRADIANCE: f64 = 3.2;
-const SHADOW_EXTENT: f64 = 40.0;
+const SHADOW_EXTENT: f64 = 64.0;
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// Builds the hamlet: three 竹楼 along the lane, the well in front of them, and the bamboo clumps a Dai hamlet lives in.
@@ -153,6 +156,17 @@ pub fn document() -> Building {
     let well_id = MassId(skeleton.masses.len());
     skeleton.masses.push(well);
     let _ = well_id;
+
+    // **The village's wat.** A Dai hamlet is not a row of houses: it is a row of houses **and a temple**, and the temple stands
+    // behind the row so that its roof rises over the houses' — which is what a Dai village looks like from its lane. The whole
+    // `dai_temple::document()` is translated into place and merged, nothing re-authored, the same answer the hamlet gave for its
+    // three houses.
+    let mut wat = crate::dai_temple::document().skeleton;
+    building::ops::translate(&mut wat, WAT_AT);
+    assert!(
+        building::ops::merge(&mut skeleton, wat),
+        "the wat places no parts, so the merge always happens"
+    );
 
     Building::new(skeleton)
 }
