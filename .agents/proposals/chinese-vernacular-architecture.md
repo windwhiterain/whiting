@@ -2579,3 +2579,14 @@ At `0.15 m` the two steps were sub-pixel from the plate's own camera, and a deta
 checked — the same rule as rounds 77, 97 and 101, applied before landing this time rather than after.
 
 **Identity: 37 scenes, 128 668 rows**; `slate_street` 1 968 → **1 980** — two steps' tops and edges. The document is 7.69 MB.
+## Round 108: the 石敢当 at the lane's mouth
+
+Where a lane meets a wider way a 白族 village sets a stone at the corner — **石敢当**, "the stone that dares" — and it is the one
+object in the street that is written and stands alone. It stands at the south mouth now, in the plate's own foreground: a mass
+`STELE_HALF` by `STELE_DEEP`, a metre and a bit high, set into its own foot slab.
+
+A stele is a **mass** and not a post, and that is the whole difference between this round and the three that drew sticks: two
+faces, two edges, a foot and a top, all of them a box's.
+
+**Identity: 37 scenes, 128 687 rows**; `bai_lane` 5 713 → **5 732** — the stele's four faces and its top, and its foot slab's
+top and edges. The document is 20.40 MB.

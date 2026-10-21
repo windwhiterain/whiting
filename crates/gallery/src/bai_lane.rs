@@ -66,6 +66,14 @@ const GATE_EAVE: f32 = 0.55;
 const BOARD: f32 = 0.08;
 const BOARD_HALF: f32 = 0.95;
 
+/// The 石敢当 at the lanes mouth: where it stands, its width, its thickness, its wall, its foot and its height.
+const STELE_AT: [f32; 2] = [5.30, -18.30];
+const STELE_HALF: f32 = 0.30;
+const STELE_DEEP: f32 = 0.22;
+const STELE_WALL: f32 = 0.08;
+const STELE_FOOT: f32 = 0.14;
+const STELE_HIGH: f32 = 1.12;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the lane: from its south end, looking north between the gates.
@@ -287,6 +295,48 @@ pub fn document() -> building::Building {
         [0.0, 1.0],
         0.12,
         0.52,
+    ));
+
+    // **The 石敢当: the stone at the lane's mouth.** Where a lane meets a wider way, a 白族 village sets a small stone stele at the
+    // corner — 石敢当, "the stone that dares" — and it is the one object in the street that is *written* and stands alone. It is a
+    // mass: a stele has two faces, two edges, a foot and a top, and it is not a post.
+    let mut stele = building::Mass::new(
+        building::ops::wound(vec![
+            [STELE_AT[0] - STELE_HALF, STELE_AT[1] - STELE_DEEP * 0.5],
+            [STELE_AT[0] + STELE_HALF, STELE_AT[1] - STELE_DEEP * 0.5],
+            [STELE_AT[0] + STELE_HALF, STELE_AT[1] + STELE_DEEP * 0.5],
+            [STELE_AT[0] - STELE_HALF, STELE_AT[1] + STELE_DEEP * 0.5],
+        ])
+        .into_iter()
+        .map(|at| building::PlanNode::new(at, STELE_FOOT))
+        .collect(),
+        STELE_FOOT + STELE_HIGH,
+    );
+    stele.wall = STELE_WALL;
+    stele.slab = 0.16;
+    skeleton.masses.push(stele);
+    // **Its foot**: a slab the stele stands in, so the stone is set into the ground and not balanced on it.
+    skeleton.slabs.push(building::Slab::floor(
+        building::ops::wound(vec![
+            [
+                STELE_AT[0] - STELE_HALF - 0.18,
+                STELE_AT[1] - STELE_DEEP * 0.5 - 0.18,
+            ],
+            [
+                STELE_AT[0] + STELE_HALF + 0.18,
+                STELE_AT[1] - STELE_DEEP * 0.5 - 0.18,
+            ],
+            [
+                STELE_AT[0] + STELE_HALF + 0.18,
+                STELE_AT[1] + STELE_DEEP * 0.5 + 0.18,
+            ],
+            [
+                STELE_AT[0] - STELE_HALF - 0.18,
+                STELE_AT[1] + STELE_DEEP * 0.5 + 0.18,
+            ],
+        ]),
+        0.0,
+        STELE_FOOT,
     ));
 
     building::Building::new(skeleton)
