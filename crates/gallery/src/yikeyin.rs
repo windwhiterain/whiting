@@ -102,6 +102,19 @@ const GATE_BOARDS: facade::Bar = facade::Bar {
 /// The common numbers: a wall, a plate, deep eaves, a gable, its rise, and **no overhang at the ends**.
 const WALL: f32 = 0.45;
 const PLATE: f32 = 0.35;
+/// The 照壁 in front of the gate: its width, its depth, its height, its own wall, and the gap it stands off the range.'n///'n/// **The depth is five tenths and the wall is one and eight tenths of a tenth of that**, so the inner loop cannot fold.'nconst SCREEN_HALF: f32 = 2.60;'nconst SCREEN_THICK: f32 = 0.50;'nconst SCREEN_HIGH: f32 = 3.10;'nconst SCREEN_WALL: f32 = 0.18;'nconst SCREEN_GAP: f32 = 1.70;'nconst SCREEN_EAVE: f32 = 0.28;'nconst SCREEN_RISE: f32 = 0.45;
+
+/// The 照壁 in front of the gate: its width, its depth, its height, its own wall, and the gap it stands off the range.
+///
+/// **The depth is five tenths and the wall is under half of it**, so the inner loop cannot fold (round 73's invariant).
+const SCREEN_HALF: f32 = 2.60;
+const SCREEN_THICK: f32 = 0.50;
+const SCREEN_HIGH: f32 = 3.10;
+const SCREEN_WALL: f32 = 0.18;
+const SCREEN_GAP: f32 = 1.70;
+const SCREEN_EAVE: f32 = 0.28;
+const SCREEN_RISE: f32 = 0.45;
+
 const OVERHANG: f32 = 0.65;
 const GABLE: f32 = 0.0;
 const RISE: f32 = 1.8;
@@ -626,6 +639,38 @@ pub fn document() -> Building {
     if let Some(paving) = derive::court_paving(court, 0.02, 0.08, GRATE, 0.30) {
         skeleton.slabs.push(paving);
     }
+
+    // **The 照壁: the screen wall the courtyard sets in front of its gate.** A 一颗印's gate opens straight onto the lane,
+    // and what a Yunnan courtyard sets against the lane is a **照壁** — a white screen wall, head high and wider than the
+    // gate, wearing a tiled coping. It is a wall and not a building: a mass `SCREEN_THICK` deep with a `SCREEN_WALL` in it,
+    // so the inner loop is a third of the depth and cannot fold (round 73's invariant), and a gable over a half-metre span is
+    // its coping, which is the same `gable_roof` call the ranges wear at a different span.
+    let screen_z = HALF_Z + SCREEN_GAP;
+    let mut screen = Mass::new(
+        [
+            PlanNode::new([-SCREEN_HALF, screen_z - SCREEN_THICK * 0.5], 0.0),
+            PlanNode::new([SCREEN_HALF, screen_z - SCREEN_THICK * 0.5], 0.0),
+            PlanNode::new([SCREEN_HALF, screen_z + SCREEN_THICK * 0.5], 0.0),
+            PlanNode::new([-SCREEN_HALF, screen_z + SCREEN_THICK * 0.5], 0.0),
+        ]
+        .to_vec(),
+        SCREEN_HIGH,
+    );
+    screen.wall = SCREEN_WALL;
+    screen.slab = 0.22;
+    let screen_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(screen);
+    if let Some(coping) = derive::gable_roof(
+        screen_id,
+        &skeleton.masses[screen_id.0],
+        SCREEN_EAVE,
+        SCREEN_RISE,
+        0.04,
+        0.12,
+    ) {
+        skeleton.roofs.push(coping.with_covering(COVERING));
+    }
+
     Building::new(skeleton)
 }
 

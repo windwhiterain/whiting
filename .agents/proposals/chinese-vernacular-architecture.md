@@ -2256,3 +2256,15 @@ gaps in the coping as well, and the cap is continuous everywhere the wall is.
 **Identity: 35 scenes, 124 419 rows**; `tibetan_house` 391 → **451** (ten cap members: four on the lower roof, six on the upper
 where the sides are split), `plateau_village` 3 209 → **3 449** (four towers, each with both roofs capped). The tower's document
 is 4.37 MB.
+## Round 86: the 一颗印's 照壁
+
+A 一颗印 opens **straight onto the lane**, and what a Yunnan courtyard sets against the lane is a **照壁** — a white screen
+wall, head high and wider than the gate, wearing a tiled coping. The type has one now, standing `1.70 m` out from the gate
+range: a mass `0.50 m` deep with a `0.18 m` wall in it, so the inner loop is a third of the depth and cannot fold, and a gable
+over a half-metre span for its coping — the same `gable_roof` call the ranges wear at a different span.
+
+It is the piece the type was missing at its own front: the gate had a threshold, boards and a 门罩, and beyond them nothing,
+where a 一颗印's gate is always seen against a screen.
+
+**Identity: 35 scenes, 124 845 rows**; `yikeyin` 6 828 → **6 841** (the screen's faces, its top and its coping), and
+`yikeyin_court` unchanged — it is the court's interior and the screen is outside it. The document is 6.29 MB.
