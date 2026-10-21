@@ -1658,3 +1658,28 @@ It also closes the arc that began in round 45, when the 蘑菇房's straw was dr
 Every guard this arc added was a guard on the *expansion* — the tolerance, the plane's construction, the spike test, the
 element's name — and none of them could ever have worked, because the reading that was wrong was **the one doing the
 accusing**. When a measurement disagrees with a hand computation, the disagreement is a defect in the measurement.
+## Round 57: the Dai hamlet, the gallery's second settlement
+
+**A settlement of one type repeated.** The mountain village is several types held together by a square and a tower; a Dai
+hamlet is neither — it stands on the valley floor, it has no square, and what makes it a settlement is the **lane** and the
+**well**. `dai_hamlet` is a row of three 竹楼 along a lane that falls 4 % one way and is level the other, each house on its
+piles with its veranda and stair turned to the road, and the well-head in the open ground in front.
+
+**Nothing is re-authored.** `bamboo_house::document()` is a whole house, and the hamlet translates three copies and seats
+each on the ground under it — the same `seat` + `posts` pair the single-house scene makes, read once per house. The scene
+shell (`village::scene_of`) is shared with the mountain village and made crate-visible for the purpose: one list of meshes,
+one set of earthy materials, two settlements.
+
+**The well is a mass.** A well-head is a ring of stone with an inside, and this crate has no ring primitive, so it is a
+small mass with a `0.28 m` wall — the expansion draws a curb with a hole in plan, which is what a well looks like from the
+lane.
+
+Identity: **27 scenes, 110 005 rows**, of which `dai_hamlet` is **2 305** — one more copy of a 764-row house plus the well
+and the extra meshes.
+
+### What it does not draw
+
+- **no vegetation**: the palms and bamboo a Dai hamlet lives among are the vegetation arc's work;
+- **no fences or gardens**;
+- **the three houses all face the same way**, because the scene transforms are translations and this crate has no rotation
+  for a skeleton. A hamlet of houses at right angles needs one.

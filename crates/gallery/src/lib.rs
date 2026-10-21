@@ -83,6 +83,7 @@ pub mod earthen;
 pub mod facade;
 mod foldyard;
 pub mod hall;
+pub mod hamlet;
 pub mod house;
 /// The mountain scene, and the massif it stands on.
 ///
@@ -198,6 +199,7 @@ impl Gallery {
             "hermite",
             "hermite_massif",
             "hall",
+            "dai_hamlet",
             "hall_large",
             "compound",
             "compound_court",
@@ -310,6 +312,7 @@ impl Gallery {
             "compound" => compound::compound(),
             "compound_court" => compound::compound_court(),
             "hall" => hall::hall(),
+            "dai_hamlet" => hamlet::hamlet(),
             "hall_large" => hall::hall_large(),
             "house" => house::house(),
             "identity" => authored::identity(),

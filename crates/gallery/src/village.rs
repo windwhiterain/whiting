@@ -352,7 +352,10 @@ fn ground_scale(name: &str) -> (usize, f64) {
 }
 /// Builds one scene of a village: a building and the ground it stands on, which is the only pair of facts the
 /// two variants of this village disagree about.
-fn scene_of(
+/// **The scene shell is the crate's**, shared with the Dai hamlet: one list of meshes an authored building may
+/// produce — walls, roofs and their rolls, slabs and members — and one set of earthy materials for them. A second
+/// settlement reuses it rather than writing a fourth copy of the same twelve material declarations.
+pub(crate) fn scene_of(
     building: &Building,
     ground_at: &dyn Fn(f64, f64) -> f64,
     eye: [f64; 3],

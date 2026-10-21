@@ -419,6 +419,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "yikeyin_court" => crate::yikeyin::document(),
         "house" => crate::house::document(),
         "hall" => crate::hall::document(),
+        "dai_hamlet" => crate::hamlet::document(),
         "hall_large" => crate::hall::document_at(14.0, 20.0, 1),
         _ => return None,
     })
