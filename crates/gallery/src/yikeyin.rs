@@ -60,6 +60,14 @@ fn atmosphere() -> Atmosphere {
 const HALF_X: f32 = 6.5;
 const HALF_Z: f32 = 7.5;
 
+/// The 走马转角楼: the first-floor gallery round the court — its level, how deep it runs into the well, its decks thickness, its posts section
+/// and the rails height above the deck.
+const GALLERY_AT: f32 = 2.95;
+const GALLERY_DEEP: f32 = 0.34;
+const GALLERY_DECK: f32 = 0.10;
+const GALLERY_POST: f32 = 0.13;
+const GALLERY_RAIL: f32 = 0.80;
+
 /// The court: three metres square, the well the ranges are built round.
 const COURT: f32 = 1.5;
 
@@ -704,6 +712,103 @@ pub fn document() -> Building {
             [0.0, 1.0],
             PANEL_BAR,
             PANEL_BAR,
+        ));
+    }
+
+    // **The 走马转角楼: the gallery that walks round the court.** A 一颗印 is read by its two gable walls from outside and by this from inside — a
+    // **first-floor corridor running round three sides of the well**, carried on posts, so the household can walk from the 正房 to either 厢房 without
+    // coming down. It is three decks, a post at each corner and a rail on the court's edge, and it is the one thing this type was missing.
+    //
+    // **It is `GALLERY_DEEP` and no deeper**: the court is three metres across, and a corridor wide enough to walk in on three sides of a three-metre
+    // well would close the well. At this depth the light still reaches the paving and the corridor still reads as a way round.
+    let level = GALLERY_AT;
+    let decks: [([f32; 2], [f32; 2]); 3] = [
+        ([COURT, -COURT], [-COURT, -COURT]),
+        ([-COURT, -COURT], [-COURT, COURT]),
+        ([COURT, -COURT], [COURT, COURT]),
+    ];
+    for (from, to) in decks {
+        let inward: [f32; 2] = if (to[0] - from[0]).abs() < 1.0e-3 {
+            [if from[0] > 0.0 { -1.0 } else { 1.0 }, 0.0]
+        } else {
+            [0.0, 1.0]
+        };
+        let [ax, az] = from;
+        let [bx, bz] = to;
+        let [dx, dz] = inward;
+        let plan = if dz.abs() > 0.5 {
+            vec![
+                [ax, az],
+                [bx, bz],
+                [bx, bz + GALLERY_DEEP],
+                [ax, az + GALLERY_DEEP],
+            ]
+        } else {
+            vec![
+                [ax, az],
+                [bx, bz],
+                [bx + dx * GALLERY_DEEP, bz],
+                [ax + dx * GALLERY_DEEP, az],
+            ]
+        };
+        skeleton.slabs.push(building::Slab::paving(
+            ops::wound(plan.clone()),
+            level,
+            level + GALLERY_DECK,
+        ));
+        // **The rail on the court's edge**, a member from one end of the deck to the other.
+        let rail = [
+            [
+                ax + dx * (GALLERY_DEEP - 0.06),
+                az + dz * (GALLERY_DEEP - 0.06),
+            ],
+            [
+                bx + dx * (GALLERY_DEEP - 0.06),
+                bz + dz * (GALLERY_DEEP - 0.06),
+            ],
+        ];
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [rail[0][0], level + GALLERY_RAIL, rail[0][1]],
+            },
+            building::Anchor::Free {
+                at: [rail[1][0], level + GALLERY_RAIL, rail[1][1]],
+            },
+            // A rail's `across` is its run turned a quarter (round 134): a rail along `x` takes `[0, 1]`, one along `z` takes `[1, 0]`.
+            if dz.abs() > 0.5 {
+                [0.0, 1.0]
+            } else {
+                [1.0, 0.0]
+            },
+            GALLERY_POST * 0.6,
+            GALLERY_POST * 0.7,
+        ));
+    }
+    // **The posts under the corridor's court-side edge**, one at each end of each deck.
+    for [x, z] in [
+        [
+            COURT - GALLERY_DEEP + GALLERY_POST * 0.5,
+            -COURT + GALLERY_DEEP - GALLERY_POST * 0.5,
+        ],
+        [
+            -COURT + GALLERY_DEEP - GALLERY_POST * 0.5,
+            -COURT + GALLERY_DEEP - GALLERY_POST * 0.5,
+        ],
+        [
+            -COURT + GALLERY_DEEP - GALLERY_POST * 0.5,
+            COURT - GALLERY_DEEP + GALLERY_POST * 0.5,
+        ],
+        [
+            COURT - GALLERY_DEEP + GALLERY_POST * 0.5,
+            COURT - GALLERY_DEEP + GALLERY_POST * 0.5,
+        ],
+    ] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free { at: [x, 0.0, z] },
+            building::Anchor::Free { at: [x, level, z] },
+            [1.0, 0.0],
+            GALLERY_POST,
+            GALLERY_POST,
         ));
     }
 

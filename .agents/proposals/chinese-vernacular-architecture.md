@@ -3780,3 +3780,20 @@ is a plate of its line of sight**, and a gate is drawn to be seen from the lane 
 the lens.
 
 **Identity: 58 scenes, 214 622 rows**; `tunpu_gate` **1 242** (the same document as `tunpu_village`). The document is 7.24 MB.
+## Round 204: the 走马转角楼, and a comparison that had to be made
+
+A 一颗印 is read by its two gable walls from outside and by the **走马转角楼** from inside: a **first-floor gallery walking round three sides of the
+court**, so the household can go from the 正房 to either 厢房 without coming down. The type had the gable walls (round 141) and no gallery at all.
+Three decks at `2.95`, a post at each corner, four posts under the court-side edge, and a rail on the court's edge — `0.34 m` deep, because the court
+is three metres across and a corridor wide enough to walk in would close the well.
+
+**The court plate went nearly black, and the round had to find out whether the gallery did it.** It reverted its own source, rendered `yikeyin_court`
+on the unmodified geometry, and compared: **the court was already almost black** — a three-metre well with six-metre walls, one patch of sun on a wall.
+The gallery only **shrinks that patch**, which is exactly what a gallery round a light well does. **A comparison against the unmodified tree is the only
+way to read a dark plate**, and it cost one revert-and-reapply of a 4 KB patch.
+
+**Identity: 58 scenes, 214 742 rows**; `yikeyin` and `yikeyin_court` 6 865 → **6 925** — three decks, eight posts and three rails.
+
+**And seven warnings were the rounds' own.** Every close plate since round 190 added `"a" | "b" => ...` and left the old `"b" => ...` arm in place, so
+`naming.rs` had **seven unreachable patterns**. All seven are gone, and the gallery builds with **no warning of any kind** — which round 197's hygiene
+round could not claim, because these arrived after it.
