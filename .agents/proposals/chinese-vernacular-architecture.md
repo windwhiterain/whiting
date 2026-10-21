@@ -2478,3 +2478,25 @@ channel's own two edges are counted on every one of them. The document is 7.68 M
 
 The culverts the channel would empty into are still not drawn: a slab drains to its lowest edge and this crate has no word for a
 mouth in a wall.
+## Round 100: a door leaf of its own, and the gallery at a hundred rounds
+
+Round 90 measured that **a leaf is a panel and not a post** — a member whose two anchors differ in elevation is a rod leaning
+against a pier, which is what the first 巷门 drew. That finding is `derive::leaf` now, and two documents hang their gates with
+it: the 白族巷's gate, unchanged at **5 713 rows**, and the **屯堡村's 朝门**, whose opening had been drawn empty for thirty
+rounds. A 朝门 closes — that is what makes a garrison's street closable — and a gate whose opening is drawn empty is a hole in a
+wall.
+
+The helper's own first refusal is worth the line it costs: `MemberDegenerate { length: 0.45 }`, because the section's `across`
+was passed as the run's own direction instead of its perpendicular. Round 71 learned the same thing about a merlon.
+
+### What a hundred rounds hold
+
+| | |
+| --- | --- |
+| **types** | 15 — from the 竹楼 to the 穿斗式民居, and the 本主庙 as the first public building |
+| **settlements** | 6 — 山村, 傣寨, 高原小村, 屯堡村, 白族巷, 屯堡石板街, plus the 风雨桥 |
+| **courts and pieces** | the 一颗印 and its 照壁, the 石板房院 and its gate, the 三坊一照壁 and its 门楼, the 本主庙's hall and stage |
+| **scenes / rows** | **37 / 128 512** |
+| **invariants written down** | 12, from `Mass::wall` being under half the plan to the mitre that a door's inset must clear |
+
+**Identity: 37 scenes, 128 512 rows**; `tunpu_village` 1 180 → **1 192** — two leaves, six rows each. The document is 7.52 MB.

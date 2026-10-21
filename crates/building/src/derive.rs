@@ -1402,3 +1402,46 @@ pub fn gable_stations(mass: &Mass) -> Option<Vec<f32>> {
     stations.sort_by(|left, right| right.partial_cmp(left).unwrap_or(std::cmp::Ordering::Equal));
     Some(stations)
 }
+/// Builds one **door leaf, standing open against its pier**: a panel as tall as the opening and as wide as the pier it lies
+/// back against, hung from the opening's head down to a hand's width above the paving.
+///
+/// # Invariants
+///
+/// **A leaf is a panel and not a post.** A member whose two anchors differ in elevation is a post; a leaf's run is its own
+/// width along the wall and its section is a hand's thickness *across* by the opening's height *up* — measured in round 90,
+/// where the first version drew two rods leaning against the gate.
+///
+/// The leaf stands `thickness` clear of the pier's face, so the two do not occupy the same plane: a door leaf and the pier it
+/// lies against are one beside the other and not one inside the other.
+pub fn leaf(
+    hinge: [f32; 3],
+    width: f32,
+    height: f32,
+    thickness: f32,
+    along: [f32; 2],
+) -> Option<crate::member::Member> {
+    if !(width > 0.0 && height > 0.0 && thickness > 0.0) {
+        return None;
+    }
+    let length = along;
+    let norm = (length[0] * length[0] + length[1] * length[1]).sqrt();
+    if norm <= 1.0e-4 {
+        return None;
+    }
+    let unit = [length[0] / norm, length[1] / norm];
+    // **The section s `across` is the run`s perpendicular and not the run itself**: a member whose across lies along its own
+    // axis is a degenerate one, which the crate answers as `MemberDegenerate { length: 0.45 }` — measured on the first leaf.
+    Some(crate::member::Member::new(
+        crate::member::Anchor::Free { at: hinge },
+        crate::member::Anchor::Free {
+            at: [
+                hinge[0] + unit[0] * width,
+                hinge[1],
+                hinge[2] + unit[1] * width,
+            ],
+        },
+        [-unit[1], unit[0]],
+        thickness,
+        height,
+    ))
+}

@@ -133,6 +133,22 @@ pub fn document() -> Building {
         pier.slab = 0.22;
         skeleton.masses.push(pier);
     }
+    // **The 朝门's two leaves, standing open against the piers** — the same panel `derive::leaf` builds for the 白族巷's gate.
+    // A 朝门 closes: that is what makes a garrison's street closable, and a gate whose opening is drawn empty is a hole in a
+    // wall. Each leaf is a pier's width and the opening's height, a hand's thickness, lying flat against the pier's inner face.
+    for across in [-1.0_f32, 1.0] {
+        let hinge = across * (GATE_HALF - PIER);
+        let towards = -across;
+        if let Some(panel) = derive::leaf(
+            [hinge, 0.10, WALL_Z + WALL_HALF - 0.02],
+            PIER,
+            GATE_HEAD - 0.22,
+            0.07,
+            [0.0, towards],
+        ) {
+            skeleton.members.push(panel);
+        }
+    }
     let span = GATE_HALF + PIER * 0.5 + GATE_EAVE;
     let plan = [
         [-span, WALL_Z + WALL_HALF + GATE_EAVE],

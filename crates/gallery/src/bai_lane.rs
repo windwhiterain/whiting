@@ -257,25 +257,21 @@ pub fn document() -> building::Building {
     }
 
     // **The gate's own two leaves, standing open against the piers.** A 巷门 is a gate and not an arch: it closes, and when
-    // it is open each leaf lies back against its pier. Each leaf is a member hanging from the lintel's underside to a hand's
-    // width above the paving, `BOARD` thick, and it is **swung**, not closed, because a village's gate is open in the day.
+    // it is open each leaf lies back against its pier, hanging from the lintel's underside to a hand's width above the paving.
+    // **A leaf is a panel and not a rod** — round 90's finding, and `derive::leaf` is that finding in one place, so the 屯堡's
+    // 朝门 and this gate hang the same panel.
     let leaf = LANE_HALF - 0.10;
     for across in [-1.0_f32, 1.0] {
         let x = across * (LANE_HALF - BOARD * 0.5);
-        skeleton.members.push(building::Member::new(
-            building::Anchor::Free {
-                at: [x, 0.08, GATE_AT - GATE_DEEP + 0.06],
-            },
-            building::Anchor::Free {
-                at: [x, 0.08, GATE_AT - GATE_DEEP + 0.06 + leaf],
-            },
-            // **A leaf is a panel and not a rod**: its run is the leaf's width along the lane's side, and its section is a
-            // hand's thickness across by the opening's height up. A member whose two anchors differ in elevation is a post,
-            // which is what the first version drew.
-            [1.0, 0.0],
-            0.06,
+        if let Some(panel) = building::derive::leaf(
+            [x, 0.08, GATE_AT - GATE_DEEP + 0.06],
+            leaf,
             GATE_FOOT - 0.16,
-        ));
+            0.06,
+            [0.0, 1.0],
+        ) {
+            skeleton.members.push(panel);
+        }
     }
 
     // **The 题额: the board over the gate.** A 巷门 wears the village's name over its opening, and that board is the one piece
