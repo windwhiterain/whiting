@@ -3613,3 +3613,13 @@ last twenty rounds have been almost entirely composition — which is the shape 
 parts.
 
 **Identity: 50 scenes, 165 755 rows**; `jingpo_mouth` **2 455** (the same document as `jingpo_village`). The document is 7.79 MB.
+## Round 191: the porch's rail and the clothes pole
+
+Round 181 built the entrance porch as a deck, two posts, a lean-to and two panels, and left a platform three metres above the ground with nothing
+round it. A **rail** now runs on the deck's two open sides and a **pole** across the porch under the lean-to, which is where a longhouse hangs its
+washing on a wet morning.
+
+**The type's round, read on all three scenes**: `longhouse` 757 → **775**, `jingpo_village` and `jingpo_mouth` 2 455 → **2 509** each. Round 180's
+lesson — *a type's round owes every scene that composes it* — is now the standing practice rather than a correction.
+
+**Identity: 50 scenes, 165 881 rows**. The document is 7.28 MB.

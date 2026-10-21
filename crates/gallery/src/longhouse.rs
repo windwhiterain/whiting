@@ -61,6 +61,8 @@ const GALLERY_DECK: f32 = 0.12;
 const PORCH_DEEP: f32 = 1.35;
 const PORCH_WIDE: f32 = 2.05;
 const PORCH_HIGH: f32 = 2.15;
+/// The porch's rail: how high it stands above the deck.
+const PORCH_RAIL: f32 = 0.92;
 
 /// The thatch: a coarse covering — four times a tiles period, nearly closed, and deep enough to read as a thatchs own thickness.
 const THATCH: building::Covering = building::Covering {
@@ -243,6 +245,50 @@ pub fn document() -> building::Building {
             skeleton.members.push(leaf);
         }
     }
+
+    // **The porch's rail and the clothes pole.** A porch three metres above the ground with nothing round it is a platform to fall off, and a
+    // longhouse's own drying line hangs under this roof: a **rail** on the two open sides of the deck, and a **pole** across the porch under the
+    // lean-to, which is where the washing goes on a wet morning.
+    for side in [-1.0_f32, 1.0] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [
+                    end - PORCH_DEEP,
+                    LEG + PORCH_RAIL,
+                    side * (PORCH_WIDE - POST * 0.5),
+                ],
+            },
+            building::Anchor::Free {
+                at: [
+                    end + PORCH_DEEP - POST * 0.5,
+                    LEG + PORCH_RAIL,
+                    side * (PORCH_WIDE - POST * 0.5),
+                ],
+            },
+            [0.0, 1.0],
+            POST * 0.6,
+            POST * 0.7,
+        ));
+    }
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [
+                end + PORCH_DEEP - 0.35,
+                LEG + PORCH_HIGH - 0.40,
+                -PORCH_WIDE + POST,
+            ],
+        },
+        building::Anchor::Free {
+            at: [
+                end + PORCH_DEEP - 0.35,
+                LEG + PORCH_HIGH - 0.40,
+                PORCH_WIDE - POST,
+            ],
+        },
+        [1.0, 0.0],
+        POST * 0.45,
+        POST * 0.5,
+    ));
 
     building::Building::new(skeleton)
 }
