@@ -161,8 +161,9 @@ pub mod vegetation_mesh;
 /// The bamboo picture: one plant's wood as a mesh and its leaves as one instanced blade.
 pub mod vegetation_picture;
 pub mod village;
-pub mod wing;
 /// The workshop scene: two storeys with a floor between them.
+pub mod watermill;
+pub mod wing;
 pub mod workshop;
 /// The yard scene: a site on a slope, with a courtyard and a gate.
 pub mod yard;
@@ -277,6 +278,7 @@ impl Gallery {
             "tunpu_village",
             "tibetan_house",
             "wing",
+            "watermill",
             "workshop",
             "yard",
             "yikeyin_gable",
@@ -421,6 +423,7 @@ impl Gallery {
             "tunpu_village" => tunpu_village::tunpu_village(),
             "tibetan_house" => tibetan::tibetan_house(),
             "wing" => wing::wing(),
+            "watermill" => watermill::watermill(),
             "workshop" => workshop::workshop(),
             "yard" => yard::yard(),
             "yikeyin_gable" => yikeyin::yikeyin_gable(),

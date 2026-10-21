@@ -4050,3 +4050,20 @@ hamlet, which is the composition check again.
 **Six bullets in six rounds that were false, and every one of them was falsified by reading the file it was written in.** The proposal now carries the
 table above; the rule it implies is the one this half of the gallery needed: **the "what it does not draw" section is the least maintained part of every
 file, and it is the part a reader trusts most.**
+## Round 221: the 水碾房, the twenty-first type
+
+Every river village in 滇西 and 黔东南 that grew rice grew it to be milled. The mill is the one building in the village that **is a machine**: a wheel in a
+millrace beside the stream, a shed over the stones it turns, and no ornament at all. It is also the only type here whose subject is a **mechanism**.
+
+**A wheel is a ring of straight timber**, so it is drawn entirely out of members: a hub, twelve spokes and two rims of twelve pieces each, standing in a
+race cut between two banks of earth. **The rims are where the member rule bites**: each piece's `across` is its run turned a quarter, taken in the wheel's
+own plane (round 134, and the twelfth time this project has paid that rule).
+
+**The one thing a document cannot draw is the wheel turning** — a document is one instant, and this is the one type whose whole meaning is that it does
+not stand still. The stones it drives are inside the shed, which is the interior this crate does not have.
+
+**Identity: 61 scenes, 230 089 rows**; `watermill` **339** — 40 members of wheel and a shed.
+
+**A registration lesson paid again**: the probe's `SCENES` list is not the only list in that file, and a blind replace put `"watermill"` into a **pinned
+tuple table** as well (`error[E0308]` three times). The four registrations are `Gallery::names`, `build`'s match, `naming::building_of` and the probe's
+`SCENES` — and the fourth file has a second table that looks like the first.
