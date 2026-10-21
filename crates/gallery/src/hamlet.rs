@@ -57,7 +57,7 @@ pub fn hamlet() -> Value {
     let building = document();
     // **The clumps stand where a hamlet's do**: behind the row, along the lane's ends, and one by the well. The species is
     // grown once and placed at every seat, so five clumps cost one plant.
-    let clumps = crate::settlement_plants::bamboo_clumps(
+    let mut clumps = crate::settlement_plants::bamboo_clumps(
         &[
             [-17.5, 4.5],
             [-6.5, 7.5],
@@ -68,6 +68,12 @@ pub fn hamlet() -> Value {
         ],
         &|at| grade(at[0] as f64, at[1] as f64) as f32,
     );
+    // **Three trees between the houses**, which is what a Dai hamlet keeps: a mango or a jackfruit by a stair with its
+    // crown over the veranda. `derive::tree` puts them on a four-metre bole, and the two species merge into one extra.
+    clumps.merge(crate::settlement_plants::trees(
+        &[[-20.0, -3.0], [2.5, -10.5], [21.0, -2.0]],
+        &|at: [f32; 2]| grade(at[0] as f64, at[1] as f64) as f32,
+    ));
     crate::village::scene_of(
         &building,
         &clumps,

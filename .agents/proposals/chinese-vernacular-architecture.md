@@ -1818,3 +1818,22 @@ a bough that divides at the top, and a leaf field dense enough to be a canopy �
 scene's.
 
 **Identity: 27 scenes, 110 245 rows, unchanged**; the hamlet's document is 20.63 MB, as before.
+## Round 64: `derive::tree`, the species round 63 found missing
+
+The vegetation crate had five species and no tree. It has six now, and the difference from a stretched shrub is the one the
+name promises — **a bole**:
+
+- **`bole`**: a clear four metres to the first bough, tapering `0.150 → 0.045`, with a slight lean. `stem` is half a metre
+  with the shrub's limbs from `0.35` of it, which is why a shrub at `11.0` was nine metres of bare wood with a bush at its
+  foot.
+- **`bough_one` / `bough_two` / `bough_three`**: the shrub's three generations at a tree's scale — 1.15 m boughs off the
+  bole's top third, 0.78 m branches, 0.46 m twigs, the departure easing from a radian to a little over.
+- **Leaves on every generation**, 18, 40 and 90 a metre: a crown is one mass seen from outside, and leaves on the twigs
+  alone left the boughs bare — measured at 26.62 MB of document for a figure of twigs.
+
+`derive::tree(seed)` is the species; `settlement_plants::trees` — the seam round 63 left unused — now grows it. The Dai
+hamlet has three trees between its houses, and their boles stand a head above the roofs.
+
+**Identity: 27 scenes, 110 245 rows, unchanged**; the hamlet's document is 28.39 MB against 20.63 MB for clumps alone. The
+trees are **sparse** — a crown of blades at a settlement's distance still reads more as branches than as foliage — and the
+dial that would thicken it is the leaf field's density, not its geometry.

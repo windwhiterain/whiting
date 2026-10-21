@@ -22,7 +22,7 @@
 
 use definition::{PackedList, Value};
 use document::kit::{instance, mesh, mesh_material, surface};
-use vegetation::derive::{Species, clump, shrub};
+use vegetation::derive::{Species, clump, tree};
 use vegetation::expand::{Detail, expand};
 use vegetation::plant::Placement;
 
@@ -149,7 +149,7 @@ pub(crate) fn bamboo_clumps(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32
     plants("clump", clump(7), seats, ground, 3.4, 1.8)
 }
 
-/// Returns a settlement's **trees** — and there is no tree species to give it.
+/// Returns a settlement's **trees**: `derive::tree` at a village's own scale.
 ///
 /// # Why it is not used yet
 ///
@@ -165,7 +165,7 @@ pub(crate) fn bamboo_clumps(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32
 /// tree obeys, grown to a shrub's height. At `5.5` it is a tree of eight or nine metres with a crown the width of a house,
 /// which is the size of the trees a 傣寨 or a 山村 keeps between its plots.
 pub(crate) fn trees(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32) -> Extra {
-    plants("tree", shrub(11), seats, ground, 11.0, 2.2)
+    plants("tree", tree(3), seats, ground, 1.9, 3.2)
 }
 
 /// Returns `seats` worth of one species, under a `prefix` that names its meshes and materials.

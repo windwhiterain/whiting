@@ -531,6 +531,110 @@ fn leaves() -> LeafField {
     field
 }
 
+/// A **tree**: a bole four metres to its first bough, the shrub's three limb generations in its upper half, and a leaf
+/// field dense enough that the crown is a crown.
+///
+/// # What makes it a tree and not a stretched shrub
+///
+/// **The bole.** `stem` is half a metre of trunk with the shrub's limbs from `0.35` of it, so a shrub scaled up is bare wood
+/// with a bush at its foot — measured at `11.0` in round 63, nine metres of twig with a shrub's leaves on it. A tree is the
+/// same three limb generations *hung from a bole*, and the bole is what puts the crown in the air.
+///
+/// **The leaf field is on the twigs and it is denser than a shrub's** — sixty leaves a metre of twig against forty-five —
+/// because a crown is seen from below and from the far side of a lane.
+pub fn tree(seed: u64) -> Species {
+    Species {
+        plant: grow(&tree_rule(), seed),
+        templates: vec![blade()],
+        // **Leaves on every generation.** A crown is one mass seen from outside, and a field on the twigs alone leaves the
+        // boughs bare: measured as a tree whose branches spread wide and carried nothing, at 26.62 MB of document for a
+        // figure of twigs. Three fields at 18, 40 and 90 a metre fill it from the bole out.
+        fields: vec![
+            tree_leaves(0, 18.0, 0.32),
+            tree_leaves(1, 40.0, 0.30),
+            tree_leaves(2, 90.0, 0.26),
+        ],
+        decorators: Vec::new(),
+    }
+}
+
+/// The tree's rule: a bole, then the shrub's three generations with their stations in the bole's top third.
+pub fn tree_rule() -> Rule {
+    Rule {
+        trunk: bole,
+        generations: vec![
+            Generation {
+                count: (3, 5),
+                station: (0.55, 0.98),
+                slot: (0.0, 0.618),
+                cluster: 1,
+                jitter: (0.22, 0.12),
+                sink: 0.010,
+                shape: bough_one,
+            },
+            Generation {
+                count: (3, 4),
+                station: (0.30, 0.92),
+                slot: (0.0, 0.618),
+                cluster: 1,
+                jitter: (0.20, 0.10),
+                sink: 0.006,
+                shape: bough_two,
+            },
+            Generation {
+                count: (3, 4),
+                station: (0.25, 0.90),
+                slot: (0.1, 0.5),
+                cluster: 1,
+                jitter: (0.20, 0.10),
+                sink: 0.003,
+                shape: bough_three,
+            },
+        ],
+        fields: vec![Field::gravity(0.16)],
+    }
+}
+
+/// The tree's first generation: the boughs that make the crown, twice a shrub's limb and leaving the bole at about a
+/// radian.
+fn bough_one(rng: &mut Rng, joint: &Joint) -> (Curve, Scalar) {
+    limb(rng, joint, 1.15, 1.00, 0.40, 0.55, 0.10)
+}
+
+/// The tree's second generation: the branches off those boughs.
+fn bough_two(rng: &mut Rng, joint: &Joint) -> (Curve, Scalar) {
+    limb(rng, joint, 0.78, 1.10, 0.35, 0.55, 0.06)
+}
+
+/// The tree's third generation: the twigs the leaves hang from.
+fn bough_three(rng: &mut Rng, joint: &Joint) -> (Curve, Scalar) {
+    limb(rng, joint, 0.46, 1.15, 0.30, 0.50, 0.03)
+}
+
+/// The bole: a clear four metres with the taper of a stem that carries a crown, and a slight lean.
+fn bole() -> (Curve, Scalar) {
+    (
+        spine(&[
+            ([0.0, 0.0, 0.0], [0.03, 1.4, 0.0]),
+            ([0.05, 1.4, 0.02], [0.04, 1.4, 0.01]),
+            ([0.14, 2.8, 0.04], [0.03, 1.4, 0.02]),
+            ([0.26, 4.20, 0.07], [0.02, 1.0, 0.0]),
+        ]),
+        taper(&[(0.0, 0.150), (0.45, 0.105), (1.0, 0.045)]),
+    )
+}
+
+/// A tree's leaves: the shrub's blade, on one generation of the boughs, at a density and a size the crown chooses.
+fn tree_leaves(generation: usize, density: f32, size: f32) -> LeafField {
+    let mut field = LeafField::new(generation, 0);
+    field.band = (0.2, 0.95);
+    field.density = Scalar::constant(density);
+    field.phyllotaxy = crate::leaf::GOLDEN_ANGLE;
+    field.pitch = Scalar::constant(std::f32::consts::FRAC_PI_3);
+    field.size = Scalar::new(&[(0.0, size * 0.8), (1.0, size)]).expect("the leaf's size is a law");
+    field.jitter = 0.2;
+    field
+}
 /// The shrub's leaves: the same blade, smaller and denser, on the third generation.
 fn shrub_leaves() -> LeafField {
     let mut field = LeafField::new(2, 0);
