@@ -430,6 +430,41 @@ pub fn document() -> Building {
         ));
     }
 
+    // **The handrails**, one either side of the run: a sloped rail a hand's height above the treads, carrying two newels — one at
+    // the foot and one at the head. A steep run of ten treads with nothing to hold is a stair a household climbs carefully; with a
+    // rail it is a stair it climbs carrying a basket, which is what a 竹楼's stair is for.
+    for x in [-0.55_f32, 0.55] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [
+                    x,
+                    rise + RAIL_HIGH - 0.28,
+                    edge + TREAD * STAIR_RISERS as f32,
+                ],
+            },
+            building::Anchor::Free {
+                at: [x, FLOOR + RAIL_HIGH - 0.28, edge + TREAD * 0.5],
+            },
+            [1.0, 0.0],
+            RAIL_POST * 0.55,
+            RAIL_POST * 0.75,
+        ));
+        for (y, z) in [
+            (rise + RAIL_HIGH - 0.28, edge + TREAD * STAIR_RISERS as f32),
+            (FLOOR + RAIL_HIGH - 0.28, edge + TREAD * 0.5),
+        ] {
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x, y, z] },
+                building::Anchor::Free {
+                    at: [x, y - RAIL_HIGH + 0.28, z],
+                },
+                [1.0, 0.0],
+                RAIL_POST,
+                RAIL_POST,
+            ));
+        }
+    }
+
     // **Two stringers**, one under each side of the run: a flight of floating treads reads as steps only because they
     // are evenly spaced, and a stair that carries nothing is a ladder lying down. Each runs from under the lowest tread
     // to under the highest, so its slope is the stair's own.

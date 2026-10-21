@@ -2842,3 +2842,11 @@ one member each, so a rail and a rail's posts cannot disagree about a length.
 
 **Identity: 38 scenes, 134 927 rows**; `bamboo_house` 764 → **884** and `dai_hamlet` 4 699 → **5 297**, because the hamlet is three of
 them. A change to a type is a change to every scene that holds it, which is why it owes a measurement in each. The document is 4.46 MB.
+## Round 129: the stair's handrails
+
+A steep run of ten treads with nothing to hold is a stair a household climbs carefully; with a rail it is a stair it climbs carrying
+a basket, which is what a 竹楼's stair is for. Two rails now follow the flight's own slope, a hand's height above the treads, each
+with a **newel** at the foot and one at the head — and they take the same `RAIL_HIGH` and `RAIL_POST` the deck rail does, so the
+stair and the deck it climbs to are the same hand's work.
+
+**Identity: 38 scenes, 135 071 rows**; `bamboo_house` 884 → **920** and `dai_hamlet` 5 297 → **5 405**. The document is 4.47 MB.
