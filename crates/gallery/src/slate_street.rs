@@ -60,6 +60,10 @@ const END_HALF: f32 = 0.45;
 const END_HIGH: f32 = 2.30;
 const END_THICK: f32 = 0.36;
 const MOUTH: f32 = 3.30;
+/// The 街门 over the east mouth: how high its wall stands to, how square a pier is, and how far in front of the wall it stands.
+const GATE_HEAD: f32 = 3.05;
+const GATE_PIER: f32 = 0.52;
+const GATE_OUT: f32 = 0.66;
 
 const SUN: [f64; 3] = [-26.0, 30.0, 18.0];
 const SUN_IRRADIANCE: f64 = 3.3;
@@ -165,6 +169,51 @@ pub fn document() -> Building {
             skeleton.masses.push(wall);
         }
     }
+    // **The 街门 at the east mouth: a lintel over two piers, set out in front of the wall.** A street with two mouths and no gate is
+    // a street a garrison cannot close, and this is a 屯堡 — the wall's gap was the one thing the street was missing. The lintel is
+    // the **host** and the piers are `Under` it, as round 89 established for the 白族巷's gate; and the gate stands `GATE_OUT` in
+    // front of the wall's face for the reason round 114 measured: a lintel wide enough to contain two piers reaches past the gap's
+    // own edges, and the wall either side owns the square metre it reaches into.
+    let gate_x = LANE_TO - END_THICK + GATE_OUT;
+    let mut lintel = Mass::new(
+        ops::wound(vec![
+            [gate_x - MOUTH * 0.5 - 0.55, -0.42],
+            [gate_x + MOUTH * 0.5 + 0.55, -0.42],
+            [gate_x + MOUTH * 0.5 + 0.55, 0.42],
+            [gate_x - MOUTH * 0.5 - 0.55, 0.42],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, GATE_HEAD))
+        .collect(),
+        GATE_HEAD + 0.52,
+    );
+    lintel.wall = 0.26;
+    lintel.slab = 0.20;
+    let lintel_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(lintel);
+    for across in [-1.0_f32, 1.0] {
+        let x = gate_x + across * (MOUTH * 0.5 - GATE_PIER * 0.5);
+        let mut pier = Mass::new(
+            ops::wound(vec![
+                [x - GATE_PIER * 0.5, -0.36],
+                [x + GATE_PIER * 0.5, -0.36],
+                [x + GATE_PIER * 0.5, 0.36],
+                [x - GATE_PIER * 0.5, 0.36],
+            ])
+            .into_iter()
+            .map(|at| PlanNode::new(at, 0.0))
+            .collect(),
+            GATE_HEAD,
+        );
+        pier.wall = 0.18;
+        pier.slab = 0.16;
+        pier.attachment = Some(building::Attachment {
+            host: lintel_id,
+            join: building::Join::Under,
+        });
+        skeleton.masses.push(pier);
+    }
+
     // **The street's water: a well and a trough, at the east mouth.** A 屯堡 street's houses have no wells of their own — the
     // water is at the place the street widens, and it is one place. The well is a **mass whose wall is thick enough to be a ring**
     // (`0.24 m` in a `1.44 m` plan), the same answer the 白族 lane's well gave; the trough beside it is the same idea at a

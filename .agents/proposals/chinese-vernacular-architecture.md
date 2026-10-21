@@ -2794,3 +2794,18 @@ rather than resting on it.
 
 **Identity: 38 scenes, 134 333 rows**; `dai_temple` 2 549 → **2 627** — six stones' four faces and their tops. The document is
 31.5 MB.
+## Round 125: the 街门 at the east mouth
+
+A street with two mouths and no gate is a street a garrison cannot close — and this is a 屯堡. The wall's gap was the one thing the
+street was missing, and it has a gate now: a lintel over two piers, `GATE_HEAD` to the lintel's underside, at the east mouth the
+camera looks down the lane to.
+
+**Both of the crate's lessons about gateways are in it**, and it is the third gate built from them:
+
+- the **lintel is the host** and the piers are `Under` it (round 89) — a mass whose top meets the host's foot and whose plan stands
+  inside the host's plan is a mass that carries the host;
+- the gate stands **`GATE_OUT` in front of the wall's face** (round 114) — a lintel wide enough to contain two piers reaches past the
+  gap's own edges, and the wall either side owns the square metre it reaches into.
+
+**Identity: 38 scenes, 134 372 rows**; `slate_street` 1 992 → **2 031** — a lintel's faces and top, two piers' and their joins. The
+document is 7.71 MB.
