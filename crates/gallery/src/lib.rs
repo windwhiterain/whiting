@@ -99,6 +99,7 @@ pub mod house;
 pub mod jingpo_village;
 pub mod landscape;
 mod lanterns;
+pub mod lisu_village;
 pub mod log_house;
 pub mod longhouse;
 mod monoliths;
@@ -239,6 +240,7 @@ impl Gallery {
             "benzu_miao_court",
             "bamboo_house",
             "jingpo_village",
+            "lisu_village",
             "log_house",
             "village_west",
             "tuzhang_mouth",
@@ -371,6 +373,7 @@ impl Gallery {
             "benzu_miao_court" => benzu_miao::court(),
             "bamboo_house" => bamboo_house::bamboo_house(),
             "jingpo_village" => jingpo_village::jingpo_village(),
+            "lisu_village" => lisu_village::lisu_village(),
             "log_house" => log_house::log_house(),
             "village_west" => village::village_west(),
             "tuzhang_mouth" => tuzhang_village::tuzhang_mouth(),

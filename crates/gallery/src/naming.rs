@@ -409,6 +409,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "benzu_miao_court" => crate::benzu_miao::document(),
         "bamboo_house" => crate::bamboo_house::document(),
         "jingpo_village" => crate::jingpo_village::document(),
+        "lisu_village" => crate::lisu_village::document(),
         "log_house" => crate::log_house::document(),
         "village_west" => crate::village::document(),
         "tuzhang_mouth" | "tuzhang_village" => crate::tuzhang_village::document(),

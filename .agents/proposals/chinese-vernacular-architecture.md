@@ -3507,3 +3507,18 @@ at the floor's level, two posts, a lean-to over it, and a pair of panels standin
 and the two numbers differ by exactly three times the first.
 
 **Identity: 46 scenes, 159 487 rows**. The document is 7.28 MB.
+## Round 182: the 傈僳木楞房聚落, the eleventh settlement
+
+**The first settlement from 滇西北, and the simplest arrangement in this whole gallery**: five square houses of stacked logs, their ends crossing at
+the corners, set down in a row on whatever bench the mountain has — **no courtyard, no gate, no wall**. The houses are the village, and the only
+things the round adds are the **bench**, the **lane** between the two rows and the **fence** that keeps the animals out of it.
+
+**Five `log_house::document()`s and 100 lines of layout**, which is the composition move at its plainest for the fifth time (侗寨, 羌寨, 纳西院落,
+景颇寨, 木楞房聚落). The log house is the smallest type in the gallery and its village is four hundred rows of layout around nine hundred rows of
+houses.
+
+**What it does not draw**: the **slope**. A 怒江 village is cut into a hillside and this bench is flat — `ops::raise` could step it and the type
+does not need it yet; the bench is the first thing and the slope is the second. Nor the **苞谷架**, the corn racks in every 傈僳 yard, which are
+round 140's 禾晾 in another country.
+
+**Identity: 47 scenes, 160 423 rows**; `lisu_village` **936**. The document is 7.43 MB.

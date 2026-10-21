@@ -45,7 +45,7 @@ use definition::{Schema, SchemaKind};
 use document::building_identity::{building_extras, locate_in, not_authored_extras, table_in};
 
 /// The scenes that declare the channel, in the order the gallery lists them.
-const SCENES: [&str; 46] = [
+const SCENES: [&str; 47] = [
     "chuandou_house",
     "compound",
     "compound_court",
@@ -66,6 +66,7 @@ const SCENES: [&str; 46] = [
     "benzu_miao_court",
     "bamboo_house",
     "jingpo_village",
+    "lisu_village",
     "log_house",
     "village_west",
     "tuzhang_mouth",
