@@ -60,6 +60,18 @@ const TILES: Covering = Covering {
     height: 0.05,
 };
 
+/// The 香炉 in the court`s middle: where, its plan, the wall it is made of, the step it stands on and its height.
+const BURNER_AT: [f32; 2] = [0.0, -0.40];
+const BURNER: f32 = 1.25;
+const BURNER_WALL: f32 = 0.17;
+const BURNER_FOOT: f32 = 0.0;
+const BURNER_HIGH: f32 = 1.05;
+
+/// The 旗杆石 pair: their plan, their height, and how far either side of the axis they stand.
+const FLAGSTONE: f32 = 0.58;
+const FLAGSTONE_HIGH: f32 = 0.86;
+const FLAGSTONE_AT: f32 = 3.40;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the temple: from the court's south-west corner, so the 戏台 is at one side and the 大殿 at the other.
@@ -225,6 +237,54 @@ pub fn document() -> Building {
             &mut skeleton,
             building::Opening::new(mouth, 0, 0, building::Inset::new(0.62, 0.62, 0.0, 0.70)),
         );
+    }
+
+    // **The 香炉 in the court's middle**: a square stone box on a step, which is what a temple's court is arranged around. Four
+    // members, the same shape the 碉房's 煨桑炉 has — a mass inside a court would be a mass inside nothing, and a burner is four
+    // walls. **Both of a member`s anchors are at the same elevation**: a pair that differ is a post, and four posts at a
+    // burner`s corners are not a box — the section`s height is `BURNER_HIGH` and the run is the wall`s own length.
+    let [burner_x, burner_z] = BURNER_AT;
+    let half = BURNER * 0.5;
+    let corners = [
+        ([-half, -half], [half, -half]),
+        ([half, -half], [half, half]),
+        ([half, half], [-half, half]),
+        ([-half, half], [-half, -half]),
+    ];
+    for (from, to) in corners {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [burner_x + from[0], BURNER_FOOT, burner_z + from[1]],
+            },
+            building::Anchor::Free {
+                at: [
+                    burner_x + to[0],
+                    BURNER_FOOT + BURNER_HIGH,
+                    burner_z + to[1],
+                ],
+            },
+            [(to[0] - from[0]) / BURNER, (to[1] - from[1]) / BURNER],
+            BURNER_WALL,
+            BURNER_HIGH,
+        ));
+    }
+
+    // **The 旗杆石 a pair, flanking the 大殿's steps.** A temple that has a court has two stones in it where the flags stand on
+    // festival days, and they are masses because a stone with a foot and a top is one.
+    for across in [-1.0_f32, 1.0] {
+        let mut stone = Mass::new(
+            rectangle(
+                FLAGSTONE * 0.5,
+                FLAGSTONE * 0.5,
+                across * FLAGSTONE_AT,
+                HALL_Z - HALL_DEPTH * 0.5 - 1.55,
+                0.0,
+            ),
+            FLAGSTONE_HIGH,
+        );
+        stone.wall = FLAGSTONE * 0.22;
+        stone.slab = 0.12;
+        skeleton.masses.push(stone);
     }
 
     Building::new(skeleton)

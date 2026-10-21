@@ -2543,3 +2543,16 @@ the jamb would be a mass inside a mass.
 
 **Identity: 37 scenes, 128 594 rows**; `tunpu_village` 1 216 → **1 242** — two drums' four faces and their tops. The document is
 7.54 MB.
+## Round 105: the 本主庙's court furniture
+
+A temple's court is arranged **around** something, and what it is arranged around is the 香炉. The court has one now — four stone
+walls on a `1.25 m` plan, a metre high — and two **旗杆石** flanking the 大殿's steps, where the flags stand on festival days. A
+court with two buildings and nothing between them is a yard with a stage in it.
+
+The 香炉's first version was four **posts**: its members' two anchors differed in elevation, so each wall ran *up* instead of
+*along*, and a box became four sticks at a box's corners. That is the third time this project has made that particular mistake
+(rounds 90, 100 and here), and the module now says it in the code: **both anchors at one elevation, the section's height is the
+wall's.**
+
+**Identity: 37 scenes, 128 644 rows**; `benzu_miao` 1 112 → **1 162** — four burner walls and two flagstones' faces and tops. The
+document is 7.41 MB.
