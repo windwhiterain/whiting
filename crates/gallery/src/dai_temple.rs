@@ -77,6 +77,12 @@ const COPE_PROUD: f32 = 0.11;
 const GATE_HALF: f32 = 1.60;
 const YARD_PAVING: f32 = 0.06;
 
+/// The 放生池 in the yard: where it stands, its plan, the rims thickness and its height.
+const POND_AT: [f32; 2] = [-6.60, 13.40];
+const POND: [f32; 2] = [3.40, 2.40];
+const POND_WALL: f32 = 0.32;
+const POND_HIGH: f32 = 0.46;
+
 /// The 戒堂, the wat`s second building: its plan, its height, its platform, the pitch of its roof and where it stands in the yard.
 const UPOSATHA: [f32; 2] = [5.60, 3.90];
 const UPOSATHA_HIGH: f32 = 3.10;
@@ -469,6 +475,28 @@ pub fn document() -> Building {
             FLAG_ARM * 0.55,
         ));
     }
+
+    // **The 放生池: the release pond, outside the gate.** A wat has a basin where live things are set free, and it stands where the
+    // village comes to it — beside the gate and not behind the wall, where a yard's own wall would hide it from the only view that
+    // matters. Its rim, and it is a **mass whose wall
+    // is thick enough to be a rim** — `0.32 m` in a `3.4 × 2.4 m` plan, the same answer the wells gave in the two lanes. Its top is
+    // the water's level, a hand above the paving, which is the only way this crate can say *water* at all.
+    let pond = POND_AT;
+    let mut basin = Mass::new(
+        ops::wound(vec![
+            [pond[0] - POND[0] * 0.5, pond[1] - POND[1] * 0.5],
+            [pond[0] + POND[0] * 0.5, pond[1] - POND[1] * 0.5],
+            [pond[0] + POND[0] * 0.5, pond[1] + POND[1] * 0.5],
+            [pond[0] - POND[0] * 0.5, pond[1] + POND[1] * 0.5],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, 0.0))
+        .collect(),
+        POND_HIGH,
+    );
+    basin.wall = POND_WALL;
+    basin.slab = 0.16;
+    skeleton.masses.push(basin);
 
     // **The 戒堂, the wat's second building.** A wat is not one hall: the 戒堂 is where the monks are ordained, it stands **behind**
     // the 大殿`s platform and to its **east**, so the plate sees both: it is smaller and its platform is lower — and it is closed, because the rite it holds

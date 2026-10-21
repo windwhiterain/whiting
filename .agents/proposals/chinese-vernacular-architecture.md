@@ -2771,3 +2771,15 @@ the cloth are the sections a member already carries.
 
 **Identity: 38 scenes, 134 151 rows**; `dai_temple` 2 500 → **2 536** — six members with their sections and their ends. The document
 is 31.5 MB.
+## Round 123: the 放生池
+
+A wat has a basin where live things are set free, and it is a **mass whose wall is thick enough to be a rim** — `0.32 m` in a
+`3.4 × 2.4 m` plan, the same answer the two lanes' wells gave. Its top is the water's level a hand above the paving, which is the only
+way this crate can say *water* at all.
+
+**It stands outside the gate and not inside the wall.** Built in the yard it was invisible: a `1.55 m` wall hides everything low
+behind it from a camera ten metres up, and a basin nobody sees is a basin nobody dug. Beside the gate it is the first thing the
+village walks past, which is also where a wat's release pond belongs.
+
+**Identity: 38 scenes, 134 177 rows**; `dai_temple` 2 536 → **2 549** — a rim's four faces, its top and its inner loop. The document
+is 31.5 MB.
