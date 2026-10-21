@@ -29,6 +29,9 @@ use definition::Value;
 const SQUARE: f32 = 13.0;
 /// The lane: half its width, and how far it runs.
 const LANE_HALF: f32 = 3.0;
+/// The 风雨桥 beyond the lane's east mouth: where it stands, so its span continues the lane past the square.
+const BRIDGE_AT: [f32; 2] = [46.4, LANE_Z];
+
 const LANE_FROM: f32 = -30.0;
 const LANE_TO: f32 = 30.0;
 /// How many flags the lane is laid in, and the joint between them.
@@ -642,6 +645,16 @@ pub fn document() -> Building {
             FLAG_POLE,
         ));
     }
+
+    // **The 风雨桥 at the lane's east mouth.** A 侗 village's bridge is not a monument at the edge of a village: it **is** the road in — its gallery is
+    // the last covered stretch of the lane before the houses, and its pavilion is where a traveller waits out the rain. The bridge's own document,
+    // translated so its span continues the lane beyond the square, and **not one of its numbers restated**.
+    let mut bridge = crate::rain_bridge::document().skeleton;
+    ops::translate(&mut bridge, BRIDGE_AT);
+    assert!(
+        ops::merge(&mut skeleton, bridge),
+        "the bridge places no parts, so the merge always happens"
+    );
 
     Building::new(skeleton)
 }

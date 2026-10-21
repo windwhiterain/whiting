@@ -3911,3 +3911,19 @@ is now unmistakably a Chinese tower.
 bells are **336 rows** in each, which is the composition check this round could make on two villages at once.
 
 **Identity: 60 scenes, 226 078 rows**.
+## Round 213: the 风雨桥 comes into the village
+
+A 侗 village's rain bridge is **not a monument at the edge of a village: it is the road in** — its gallery is the last covered stretch of the lane before
+the houses, and its pavilion is where a traveller waits out the rain. The type has existed since round 145 and had **never stood in a village**; the
+same rule rounds 208 and 211 paid for the tower applies to it.
+
+**Two placements and one refusal**: at the lane's own end the bridge's abutment landed on the village's east wall (`UnattachedOverlap { 13, 26 }`), so it
+stands one abutment further out and its span continues the lane past the square. **The refusal named both masses** and cost one rebuild.
+
+**The village's own plate is now its fullest**: the drum tower at the centre of the square, the 穿斗 houses round it, the lane's granary, and the
+bridge's long roofed gallery at the frame's left. `dong_village` and `dong_square` 8 595 → **10 243** — the bridge's **1 648 rows**.
+
+**Identity: 60 scenes, 229 374 rows**.
+
+**Owed on this composition**: the bridge has **no water under it**. Its deck stands `3.6 m` above a dry plain, which is what a bridge looks like when the
+landscape arc owns the stream and this round did not cross into it — the honest note is that the bridge is placed and its river is not.
