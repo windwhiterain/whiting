@@ -383,3 +383,31 @@ claims to carry. So the seat's contract — "each mass stands on the ground unde
 a host takes the host's shift**", which is a change to `site` and not to the street.
 
 Both gaps are now written down with the measurement that found them.
+## Round 44: the seat follows the join, and the 骑楼 stands on its own arcade
+
+`site::seat` no longer presses every mass onto the ground under it. **A joined mass takes its root's shift**, where the
+root is the mass that stands on its own ground:
+
+| join | who stands on the ground |
+| --- | --- |
+| `Storey`, `Wing` | the host — the mass follows it |
+| **`Under`** | **the carrier** — the *host* follows *it* |
+
+**Every delta is decided before anything moves**, because a follower's delta is its root's and a root may come later in
+the list than the mass that follows it. `Seat` reports `followed: Option<MassId>`, so the record says which mass
+decided a seat rather than implying it.
+
+### The 骑楼, drawn
+
+A 骑楼 is **two masses**: the ground floor is the plot, the upper floor is a plan projected `2.2 m` over the walk, and
+the ground floor carries the upper one through `Join::Under`. Both are single-band walls, so every wall takes its
+openings the way every wall in this gallery does — **no cut ever lands on an interior band**.
+
+- **the shopfront** is cut in the ground floor's face, three bays, boards and a transom rail;
+- **the upper floor's window** is cut in the mass that projects, so it sits out over the walk;
+- **the canopy is gone.** A 骑楼's overhang *is* the shelter, and the lean-to this function used to build had its crest
+  at `base + 3.55` under a soffit at `base + 3.00`: a second roof inside the first. The posts stand under the
+  projection's own outer edge and run up to the slab.
+
+Identity: `street` and `street_arcade` 11 950 → **12 550 rows**, `village_square` 17 426 → **18 026** (it holds a street
+row), and **twenty-one of twenty-four scenes unchanged**.

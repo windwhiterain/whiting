@@ -67,6 +67,12 @@ const PLATE: f32 = 0.35;
 const FLOOR: f32 = 3.0;
 const OVERHANG: f32 = 0.7;
 
+/// How far the 骑楼's upper floor projects over the walk.
+///
+/// **The projection is the type.** A 骑楼's walk is sheltered by the floor above it, so `PROJECT` is the walk's own
+/// depth and the posts stand under its outer edge.
+const PROJECT: f32 = 2.2;
+
 /// How far a gable end oversails. **Zero: the street is 硬山**, so each house's gable walls are its party
 /// walls and its roof stops at them. With the ends oversailing by the same 0.7 as the eaves, five
 /// neighbours' roofs would each reach 0.7 into the next one's — which is what this row drew before the
@@ -318,7 +324,12 @@ pub fn document() -> Building {
     // between two walls instead of a wall with a void in front of it, which is what a 西南 old street
     // is: the 骑楼 on both sides and the lane carrying the hill down between them.
     let lanes = [0.0_f32, -LANE];
-    let mut plot_of: Vec<(building::MassId, building::frontage::Plot)> = Vec::new();
+    let mut plot_of: Vec<(
+        building::MassId,
+        building::MassId,
+        building::frontage::Plot,
+        Vec<[f32; 2]>,
+    )> = Vec::new();
     for (row, at) in lanes.iter().enumerate() {
         // The first row is on the walk's left and the second on its right, so both face the lane:
         // `side` is the frontage's own fact and the plots come out mirrored without being told to.
@@ -335,23 +346,66 @@ pub fn document() -> Building {
             .plots()
             .expect("five six-metre plots fit a thirty-metre line");
         for plot in plots {
-            let mut mass = Mass::new(
-                plot.corners()
-                    .into_iter()
-                    // **Authored at one level and seated after**: a base band drawn on a slope is a warped
-                    // band, and the street's step belongs to the mass's elevation rather than to its outline.
-                    .map(|at| PlanNode::new(at, 0.0))
+            // **A 骑楼 is two masses and not one wall of four sections.** The ground floor is the plot and stands from
+            // the street up to the floor; the upper floor is a wider plan that projects over the walk; and the ground
+            // floor **carries** the upper one, which is what `Join::Under` says and what makes the pair legal rather
+            // than an overlap. Splitting them is also what keeps every wall one band between two sections, which is
+            // the only geometry an opening can be cut in today.
+            let corners = plot.corners();
+            let on_front = |at: [f32; 2]| {
+                plot.front.iter().any(|corner| {
+                    (corner[0] - at[0]).abs() < 1.0e-3 && (corner[1] - at[1]).abs() < 1.0e-3
+                })
+            };
+            let outward = [
+                (plot.front[0][0] + plot.front[1][0]) * 0.5
+                    - (plot.back[0][0] + plot.back[1][0]) * 0.5,
+                (plot.front[0][1] + plot.front[1][1]) * 0.5
+                    - (plot.back[0][1] + plot.back[1][1]) * 0.5,
+            ];
+            let length = (outward[0] * outward[0] + outward[1] * outward[1]).sqrt();
+            let projected: Vec<[f32; 2]> = corners
+                .iter()
+                .map(|at| match on_front(*at) {
+                    true => [
+                        at[0] + outward[0] / length * PROJECT,
+                        at[1] + outward[1] / length * PROJECT,
+                    ],
+                    false => *at,
+                })
+                .collect();
+            // **Authored at one level and seated after**, and the seat leaves a joined mass where it was authored
+            // relative to the mass its join hangs from: the upper floor keeps the floor's own elevation.
+            let mut upper = Mass::new(
+                projected
+                    .iter()
+                    .map(|at| PlanNode::new(*at, FLOOR))
                     .collect::<Vec<_>>(),
                 HEIGHT,
             );
-            mass.wall = WALL;
-            mass.slab = PLATE;
-            let mass_id = building::MassId(skeleton.masses.len());
-            skeleton.masses.push(mass);
+            upper.wall = WALL;
+            upper.slab = PLATE;
+            let upper_id = building::MassId(skeleton.masses.len());
+            skeleton.masses.push(upper);
+            let mut ground = Mass::new(
+                corners
+                    .iter()
+                    .map(|at| PlanNode::new(*at, 0.0))
+                    .collect::<Vec<_>>(),
+                FLOOR,
+            );
+            ground.wall = WALL;
+            ground.slab = PLATE;
+            ground.attachment = Some(building::Attachment {
+                host: upper_id,
+                join: building::Join::Under,
+            });
+            let ground_id = building::MassId(skeleton.masses.len());
+            skeleton.masses.push(ground);
             skeleton
                 .roofs
-                .push(roof_over(mass_id, &skeleton.masses[mass_id.0]));
-            plot_of.push((mass_id, plot));
+                .push(roof_over(upper_id, &skeleton.masses[upper_id.0].clone()));
+            plot_of.push((ground_id, upper_id, plot, projected));
         }
     }
 
@@ -365,10 +419,18 @@ pub fn document() -> Building {
     // posts that hold their outer edges at the grade under them.
     // **And the rafter tails under every eave**, from the same seated masses the roofs are on: ten
     // ranges in two rows, each showing the ends of its own rafters the way a street of shops does.
-    for (mass_id, _plot) in &plot_of {
+    for (_ground_id, upper_id, _plot, _projected) in &plot_of {
+        // **The roof is found by its host**, because a roof has an index of its own and a mass does not name it.
+        let Some(roof) = skeleton
+            .roofs
+            .iter()
+            .position(|roof| roof.host == *upper_id)
+        else {
+            continue;
+        };
         for tail in derive::rafter_tails(
-            &skeleton.roofs[mass_id.0],
-            &skeleton.masses[mass_id.0],
+            &skeleton.roofs[roof],
+            &skeleton.masses[upper_id.0],
             RAFTER_SPACING,
             RAFTER_WIDTH,
             RAFTER_DEPTH,
@@ -377,26 +439,32 @@ pub fn document() -> Building {
         }
     }
     arcade(&mut skeleton, &plot_of);
-    // The floors are derived from the seated masses, so their elevation is the storey's own.
-    for (mass_id, _plot) in &plot_of {
-        let mass_id = *mass_id;
-        let mass = &skeleton.masses[mass_id.0];
-        if let Some(storey) = derive::floor_slab(mass, mass_id, mass.lowest() + FLOOR, PLATE * 0.8)
+    // **The storey floor is the upper mass's own**, because the floor the shop stands under is its soffit.
+    for (_ground_id, upper_id, _plot, _projected) in &plot_of {
+        let upper_id = *upper_id;
+        let mass = &skeleton.masses[upper_id.0];
+        if let Some(storey) = derive::floor_slab(mass, upper_id, mass.lowest() + 0.02, PLATE * 0.8)
         {
             skeleton.slabs.push(storey);
         }
     }
     // **The facades are cut last**, and the front is found by matching the plot's own two corners against
     // the mass's outline: one door and two windows on the street side, in a three-bay two-storey rhythm.
-    for (mass_id, plot) in &plot_of {
-        let mass_id = *mass_id;
-        let Some(edge) = front_edge(&skeleton.masses[mass_id.0], plot) else {
+    for (ground_id, upper_id, plot, _projected) in &plot_of {
+        let ground_id = *ground_id;
+        let upper_id = *upper_id;
+        let Some(edge) = front_edge(&skeleton.masses[ground_id.0], plot) else {
             continue;
         };
-        let face = FaceRef::new(mass_id, edge);
+        // **Two faces, one hole each**: the shopfront in the ground floor and the window in the floor that projects.
+        let face = FaceRef::new(ground_id, edge);
+        let upper_face = FaceRef::new(upper_id, edge);
         let columns = Rhythm::Even { count: 3 };
-        let rows = Rhythm::Even { count: 2 };
+        let rows = Rhythm::Even { count: 1 };
         if ops::split_face(&mut skeleton, face, &columns, &rows).is_none() {
+            continue;
+        }
+        if ops::split_face(&mut skeleton, upper_face, &columns, &rows).is_none() {
             continue;
         }
         // **The ground floor is the shop**, so its middle bay is a shopfront and not a door: the whole bay
@@ -468,12 +536,19 @@ pub fn document() -> Building {
 ///
 /// **The canopy is hosted by the mass it covers.** A roof is authorized to touch the mass its `host`
 /// names, so a single canopy spanning the row would have to claim one of the five and lie about it.
-fn arcade(skeleton: &mut BuildingSkeleton, plots: &[(building::MassId, building::frontage::Plot)]) {
-    const OUT: f32 = 2.2;
-    const LOW: f32 = 2.95;
-    const HIGH: f32 = 3.55;
+fn arcade(
+    skeleton: &mut BuildingSkeleton,
+    plots: &[(
+        building::MassId,
+        building::MassId,
+        building::frontage::Plot,
+        Vec<[f32; 2]>,
+    )],
+) {
     const POST: f32 = 0.16;
-    for (mass_id, plot) in plots {
+    // **The posts stand under the projection's own outer edge**, which is the depth the upper floor moved out.
+    let out = PROJECT;
+    for (mass_id, _upper_id, plot, _projected) in plots {
         let Some(mass) = skeleton.masses.get(mass_id.0) else {
             continue;
         };
@@ -488,7 +563,7 @@ fn arcade(skeleton: &mut BuildingSkeleton, plots: &[(building::MassId, building:
         if length <= 1.0e-4 {
             continue;
         }
-        let step = [outward[0] / length * OUT, outward[1] / length * OUT];
+        let step = [outward[0] / length * out, outward[1] / length * out];
         // Half a metre in from the party wall at each end, so two neighbouring canopies are two
         // canopies rather than one with a seam in it.
         let (a, b) = (plot.front[0], plot.front[1]);
@@ -501,16 +576,9 @@ fn arcade(skeleton: &mut BuildingSkeleton, plots: &[(building::MassId, building:
         let inner = [a[0] + unit[0] * 0.5, a[1] + unit[1] * 0.5];
         let outer = [b[0] - unit[0] * 0.5, b[1] - unit[1] * 0.5];
         let base = mass.lowest();
-        let plan = [
-            [inner[0] + step[0], inner[1] + step[1]],
-            [outer[0] + step[0], outer[1] + step[1]],
-            [outer[0], outer[1]],
-            [inner[0], inner[1]],
-        ];
-        let Some(roof) = derive::lean_to(*mass_id, plan, base + LOW, base + HIGH, 0.08) else {
-            continue;
-        };
-        skeleton.roofs.push(roof.with_covering(COVERING));
+        // **The walk is sheltered by the floor above it and by nothing else.** The canopy this function used to build
+        // is gone: a 骑楼's overhang *is* the shelter, and a lean-to under a projecting slab would be a second roof
+        // inside the first — measured as a canopy whose crest sat at `base + 3.55` under a soffit at `base + 3.00`.
         for at in [inner, outer] {
             let foot = [at[0] + step[0], at[1] + step[1]];
             skeleton.members.push(building::Member::new(
@@ -518,7 +586,7 @@ fn arcade(skeleton: &mut BuildingSkeleton, plots: &[(building::MassId, building:
                     at: [foot[0], grade(foot[0]), foot[1]],
                 },
                 building::Anchor::Free {
-                    at: [foot[0], base + LOW - 0.04, foot[1]],
+                    at: [foot[0], base + FLOOR - 0.04, foot[1]],
                 },
                 [1.0, 0.0],
                 POST,

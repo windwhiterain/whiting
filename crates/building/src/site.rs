@@ -59,6 +59,16 @@ pub struct Seat {
     pub highest: f32,
     /// How far the whole mass — its outline, its top and its roofs — was moved.
     pub delta: f32,
+    /// The mass whose own ground decided this one's level, or `None` when it stood on the ground itself.
+    ///
+    /// # Invariants
+    ///
+    /// **A joined mass is not seated on the ground under it; it follows the mass the join hangs from.** An upper floor
+    /// authored at its ground floor's own top would otherwise be pressed onto the bank it stands above — measured on a
+    /// two-storey street as `UnderNotCarrying { top: 3.33, foot: 0.33 }`, a carrier three metres above the mass it
+    /// claims to carry. The `lowest` and `highest` this record reports for such a mass are its root's, because those
+    /// are the ground samples the seat was decided on.
+    pub followed: Option<MassId>,
 }
 
 impl Seat {
@@ -128,6 +138,10 @@ pub fn seat(
     offset: f32,
 ) -> SeatReport {
     let mut report = SeatReport::default();
+    // **Each mass's own ground decides one root, and a joined mass follows its root.** The ground pass runs first and
+    // for every mass, because a root may be reached from a mass that comes later in the list; the roots are then
+    // resolved through the joins, and only then does anything move.
+    let mut own: Vec<Option<(f32, f32, f32)>> = Vec::with_capacity(skeleton.masses.len());
     for index in 0..skeleton.masses.len() {
         let samples = samples_of(&skeleton.masses[index].outline());
         let mut lowest = f32::INFINITY;
@@ -142,16 +156,83 @@ pub fn seat(
             lowest = lowest.min(height);
             highest = highest.max(height);
         }
-        if !complete || !(lowest.is_finite() && highest.is_finite()) {
-            continue;
+        own.push(
+            match complete && lowest.is_finite() && highest.is_finite() {
+                true => Some((lowest, highest, highest + offset)),
+                false => None,
+            },
+        );
+    }
+    // **The root of a join is the mass that stands on its own ground.** `Storey` and `Wing` hang from their host, so
+    // they follow it. `Under` is the other way round — the mass is the *carrier* and the host is what it carries — so
+    // a host that some mass carries follows **that mass**, and the carrier is what stands on the ground. Following the
+    // chain keeps a stack of three floors on the floor that touches earth, and a cycle (two masses each joined to the
+    // other) stops at the first repeat instead of looping.
+    let mut carrier: Vec<Option<usize>> = vec![None; skeleton.masses.len()];
+    for (index, mass) in skeleton.masses.iter().enumerate() {
+        if let Some(attachment) = mass.attachment {
+            if matches!(attachment.join, crate::mass::Join::Under) {
+                if let Some(slot) = carrier.get_mut(attachment.host.0) {
+                    *slot = Some(index);
+                }
+            }
         }
-        let level = highest + offset;
-        let reference = skeleton.masses[index]
+    }
+    let roots: Vec<Option<usize>> = (0..skeleton.masses.len())
+        .map(|index| {
+            let mut at = index;
+            let mut seen = Vec::new();
+            loop {
+                if seen.contains(&at) {
+                    return None;
+                }
+                seen.push(at);
+                if let Some(under) = carrier[at] {
+                    at = under;
+                    continue;
+                }
+                let Some(attachment) = skeleton.masses[at].attachment else {
+                    return Some(at);
+                };
+                if attachment.host.0 >= skeleton.masses.len() {
+                    return None;
+                }
+                at = match attachment.join {
+                    crate::mass::Join::Storey | crate::mass::Join::Wing { .. } => attachment.host.0,
+                    crate::mass::Join::Under => return Some(at),
+                };
+            }
+        })
+        .collect();
+    // **Every delta is decided before anything moves**, because a follower's delta is its root's and a root may come
+    // later in the list than the mass that follows it.
+    let mut delta_of: Vec<Option<f32>> = Vec::with_capacity(skeleton.masses.len());
+    for index in 0..skeleton.masses.len() {
+        let Some(root) = roots[index] else {
+            delta_of.push(None);
+            continue;
+        };
+        let Some((_, _, level)) = own[root] else {
+            delta_of.push(None);
+            continue;
+        };
+        let reference = skeleton.masses[root]
             .outline()
             .iter()
             .map(|node| node.elevation)
             .fold(f32::INFINITY, f32::min);
-        let delta = level - reference;
+        delta_of.push(Some(level - reference));
+    }
+    for index in 0..skeleton.masses.len() {
+        let Some(root) = roots[index] else {
+            continue;
+        };
+        let Some((lowest, highest, level)) = own[root] else {
+            continue;
+        };
+        let Some(delta) = delta_of[index] else {
+            continue;
+        };
         // **The seat moves the whole shell**: every section, foot included, by the same `delta`, which is what a
         // stack of sections means and what two separate field writes could not say once a mass had more than two.
         skeleton.masses[index].shift(delta);
@@ -191,6 +272,10 @@ pub fn seat(
             lowest,
             highest,
             delta,
+            followed: match root == index {
+                true => None,
+                false => Some(MassId(root)),
+            },
         });
     }
     // **Walls follow the ground instead of sitting on a terrace**, which is the difference between a
