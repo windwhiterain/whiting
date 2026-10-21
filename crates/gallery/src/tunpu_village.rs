@@ -45,6 +45,14 @@ const GATE_HEAD: f32 = 2.60;
 const GATE_RISE: f32 = 0.55;
 const GATE_EAVE: f32 = 0.70;
 
+/// The 碉楼 at the lane`s west end: a square stone tower of two storeys, with arrow slits and a crenellated top.
+const TOWER_AT: [f32; 2] = [-27.0, 7.0];
+const TOWER_HALF: f32 = 1.60;
+const TOWER_STOREY: f32 = 2.80;
+const TOWER_WALL: f32 = 0.50;
+const TOWER_MERLON: f32 = 0.35;
+const TOWER_MERLON_HIGH: f32 = 0.75;
+
 const SUN: [f64; 3] = [-24.0, 28.0, 20.0];
 const SUN_IRRADIANCE: f64 = 3.3;
 const SHADOW_EXTENT: f64 = 48.0;
@@ -134,6 +142,86 @@ pub fn document() -> Building {
     ];
     if let Some(roof) = derive::lean_to(left, plan, GATE_HEAD - 0.12, GATE_HEAD + GATE_RISE, 0.14) {
         skeleton.roofs.push(roof);
+    }
+
+    // **The 碉楼: a square tower at the lane's west end**, two stone storeys with a crenellated top. It is the one building
+    // a 屯堡 has that is neither a house nor a wall — the garrison's watch — and it is built the way this crate allows a
+    // tall mass: **two masses, the upper carried by the lower through `Join::Storey`**, so each takes its own cuts.
+    let [across, along] = TOWER_AT;
+    let square = |elevation: f32| {
+        [
+            PlanNode::new([across - TOWER_HALF, along - TOWER_HALF], elevation),
+            PlanNode::new([across + TOWER_HALF, along - TOWER_HALF], elevation),
+            PlanNode::new([across + TOWER_HALF, along + TOWER_HALF], elevation),
+            PlanNode::new([across - TOWER_HALF, along + TOWER_HALF], elevation),
+        ]
+        .to_vec()
+    };
+    let mut lower = Mass::new(square(0.0), TOWER_STOREY);
+    lower.wall = TOWER_WALL;
+    lower.slab = 0.30;
+    let lower_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(lower);
+    let mut upper = Mass::new(square(TOWER_STOREY), TOWER_STOREY * 2.0);
+    upper.wall = TOWER_WALL;
+    upper.slab = 0.30;
+    upper.attachment = Some(building::Attachment {
+        host: lower_id,
+        join: building::Join::Storey,
+    });
+    let upper_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(upper);
+
+    // **An arrow slit in every face of both storeys.** A slit's sill is a metre and a half up, and its insets stand a
+    // wall's thickness in from the bay's ends — the invariant round 69 measured, because the loop an opening is cut into is
+    // mitred inward.
+    let slit = building::Inset::new(1.15, 1.15, 1.55, 1.00);
+    for mass in [lower_id, upper_id] {
+        for edge in 0..4 {
+            let face = building::FaceRef::new(mass, edge);
+            let split = building::ops::split_face(
+                &mut skeleton,
+                face,
+                &building::Rhythm::Even { count: 1 },
+                &building::Rhythm::Even { count: 1 },
+            );
+            if split.is_none() {
+                continue;
+            }
+            let _ =
+                building::ops::add_opening(&mut skeleton, building::Opening::new(face, 0, 0, slit));
+        }
+    }
+
+    // **The crenellation: a merlon on every edge of the top**, which is four members and not a parapet — a parapet is what
+    // the 碉房 wears and a merlon is what a garrison does.
+    let crest = TOWER_STOREY * 2.0 + 0.02;
+    let corners = [
+        [across - TOWER_HALF, along - TOWER_HALF],
+        [across + TOWER_HALF, along - TOWER_HALF],
+        [across + TOWER_HALF, along + TOWER_HALF],
+        [across - TOWER_HALF, along + TOWER_HALF],
+    ];
+    for index in 0..4 {
+        let from = corners[index];
+        let to = corners[(index + 1) % 4];
+        // **The section is measured across the merlon's own axis**, which is the perpendicular of the edge it follows: a
+        // section laid along the axis has no width at all, and the crate answers `MemberDegenerate { length: 3.2 }` — the
+        // length reading like a degenerate length and being the merlon's own.
+        let axis = [to[0] - from[0], to[1] - from[1]];
+        let run = (axis[0] * axis[0] + axis[1] * axis[1]).sqrt();
+        let across = [-axis[1] / run, axis[0] / run];
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [from[0], crest, from[1]],
+            },
+            building::Anchor::Free {
+                at: [to[0], crest, to[1]],
+            },
+            across,
+            TOWER_MERLON,
+            TOWER_MERLON_HIGH,
+        ));
     }
 
     Building::new(skeleton)

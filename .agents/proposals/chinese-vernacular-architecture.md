@@ -1975,3 +1975,19 @@ Two refusals came from the model, and both are about a mass's own thickness:
 
 **Identity: 31 scenes, 113 324 rows**, of which `tunpu_village` is **1 098** — four houses at 260 rows, the two walls, the
 two piers and the gate's roof. The document is 7.10 MB.
+## Round 71: the 碉楼 at the lane's end
+
+A 屯堡's one building that is neither a house nor a wall is the **watchtower**, and the type's own record said the scene did
+not draw it. It does now: a square stone tower of two storeys at the lane's west end — `3.2 m` square, `5.6 m` tall, an
+arrow slit in every face of both storeys and a **merlon on every edge of the top**.
+
+Built the way this crate allows a tall mass: **two masses, the upper carried by the lower through `Join::Storey`**, so each
+takes its own cuts. The slits are cut the way round 69 taught — a face split into one bay first, then an inset that stands a
+wall's thickness in from the bay's ends, because the loop an opening is cut into is mitred inward.
+
+One refusal, and it was mine: the merlon's `across` was written as an expression over the edge's own direction, which
+produced a section laid *along* the member — `MemberDegenerate { length: 3.2 }` four times, the length reading like a
+degenerate length and being the merlon's own. The section is the perpendicular of the edge now.
+
+**Identity: 31 scenes, 113 406 rows**; `tunpu_village` 1 098 → **1 180** — two storeys' walls, eight slits' reveals and four
+merlons.
