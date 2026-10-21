@@ -122,6 +122,25 @@ const STUPA_RAIL_POST: f32 = 0.13;
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the temple: from the porch's corner, so the pitch and the platform's height are both seen.
+/// The **close plate**: the stupa and its rails, the 经幡柱 and the trees, at the distance a person walks past them in the yard.
+///
+/// # Why a second camera and not a second document
+///
+/// The wat's wide plate was composed to hold **two buildings and the wall round both** (round 118's note), and at that distance the stupa's six-band
+/// spire, its 石栏, the 经幡柱's arms and its cloth are marks rather than shapes. The yard's objects needed the yard's own plate, which is round 172's
+/// move for the fourth time in this half of the gallery.
+pub fn dai_stupa() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [5.4, 4.6, 16.4],
+        [10.4, 5.4, 5.2],
+        FIELD_OF_VIEW * 0.92,
+        "dai_stupa",
+    )
+}
+
 pub fn dai_temple() -> Value {
     // **The yard's trees**: a wat keeps a **bodhi** at its gate and a mango or two along its wall, and a court with two buildings
     // and no tree is a yard. The vegetation bridge is the hamlet's own, merged here rather than re-authored — the same answer

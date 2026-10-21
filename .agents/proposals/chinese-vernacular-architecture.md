@@ -3647,3 +3647,14 @@ had been seen at a distance where they are objects. That is the same finding as 
 one piece per round had outrun its habit of looking at what it added**.
 
 **Identity: 52 scenes, 176 667 rows**; `qiang_double` **2 191** (the same document as `qiang_tower`). The document is 7.65 MB.
+## Round 194: the 缅寺's close plate
+
+The wat's wide plate was composed to hold **two buildings and the wall round both** (round 118's note), and at that distance the stupa's four
+battered courses, its six-band spire and its 石栏 are marks rather than shapes. `dai_stupa` stands in the yard and the stupa rises beside the
+戒堂's eave, its bands stepping in above the stone rail.
+
+**The first camera had to move, and the reason is a rule the gallery keeps meeting**: from the temple's east the 戒堂's own roof stood between the
+lens and the stupa — **a plate of an object is a plate of its line of sight**, and the second position (from the yard's south, looking north-east)
+is the one where the object is in front of everything else.
+
+**Identity: 53 scenes, 179 474 rows**; `dai_stupa` **2 807** (the same document as `dai_temple`). The document is 8.16 MB.
