@@ -4278,3 +4278,19 @@ plinth with three open sides and one deep eave, and why its back wall is the one
 **Identity: 70 scenes, 244 227 rows**; `opera_stage` **93** — a plinth, a floor, a wall, a room, six posts and a roof.
 
 **And the instrument reports itself again**: `83 names, 70 buildings, 70 listed, unmeasured [], unknown []`, `70 asked, 70 printed`.
+## Round 236: the 戏台 at the drum tower's square
+
+侗 opera is played on a stage at the **drum tower's own square** — the tower is where the village gathers and the stage is what it gathers to watch — so round
+235's type belongs here and the round had to find the ground for it. **Three positions were refused before one held, and every refusal named a neighbour:**
+
+1. the square's **west side** — the 穿斗 house at `[-17.5, 4.5]` owns that ground;
+2. **eight metres west of it** — the same house, plus the 禾晾 racks;
+3. **the square's south edge** at `z = 22.6` — the granary row stands at `z = 17.2` and the stage's dressing room reached it.
+
+It stands now at `[0.0, 26.4]`, **facing the tower across the square**, and `dong_village` 10 883 → **10 976** — the stage's **93 rows**.
+
+**The lesson is the one round 234 learned in the street**: the 侗寨's square is **large but full** — a tower, three houses, a granary row, a well, five racks, an
+arch and now a stage — and a square is not a place with room in it, it is a place **whose room is all spoken for**. A composition finds its site by asking
+every neighbour, and the checker is the one that answers.
+
+**Identity: 70 scenes, 244 506 rows.**

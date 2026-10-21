@@ -38,6 +38,9 @@ const MILL_AT: [f32; 2] = [40.0, 12.0];
 /// The 牌坊 on the square's own axis, where the lane enters it: its plane across z, its place in x.
 const ARCH_AT: [f32; 2] = [-14.0, LANE_Z];
 
+/// The 戏台 on the square's west side, turned to face the tower across it: where it stands.
+const STAGE_AT: [f32; 2] = [0.0, 26.4];
+
 /// The 禾仓群 at the village's edge: how many stores, where the first stands, how far apart, each one's plan, how high its floor is posted and how tall
 /// the store is, a post's section and how far its cap stands out.
 const STORES: usize = 3;
@@ -783,6 +786,16 @@ pub fn document() -> Building {
     assert!(
         ops::merge(&mut skeleton, arch),
         "the arch places no parts, so the merge always happens"
+    );
+
+    // **The 戏台 on the square`s west side, facing the tower.** 侗 opera is played on a stage at the drum tower`s own square — the tower is where the village
+    // gathers and the stage is what it gathers to watch — so the stage stands **outside the paving and looks across it**, turned a quarter. Round 235`s own
+    // document, translated and turned, with none of its numbers restated.
+    let mut stage = crate::opera_stage::document().skeleton;
+    ops::translate(&mut stage, STAGE_AT);
+    assert!(
+        ops::merge(&mut skeleton, stage),
+        "the stage places no parts, so the merge always happens"
     );
 
     Building::new(skeleton)
