@@ -64,12 +64,18 @@ const PORCH_HIGH: f32 = 2.15;
 /// The porch's rail: how high it stands above the deck.
 const PORCH_RAIL: f32 = 0.92;
 
-/// The thatch: a coarse covering — four times a tiles period, nearly closed, and deep enough to read as a thatchs own thickness.
+/// The thatch: **no rolls at all**. Round 179 gave the roof a coarse covering but kept the crate's roll model, so a longhouse's roof was still a
+/// tile roof at four times the pitch. A thatch is laid **flat and closed** — the bundles touch — and what tells it from tile is the **ridge**, not
+/// the surface.
 const THATCH: building::Covering = building::Covering {
-    period: 0.46,
-    fill: 0.94,
-    height: 0.11,
+    period: 0.52,
+    fill: 0.98,
+    height: 0.045,
 };
+
+/// The thatch ridge: how thick and how high the bundle laid along the crest is.
+const RIDGE: f32 = 0.46;
+const RIDGE_HIGH: f32 = 0.34;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
@@ -103,6 +109,23 @@ pub fn document() -> building::Building {
         }
         *roof = roof.clone().with_covering(THATCH);
     }
+
+    // **The thatch ridge.** A roof of grass is tied off along its crest with a **bundle of thatch laid over the joint** — the one line that says
+    // grass rather than tile, and the reason a longhouse's silhouette is soft at the top. It is a member along the ridge, from end to end, at the
+    // height of the crest: the floor's `LEG`, the wall's `height` and the roof's `rise`.
+    let half = STARTER.width * 0.5;
+    let ridge_high = LEG + STARTER.height + STARTER.rise - STARTER.sink;
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [-half + STARTER.overhang * 0.5, ridge_high, 0.0],
+        },
+        building::Anchor::Free {
+            at: [half - STARTER.overhang * 0.5, ridge_high, 0.0],
+        },
+        [0.0, 1.0],
+        RIDGE,
+        RIDGE_HIGH,
+    ));
 
     // **The posts.** Two rows under the floor's long edges, as many as the length needs, each from the ground to the floor.
     let half = STARTER.width * 0.5;

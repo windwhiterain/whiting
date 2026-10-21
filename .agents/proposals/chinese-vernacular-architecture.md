@@ -3754,3 +3754,17 @@ terrace's face and its slab going away. **A fix's table moves differently from a
 what it took out.
 
 **Identity: 57 scenes, 213 758 rows**. The document is 11.04 MB.
+## Round 202: the thatch's ridge, and a covering with no rolls
+
+Round 179 gave this roof a coarse covering and called it thatch, and recorded the debt honestly: **the covering was still the crate's roll model**, so a
+longhouse's roof was a tile roof at four times the pitch. This round changes both halves of it:
+
+- **the covering is closed and shallow** — `fill 0.98`, `height 0.045` — because thatch is laid in bundles that touch, not in rolls with gaps;
+- **the ridge is a member**: a bundle of thatch tied over the crest from end to end, `0.46` wide and `0.34` deep, seated `sink` below the crest's ideal
+  height. **That is the one line that says grass rather than tile**, and a longhouse's silhouette is soft at the top because of it.
+
+**A fix's table and an addition's table move in opposite directions again**: `longhouse` 775 → **721**. The ridge adds a member and the flattening
+covering takes away about sixty rows of relief — **the roof now has fewer lines on it because a thatch is smoother than tile**, and the table says so
+where a picture would only say "it looks different".
+
+**Identity: 57 scenes, 213 380 rows**; `jingpo_village` and `jingpo_mouth` 2 509 → **2 347**. The document is 7.27 MB.
