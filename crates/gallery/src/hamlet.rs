@@ -19,9 +19,10 @@
 //! # What it does not draw
 //!
 //! - **no vegetation**: the palms and the bamboo clumps a Dai hamlet lives among are the vegetation arc's work;
-//! - **no fences**: a Dai house's garden is a hedge and a gate, and this catalogue has neither;
-//! - **the houses all face the same way**, because the scene transforms are translations: a hamlet of houses at right
-//!   angles to one another needs a rotation in the skeleton, which this crate does not have.
+//! - **the houses do turn** (the two outer ones are a quarter turn, so every veranda faces the well — `ops::rotate` has been in the crate since the villages
+//!   were built, and the bullet that said "a rotation in the skeleton, which this crate does not have" was written before it and never removed);
+//! - **the 篱笆 and its gate are drawn** since round 219: a low hedge with a gap and a leaf in it, which is what turns three houses round a well into a
+//!   **compound**.
 
 use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, site};
 use definition::Value;
@@ -41,6 +42,16 @@ const WELL_AT: [f32; 2] = [0.0, 9.5];
 const WELL_HALF: f32 = 1.0;
 const WELL_WALL: f32 = 0.28;
 const WELL_HIGH: f32 = 0.95;
+
+/// The 篱笆 in front of the two side houses and the gate in the gap: where the hedge starts and ends across the hamlet, how far in front of the well it
+/// runs, its depth and height, and its gate's post and its own height.
+const HEDGE_FROM: f32 = 1.70;
+const HEDGE_TO: f32 = 16.40;
+const HEDGE_OFF: f32 = -1.40;
+const HEDGE_DEEP: f32 = 0.52;
+const HEDGE_HIGH: f32 = 0.95;
+const GATE_POST: f32 = 0.11;
+const HEDGE_GATE: f32 = 1.35;
 
 /// The wat`s place in the hamlet: behind the row, so its roof rises over the houses` own.
 const WAT_AT: [f32; 2] = [4.0, -21.0];
@@ -161,6 +172,60 @@ pub fn document() -> Building {
         building::ops::merge(&mut skeleton, wat),
         "the wat places no parts, so the merge always happens"
     );
+
+    // **The 篱笆 and its gate.** This file said a Dai house's garden is *"a hedge and a gate, and this catalogue has neither"* — the hedge is a low mass and
+    // the gate is two posts and a leaf, so **it has both**. A low bamboo hedge now runs in front of the two side houses, stopping either side of the way
+    // in, and the gap has a gate standing in it: the two things that turn a row of verandas looking at a well into a **compound**.
+    for side in [-1.0_f32, 1.0] {
+        let inner = side * HEDGE_FROM;
+        let outer = side * HEDGE_TO;
+        let mut hedge = Mass::new(
+            building::ops::wound(vec![
+                [inner.min(outer), WELL_AT[1] + HEDGE_OFF],
+                [inner.max(outer), WELL_AT[1] + HEDGE_OFF],
+                [inner.max(outer), WELL_AT[1] + HEDGE_OFF + HEDGE_DEEP],
+                [inner.min(outer), WELL_AT[1] + HEDGE_OFF + HEDGE_DEEP],
+            ])
+            .into_iter()
+            .map(|at| building::PlanNode::new(at, 0.0))
+            .collect(),
+            HEDGE_HIGH,
+        );
+        // **The ring's offset stays under half the narrow side** (rounds 74, 144, 171).
+        hedge.wall = HEDGE_DEEP * 0.30;
+        hedge.slab = 0.12;
+        skeleton.masses.push(hedge);
+    }
+    // **The gate in the gap**: two posts and a leaf swung open, in the same vocabulary as every other gate here (`derive::leaf`).
+    for side in [-1.0_f32, 1.0] {
+        let x = side * HEDGE_FROM;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, 0.0, WELL_AT[1] + HEDGE_OFF + HEDGE_DEEP * 0.5],
+            },
+            building::Anchor::Free {
+                at: [x, HEDGE_GATE, WELL_AT[1] + HEDGE_OFF + HEDGE_DEEP * 0.5],
+            },
+            [1.0, 0.0],
+            GATE_POST,
+            GATE_POST,
+        ));
+    }
+    for side in [-1.0_f32, 1.0] {
+        if let Some(leaf) = building::derive::leaf(
+            [
+                side * HEDGE_FROM,
+                0.06,
+                WELL_AT[1] + HEDGE_OFF + HEDGE_DEEP * 0.5,
+            ],
+            HEDGE_FROM - 0.10,
+            HEDGE_GATE - 0.20,
+            0.06,
+            [-side, 0.0],
+        ) {
+            skeleton.members.push(leaf);
+        }
+    }
 
     Building::new(skeleton)
 }

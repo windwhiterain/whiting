@@ -4010,3 +4010,19 @@ and a culvert's mouth is exactly that. Two small stone boxes now stand over the 
 **The third note in three rounds that was wrong about the crate's vocabulary** (穿枋, 玛尼堆, culvert mouths). The claims are all now corrected in their
 files, and the pattern is consistent enough to state as a rule: **a "what it does not draw" bullet is a hypothesis, and this gallery has three of them
 that were false.**
+## Round 219: the 篱笆, and a fourth note that was wrong
+
+Two bullets in `hamlet.rs`'s header were both false. The first said *"no fences: a Dai house's garden is a hedge and a gate, and this catalogue has
+neither"* — **a hedge is a low mass and a gate is two posts and a leaf**, so it had both all along. The second said *"the houses all face the same way …
+a hamlet of houses at right angles needs a rotation in the skeleton, which this crate does not have"* — **the code thirty lines below it calls
+`ops::rotate` and has since the hamlet was built**; the bullet was written before the rotation and never removed.
+
+**The 篱笆 is drawn now**: a low hedge across the hamlet's front in two runs, a gap in the middle, two posts and a leaf swung open in it, and the well
+standing just inside. **Three houses round a well are a group; a hedge with a gate across their front is a compound**, and that is the difference the
+plate shows.
+
+**Identity: 60 scenes, 229 678 rows**; `dai_hamlet` 5 405 → **5 635** — two hedges, two gate posts and a leaf.
+
+**Four notes in five rounds that were wrong** (穿枋, 玛尼堆, culvert mouths, the hamlet's fences and its rotation). All four are corrected in their files,
+and the rule is no longer a suspicion: **a "what it does not draw" bullet is a hypothesis that nothing in this repository re-measures — read the code
+below it before believing it.**
