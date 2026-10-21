@@ -3021,3 +3021,13 @@ pieces of ground a village walks **across**. A flagged path runs from the lane's
 nine flags in the lane's own joint, so four pieces of ground are joined by the same stone.
 
 **Identity: 40 scenes, 145 850 rows**; `dong_village` 8 018 → **8 072** — nine flags' tops and edges. The document is 9.80 MB.
+## Round 144: the 寨墙
+
+A gate that stands alone is an arch. A gate is the one place a village's wall is **broken**, so the wall has to run out of it on both
+sides — two lengths starting exactly at their wing's face, an edge shared and no area (round 113's rule), and running east to the edge of
+the scene.
+
+**The first attempt folded the loop**: `WALL_THICK` is the wall's *depth*, and passing it as the ring's own offset gives
+`OffsetEdgeFolded` and `OffsetInverted { area: -6.37 }` — round 74's rule that a ring's offset stays under half its plan's narrowest span.
+
+**Identity: 40 scenes, 145 876 rows**; `dong_village` 8 072 → **8 098** — two lengths' faces and tops. The document is 9.81 MB.

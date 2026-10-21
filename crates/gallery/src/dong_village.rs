@@ -70,6 +70,11 @@ const GATE_HIGH: f32 = 3.05;
 const GATE_ROOF: f32 = 0.72;
 const GATE_ROOF_RISE: f32 = 1.65;
 /// The tiles the gate and the tower's neighbours wear.
+/// The 寨墙 the gate sits in: how far it runs east, how thick it is and how high.
+const WALL_RUN: f32 = 16.00;
+const WALL_THICK: f32 = 0.42;
+const WALL_HIGH_VILLAGE: f32 = 2.30;
+
 const TILES: Covering = Covering {
     period: 0.19,
     fill: 0.72,
@@ -238,6 +243,36 @@ pub fn document() -> Building {
     ) {
         skeleton.roofs.push(roof.with_covering(TILES));
     }
+    // **The 寨墙: the wall the gate is set into.** A gate that stands alone is an arch; a gate is the one place a village wall is
+    // broken, and the wall has to run out of it on both sides. Each length starts exactly at its wing's face — an edge shared and no
+    // area, the rule the 屯堡's walls paid for in round 113 — and runs east to the edge of the scene.
+    for across in [-1.0_f32, 1.0] {
+        let centre = LANE_Z + across * (LANE_HALF + GATE_WING * 0.5);
+        let mut wall = Mass::new(
+            ops::wound(vec![
+                [GATE_AT + GATE_DEEP * 0.5, centre - WALL_THICK * 0.5],
+                [
+                    GATE_AT + GATE_DEEP * 0.5 + WALL_RUN,
+                    centre - WALL_THICK * 0.5,
+                ],
+                [
+                    GATE_AT + GATE_DEEP * 0.5 + WALL_RUN,
+                    centre + WALL_THICK * 0.5,
+                ],
+                [GATE_AT + GATE_DEEP * 0.5, centre + WALL_THICK * 0.5],
+            ])
+            .into_iter()
+            .map(|at| PlanNode::new(at, 0.0))
+            .collect(),
+            WALL_HIGH_VILLAGE,
+        );
+        // **The ring's offset stays under half the plan's narrowest span.** `WALL_THICK` is the wall's *depth*; passing it as the
+        // offset folds the inner loop — `OffsetEdgeFolded` and `OffsetInverted { area: -6.37 }` — which is the rule round 74 wrote down.
+        wall.wall = WALL_THICK * 0.38;
+        wall.slab = 0.16;
+        skeleton.masses.push(wall);
+    }
+
     // **The bench**: a plank between the gate's walls, on the village side, where the old men sit.
     skeleton.members.push(building::Member::new(
         building::Anchor::Free {
