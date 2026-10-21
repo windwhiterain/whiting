@@ -37,6 +37,15 @@ const JOINT: f32 = 0.05;
 const FLAG: f32 = 0.07;
 /// The channel down the lane`s middle: half its width, and how deep it stands below the walked strips.
 const CHANNEL: f32 = 0.34;
+/// The streets water: where the well stands, its half width, its wall and its curbs height, and the trough beside it.
+const WELL_AT: [f32; 2] = [7.4, 2.05];
+const WELL_HALF: f32 = 0.72;
+const WELL_WALL: f32 = 0.24;
+const WELL_HIGH: f32 = 0.82;
+const TROUGH_LONG: f32 = 1.85;
+const TROUGH_DEEP: f32 = 0.62;
+const TROUGH_WALL: f32 = 0.16;
+const TROUGH_HIGH: f32 = 0.55;
 const GUTTER: f32 = 0.015;
 
 /// The walls that close the street's two ends: their height and thickness, and the gap the lane leaves open.
@@ -130,7 +139,50 @@ pub fn document() -> Building {
             skeleton.masses.push(wall);
         }
     }
-    let _ = MassId(0);
+    // **The street's water: a well and a trough, at the east mouth.** A 屯堡 street's houses have no wells of their own — the
+    // water is at the place the street widens, and it is one place. The well is a **mass whose wall is thick enough to be a ring**
+    // (`0.24 m` in a `1.44 m` plan), the same answer the 白族 lane's well gave; the trough beside it is the same idea at a
+    // rectangle, and it is what the animals drink from.
+    let well = WELL_AT;
+    let mut ring = Mass::new(
+        ops::wound(vec![
+            [well[0] - WELL_HALF, well[1] - WELL_HALF],
+            [well[0] + WELL_HALF, well[1] - WELL_HALF],
+            [well[0] + WELL_HALF, well[1] + WELL_HALF],
+            [well[0] - WELL_HALF, well[1] + WELL_HALF],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, 0.0))
+        .collect(),
+        WELL_HIGH,
+    );
+    ring.wall = WELL_WALL;
+    ring.slab = 0.18;
+    skeleton.masses.push(ring);
+
+    // **The trough**: a hollow box `TROUGH_LONG` by `TROUGH_DEEP`, its wall `TROUGH_WALL` thick, standing on the paving at the
+    // well's own side. A trough is a well laid on its side: the same ring of stone, shorter and longer.
+    let mut trough = Mass::new(
+        ops::wound(vec![
+            [well[0] + WELL_HALF + 0.55, well[1] - TROUGH_DEEP * 0.5],
+            [
+                well[0] + WELL_HALF + 0.55 + TROUGH_LONG,
+                well[1] - TROUGH_DEEP * 0.5,
+            ],
+            [
+                well[0] + WELL_HALF + 0.55 + TROUGH_LONG,
+                well[1] + TROUGH_DEEP * 0.5,
+            ],
+            [well[0] + WELL_HALF + 0.55, well[1] + TROUGH_DEEP * 0.5],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, 0.0))
+        .collect(),
+        TROUGH_HIGH,
+    );
+    trough.wall = TROUGH_WALL;
+    trough.slab = 0.14;
+    skeleton.masses.push(trough);
 
     Building::new(skeleton)
 }

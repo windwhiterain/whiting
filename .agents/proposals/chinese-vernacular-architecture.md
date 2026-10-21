@@ -2500,3 +2500,19 @@ was passed as the run's own direction instead of its perpendicular. Round 71 lea
 | **invariants written down** | 12, from `Mass::wall` being under half the plan to the mitre that a door's inset must clear |
 
 **Identity: 37 scenes, 128 512 rows**; `tunpu_village` 1 180 → **1 192** — two leaves, six rows each. The document is 7.52 MB.
+## Round 101: the street's water
+
+A 屯堡 street's houses have no wells of their own: the water is at **one place**, where the street has room for it. Two masses
+stand in the lane's mid-ground now —
+
+- **the well**, a mass whose wall is thick enough to be a ring — `0.24 m` in a `1.44 m` plan, the same answer the 白族 lane's
+  well gave, and the inner loop cannot fold;
+- **the trough** beside it: a well laid on its side, the same ring of stone `1.85 m` long and `0.62 m` deep, which is what a
+  street's animals drink from.
+
+The first position put both at the east mouth, `15 m` up the lane, where they were three pixels of grey. They stand at `7.4 m`
+now, in the middle of the street's own view — **a detail placed where the plate cannot show it is a detail nobody sees**, which
+this project has now learned three times (rounds 77, 97 and here).
+
+**Identity: 37 scenes, 128 538 rows**; `slate_street` 1 936 → **1 962** — a curb's four faces, its top and its hole, and a
+trough's. The document is 7.69 MB.
