@@ -4340,3 +4340,17 @@ tradition: four posts and a cap.
 
 **And it is the cleanest use of `Join::Storey` in the gallery**: the 风水塔 (round 207) and the 马店's upstairs (round 229) each had to argue for the attachment;
 here it is what a battered tower **is** — and the four openings cost **22 rows each**, the same price the 塔门 paid in round 210.
+## Round 240: the 碉楼 at the market town's corner
+
+Round 239 built the tower and left it in a field. **A 场镇 raised by 屯堡 people keeps their tower**, and the corner of a market square is where it does the most
+work: it watches the road in and the square at once, and it is the only building in the town taller than the shops. It stands at `[-19.6, 17.6]` — the one
+corner the shop rows and the arch leave free.
+
+**`market_town` 605 → 716**, the tower's **111 rows**, and the plate now composes **five** things at once: the tower at the left, the arch in the foreground,
+two rows of shops with their awnings, and the stage closing the axis at the head.
+
+**The first camera cut the tower to a base**: at thirteen metres and twenty metres out, the corner was outside the frame's left edge. The second camera steps
+**back four metres, up two and turns three metres left**, and the tower is whole — which is the fourth time this half of the gallery has learned that **a
+composition changes the plate's frame and not only its content** (rounds 222, 225, 234 and this one).
+
+**Identity: 73 scenes, 256 309 rows.**

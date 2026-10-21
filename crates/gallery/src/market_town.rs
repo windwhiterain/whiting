@@ -41,6 +41,9 @@ const AWNING_THICK: f32 = 0.12;
 const STAGE_AT: [f32; 2] = [0.0, -SQUARE_DEEP - 3.40];
 const ARCH_AT: [f32; 2] = [0.0, SQUARE_DEEP + 2.10];
 
+/// The 碉楼 at the square's south-west corner, which is where a 屯堡 market's tower stands: at the corner it can watch the road in and the square at once.
+const TOWER_AT: [f32; 2] = [-19.6, 17.6];
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// Builds the scene: from behind the arch, down the square, with the stage at its far end — the way a market day is entered.
@@ -49,9 +52,9 @@ pub fn market_town() -> Value {
         &document(),
         &crate::settlement_plants::Extra::none(),
         &|_, _| 0.0,
-        [7.2, 13.0, 37.0],
-        [-0.8, 2.8, -9.0],
-        FIELD_OF_VIEW * 1.02,
+        [11.0, 15.0, 41.0],
+        [-4.2, 3.4, -6.0],
+        FIELD_OF_VIEW * 1.12,
         "market_town",
     )
 }
@@ -150,6 +153,15 @@ pub fn document() -> Building {
     assert!(
         ops::merge(&mut skeleton, arch),
         "the arch places no parts, so the merge always happens"
+    );
+
+    // **The 碉楼 at the square's south-west corner.** A 场镇 raised by 屯堡 people keeps their tower: at the corner it watches the road in and the square at
+    // once, and it is the only building in this town taller than the shops. Round 239's own document, translated, with none of its numbers restated.
+    let mut tower = crate::watchtower::document().skeleton;
+    ops::translate(&mut tower, TOWER_AT);
+    assert!(
+        ops::merge(&mut skeleton, tower),
+        "the tower places no parts, so the merge always happens"
     );
 
     Building::new(skeleton)
