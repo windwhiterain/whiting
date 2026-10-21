@@ -68,10 +68,6 @@ const GATE_OUT: f32 = 0.66;
 const DRUM: f32 = 0.44;
 const DRUM_HIGH: f32 = 0.50;
 
-const SUN: [f64; 3] = [-26.0, 30.0, 18.0];
-const SUN_IRRADIANCE: f64 = 3.3;
-const SHADOW_EXTENT: f64 = 52.0;
-
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// The **close plate**: the street's east 街门 from inside the lane, where the gate's head, its two leaves, its threshold, its 门枕石 and the flags

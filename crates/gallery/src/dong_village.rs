@@ -67,7 +67,6 @@ const GATE_DEEP: f32 = 2.40;
 const GATE_WING: f32 = 1.60;
 const GATE_WALL: f32 = 0.22;
 const GATE_HIGH: f32 = 3.05;
-const GATE_ROOF: f32 = 0.72;
 const GATE_ROOF_RISE: f32 = 1.65;
 /// The tiles the gate and the tower's neighbours wear.
 /// The 寨墙 the gate sits in: how far it runs east, how thick it is and how high.
@@ -125,9 +124,6 @@ const FLAG_STONE_FOOT: f32 = 0.88;
 const FLAG_POLE_HIGH: f32 = 5.60;
 const FLAG_POLE: f32 = 0.13;
 
-const SUN: [f64; 3] = [-26.0, 30.0, 20.0];
-const SUN_IRRADIANCE: f64 = 3.3;
-const SHADOW_EXTENT: f64 = 52.0;
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// Builds the village: from the square's south-west corner, so the tower rises against the sky and the houses flank it.

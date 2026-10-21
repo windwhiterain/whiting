@@ -74,11 +74,6 @@ impl Extra {
         self.leaves.extend(other.leaves);
     }
 
-    /// Whether this extra draws nothing at all, which is what lets a scene stay byte-identical without plants.
-    pub fn is_empty(&self) -> bool {
-        self.meshes.is_empty()
-    }
-
     /// Returns the extra's meshes, as `(label, packed list)`.
     pub fn meshes(&self) -> Vec<(String, PackedList)> {
         self.meshes.clone()

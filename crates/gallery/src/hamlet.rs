@@ -30,9 +30,6 @@ use crate::ground;
 
 /// The lane the houses stand along, and how far apart their plots are.
 const LANE_Z: f32 = 0.0;
-/// **A plot is wider than a house**, because a 竹楼`s eaves are the house: with `OVERHANG` at 1.35 m and the drying
-/// deck on one side, a house is eleven metres across and two of them at nine metres would share a roof.
-const PLOT: f32 = 12.0;
 /// The plots, and how far each house is turned: the middle house faces the lane, the two outer ones a quarter turn
 /// towards the well.
 const HOUSES: [(f32, f32); 3] = [
@@ -52,7 +49,6 @@ const WAT_AT: [f32; 2] = [4.0, -21.0];
 
 const SUN: [f64; 3] = [-22.0, 26.0, 18.0];
 const SUN_IRRADIANCE: f64 = 3.2;
-const SHADOW_EXTENT: f64 = 64.0;
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// Builds the hamlet: three 竹楼 along the lane, the well in front of them, and the bamboo clumps a Dai hamlet lives in.

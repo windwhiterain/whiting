@@ -290,16 +290,6 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
     ])
 }
 
-/// Returns how wide the stair is, measured from the wall it climbs.
-///
-/// # Invariants
-///
-/// **One number, three readers** — the treads, their stringer and the parapet's landing gap — so a stair
-/// narrowed in one place cannot leave a gap in the parapet that no longer fits it.
-fn stair_width() -> f32 {
-    1.1
-}
-
 /// Returns the plan direction perpendicular to a member's own axis, which is what its section is measured
 /// across.
 ///

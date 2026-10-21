@@ -66,9 +66,6 @@ const YARD_THICK: f32 = 0.48;
 const YARD_HIGH: f32 = 2.05;
 /// The yard's paving: how thick the flags lie.
 const PAVING: f32 = 0.07;
-/// The 巷道 through the yard: its half width, where it starts and ends, how many flags and the joint between them, and how far the flags
-/// stand above the yard's paving.
-const LANE_X: f32 = 5.10;
 const LANE_HALF: f32 = 1.20;
 const LANE_FROM: f32 = YARD_SOUTH + YARD_THICK;
 const LANE_TO: f32 = 7.60;

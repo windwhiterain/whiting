@@ -27,7 +27,6 @@ const HOUSES: [(f32, f32, f32); 3] = [
 ];
 /// The gate at the lane's mouth: how wide the gap, the wall's depth and height, and how deep the gate's head lies.
 const GATE_AT: f32 = LANE_TO - 2.20;
-const GATE_CLEAR: f32 = 3.60;
 const WALL_THICK: f32 = 0.44;
 const WALL_HIGH: f32 = 2.10;
 const HEAD_HIGH: f32 = 0.46;

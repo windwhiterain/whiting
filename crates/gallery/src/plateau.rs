@@ -24,8 +24,6 @@
 use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, site};
 use definition::Value;
 
-/// The lane, and the plots on each side of it.
-const LANE_Z: f32 = 0.0;
 /// **One row, all four facing south**, which is what a plateau household does: the gallery is the only timber and it goes
 /// where the sun is, whatever the lane does. The first draft put two rows either side of the lane and every outside camera
 /// saw one row`s back wall.
@@ -45,9 +43,6 @@ const WALL_HALF: f32 = 1.2;
 const WALL_HIGH: f32 = 1.0;
 const WALL_THICK: f32 = 0.55;
 
-const SUN: [f64; 3] = [-20.0, 30.0, 16.0];
-const SUN_IRRADIANCE: f64 = 3.4;
-const SHADOW_EXTENT: f64 = 44.0;
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// Builds the village: four towers, two trees and the wall that holds the shelf.
@@ -86,11 +81,6 @@ fn grade(x: f64, z: f64) -> f64 {
     } else {
         0.0
     }
-}
-
-/// The sun's own irradiance needs a distance, and the village states it at its own scale.
-fn distance_to_origin(position: [f64; 3]) -> f64 {
-    (position[0] * position[0] + position[1] * position[1] + position[2] * position[2]).sqrt()
 }
 
 /// Returns the document: four towers and the retaining wall.

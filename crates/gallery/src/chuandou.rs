@@ -59,15 +59,7 @@ const TILES: Covering = Covering {
     height: 0.045,
 };
 
-const SUN: [f64; 3] = [-24.0, 32.0, 20.0];
-const SUN_IRRADIANCE: f64 = 3.0;
-const SHADOW_EXTENT: f64 = 30.0;
-
-const FRAME_WIDTH: i64 = 1280;
-const FRAME_HEIGHT: i64 = 800;
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
-const GROUND_DIVISIONS: usize = 120;
-const GROUND_EXTENT: f64 = 55.0;
 
 /// Builds the scene: from the front-left, where the colonnade and the eaves' shadow are both seen.
 pub fn chuandou_house() -> Value {

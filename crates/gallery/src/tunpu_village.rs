@@ -58,9 +58,6 @@ const TOWER_WALL: f32 = 0.50;
 const TOWER_MERLON: f32 = 0.35;
 const TOWER_MERLON_HIGH: f32 = 0.75;
 
-const SUN: [f64; 3] = [-24.0, 28.0, 20.0];
-const SUN_IRRADIANCE: f64 = 3.3;
-const SHADOW_EXTENT: f64 = 48.0;
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// Builds the village: four houses, the compound's wall and the gate.

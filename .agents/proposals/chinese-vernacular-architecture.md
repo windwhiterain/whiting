@@ -3681,3 +3681,16 @@ is the plate where they are objects, and it is the fifth such plate in twelve ro
 count, which is what a finished catalogue looks like**.
 
 **Identity: 55 scenes, 187 426 rows**; `bai_gate` **5 794** (the same document as `bai_lane`). The document is 8.16 MB.
+## Round 197: thirty-five dead constants, and a table that did not move
+
+Nineteen types and fifty-five scenes have been built one piece per round, and **nothing was ever taken out**. `cargo build` reported **35 dead
+items** in the gallery: the rasterize era's leftovers (`SUN`, `SUN_IRRADIANCE`, `SHADOW_EXTENT`, `FRAME_WIDTH`, `FRAME_HEIGHT`, `GROUND_*`) in six
+scene files, plus four constants that rounds left behind as they moved (`GATE_ROOF`, `GATE_CLEAR`, `LANE_X`, `LANE_Z`, `PLOT`) and three
+functions nothing called (`distance_to_origin`, `stair_width`, `Extra::is_empty`).
+
+**All 35 are gone; the count is 0.** And the verification is the strictest this project has: **the identity table must not move**, because deleting
+unused code changes no geometry. It reports **55 scenes and 187 426 rows — identical, row for row** — which is exactly the evidence a removal owes
+and exactly the opposite of what an addition owes.
+
+**The lesson is about the rounds themselves**: every round added a constant, and a round that replaced one (the camera of 161, the fence of 184)
+left the old one in place. **A table that cannot move is the only way to prove a removal is a removal.**
