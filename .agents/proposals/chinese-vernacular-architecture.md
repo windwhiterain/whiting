@@ -2941,3 +2941,19 @@ measured twice while they stood at the gate's centre, once at the pier's face an
 same pair overlaps nothing, and that is also where the plate sees them.
 
 **Identity: 39 scenes, 137 766 rows**; `bai_lane` 5 768 → **5 794** — two drums' four faces and their tops. The document is 20.42 MB.
+## Round 138: the 上下场门, and a fascia that did not exist
+
+The round opened with a **封边** — a board closing the 竹楼's deck edge — and it was **withdrawn after the plate came back with the same
+hash it had before the change** (`c684389e…`, byte for byte). The deck's edge already reads at the plate's distance; a fourth member
+along it is a member nobody sees, and this project's own rule says a detail placed where the plate cannot show it is a detail nobody
+sees. **A change that does not move the frame and does not move the table is not a change**, and the honest thing to do with it is to
+take it out.
+
+What landed instead crosses a stage that has never had a back door. An actor enters by one and leaves by the other — **出将** and
+**入相** — and they are cut where the compound plate looks: `edge 0`, the stage's far wall, in the outer two of three bays, each as
+tall as a man. A 戏台 with no back doors is a stage nobody can walk onto.
+
+**Identity: 39 scenes, 137 778 rows**; `benzu_miao` 1 911 → **1 917** — two openings' reveals. The document is 7.65 MB.
+
+**What the plate shows and does not**: the doors sit on the stage's shaded side, so they read as two dark patches on a dark wall — the
+frame is honest about them but not generous. They are measured in the table, which is the part this round can claim.

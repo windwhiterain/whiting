@@ -390,6 +390,32 @@ pub fn document() -> Building {
         );
     }
 
+    // **The 上下场门: the two doors in the stage's back wall.** An actor enters by one and leaves by the other — 出将 and 入相 — and a
+    // 戏台 with no back doors is a stage nobody can walk onto. They are cut on `edge 0`, the face away from the court, which is the
+    // face the **compound** plate looks at: two small openings in the outer thirds of the wall, a metre and a half either side of the
+    // axis, each as tall as a man.
+    let back = building::FaceRef::new(stage_id, 0);
+    if building::ops::split_face(
+        &mut skeleton,
+        back,
+        &building::Rhythm::Even { count: 3 },
+        &building::Rhythm::Even { count: 1 },
+    )
+    .is_some()
+    {
+        for column in [0usize, 2] {
+            let _ = building::ops::add_opening(
+                &mut skeleton,
+                building::Opening::new(
+                    back,
+                    0,
+                    column,
+                    building::Inset::new(0.55, 0.55, 0.0, 1.35),
+                ),
+            );
+        }
+    }
+
     // **The 台口栏杆 across the stage's mouth.** A stage a metre up with an open mouth is a stage a child walks off the front of; the
     // rail runs across the mouth inside it, on the stage's own floor, with a post every `STAGE_RAIL_BAY` and two rails. It is the
     // same edge-given-a-rail the 竹楼's deck got in round 128 and the 塔's platform in round 130 — only here the material is timber
