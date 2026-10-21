@@ -37,6 +37,12 @@ const WALL: f32 = 0.19;
 const DOOR_SILL: f32 = 4.10;
 const DOOR_COURSE: usize = 1;
 
+/// The 木梁头: how many to a face, their section, how far they stand proud and how far below a course's top they sit.
+const BEAMS: usize = 3;
+const BEAM: f32 = 0.15;
+const BEAM_PROUD: f32 = 0.24;
+const BEAM_DROP: f32 = 0.42;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.5;
 
 /// Builds the scene: from the ground's own level, close enough that the batter reads.
@@ -107,6 +113,41 @@ pub fn document() -> Building {
                     building::Inset::new(0.80, 0.80, sill.max(0.0), 0.75),
                 ),
             );
+        }
+    }
+
+    // **The 木梁头: the beam ends that stand proud of every storey's floor.** A 碉楼's floors are timber and their beams run through the
+    // stone, so each storey's face carries a row of **square beam ends** — the tower's one ornament, and the one thing that says a 碉楼
+    // has floors in it and is not a solid obelisk. Three to a face on the two faces the plate looks at, at every course's own top.
+    for course in 0..COURSES {
+        let level = PLINTH + COURSE * (course + 1) as f32 - BEAM_DROP;
+        let span = half - BATTER * course as f32;
+        for index in 0..BEAMS {
+            let at = -span + 2.0 * span * (index as f32 + 0.5) / BEAMS as f32;
+            // The `+x` face: the member runs out of it, so its `across` is `z`.
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [span - 0.02, level, at],
+                },
+                building::Anchor::Free {
+                    at: [span + BEAM_PROUD, level, at],
+                },
+                [0.0, 1.0],
+                BEAM,
+                BEAM,
+            ));
+            // The `+z` face: the member runs out of that one, so its `across` is `x`.
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [at, level, span - 0.02],
+                },
+                building::Anchor::Free {
+                    at: [at, level, span + BEAM_PROUD],
+                },
+                [1.0, 0.0],
+                BEAM,
+                BEAM,
+            ));
         }
     }
 

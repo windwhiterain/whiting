@@ -3112,3 +3112,15 @@ once.
 
 **Identity: 41 scenes, 146 539 rows**; `qiang_tower` **114** — eight courses, their faces and tops, and one door's reveals. The document
 is 7.10 MB.
+## Round 151: the 木梁头
+
+A 碉楼's floors are timber and their beams run **through** the stone, so every storey's face carries a row of square **beam ends**. It is
+the tower's one ornament, and it is the thing that says a 碉楼 has floors in it and is not a solid obelisk — the round-150 plate was a
+battered stack; this one is a building with storeys.
+
+Three to a face on the **two faces the plate looks at**, at every course's own top, set `BEAM_PROUD` out of the wall and `BEAM_DROP` below
+the course's edge. Forty-eight members, and their `across` is the run turned a quarter on both faces — the rule round 134 wrote down, held
+here on the first try.
+
+**Identity: 41 scenes, 146 827 rows**; `qiang_tower` 114 → **402** — forty-eight beam ends with their sections and their ends, which is more
+than three times the whole tower before them. The document is 7.20 MB.
