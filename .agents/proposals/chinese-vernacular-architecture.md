@@ -3150,3 +3150,14 @@ be tall next to, which is the only way a plate can show height at all.
 
 **Identity: 41 scenes, 147 314 rows**; `qiang_tower` 438 → **889** — a whole house's courses, parapet, windows and door. The document is
 7.40 MB.
+## Round 154: the 独木梯
+
+The door is four metres up for one reason — **the ladder is taken up behind you** — and a plank with steps cut in it leaning against the
+wall is the whole of a 碉楼's access. Two stringers and eight rungs now run from the ground to the door's own sill on the face the door is
+cut in, and the tower's one strange feature becomes its one piece of use.
+
+**It took a move to be seen**: the 碉房 stood where the ladder leans, and the plate's first attempt showed a tower with a house in front
+of its entrance. The house stands east of the ladder now, and the plate shows both — **the door in the air and the way up to it**, which is
+the pair the type is made of.
+
+**Identity: 41 scenes, 147 374 rows**; `qiang_tower` 889 → **949** — two stringers and eight rungs. The document is 7.42 MB.

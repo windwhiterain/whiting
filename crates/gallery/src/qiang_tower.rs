@@ -49,8 +49,15 @@ const MERLON_FILL: f32 = 0.58;
 const MERLON_DEEP: f32 = 0.34;
 const MERLON_HIGH: f32 = 0.82;
 
+/// The 独木梯: where its foot stands, how high its head reaches (the doors own sill), how wide it is, a stringers section and how many
+/// rungs it carries.
+const LADDER_FOOT: f32 = 5.10;
+const LADDER_WIDE: f32 = 0.42;
+const LADDER_POST: f32 = 0.10;
+const LADDER_RUNGS: usize = 8;
+
 /// The 碉房 beside the tower: where it stands in the towers own coordinates.
-const HOUSE_AT: [f32; 2] = [9.80, 2.60];
+const HOUSE_AT: [f32; 2] = [14.20, 2.60];
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.5;
 
@@ -199,6 +206,42 @@ pub fn document() -> Building {
         if let Some(id) = ids.last() {
             derive::crown_gables(&mut skeleton.masses[id.0], &roof);
         }
+    }
+
+    // **The 独木梯: the ladder that is taken up behind you.** The door is four metres up for one reason — the stair is **removed**, and a
+    // plank with steps cut in it leaning against the wall is the whole of a 碉楼's access. Two stringers and eight rungs, from the ground
+    // up to the door's own sill, leaning on the face the door is cut in.
+    let sill = DOOR_SILL;
+    let foot = LADDER_FOOT;
+    let head = half - BATTER * DOOR_COURSE as f32;
+    for side in [-1.0_f32, 1.0] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [foot, 0.0, side * LADDER_WIDE],
+            },
+            building::Anchor::Free {
+                at: [head - 0.10, sill, side * LADDER_WIDE],
+            },
+            [0.0, 1.0],
+            LADDER_POST,
+            LADDER_POST * 1.6,
+        ));
+    }
+    for rung in 1..=LADDER_RUNGS {
+        let t = rung as f32 / (LADDER_RUNGS + 1) as f32;
+        let x = foot + (head - 0.10 - foot) * t;
+        let y = sill * t;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, y, -LADDER_WIDE],
+            },
+            building::Anchor::Free {
+                at: [x, y, LADDER_WIDE],
+            },
+            [1.0, 0.0],
+            LADDER_POST * 0.8,
+            LADDER_POST * 1.1,
+        ));
     }
 
     // **The 碉房 beside it.** A 碉楼 is never alone: it stands in a courtyard of stone houses of the same masonry, and a tower on bare
