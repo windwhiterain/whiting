@@ -62,12 +62,20 @@ const STEP: f32 = 0.32;
 
 /// The compound: how far the yard stands beyond the platform, the walls height, its thickness and the wall inside it, the
 /// gates half width, and how thick the yards paving is.
-const YARD: f32 = 2.40;
+const YARD: f32 = 5.60;
 const WALL_HIGH: f32 = 1.55;
 const WALL_THICK: f32 = 0.40;
 const WALL_WALL: f32 = 0.16;
 const GATE_HALF: f32 = 1.60;
 const YARD_PAVING: f32 = 0.06;
+
+/// The 戒堂, the wat`s second building: its plan, its height, its platform, the pitch of its roof and where it stands in the yard.
+const UPOSATHA: [f32; 2] = [5.60, 3.90];
+const UPOSATHA_HIGH: f32 = 3.10;
+const UPOSATHA_PLINTH: f32 = 0.55;
+const UPOSATHA_RISE: f32 = 3.20;
+const UPOSATHA_OVERHANG: f32 = 0.85;
+const UPOSATHA_AT: [f32; 2] = [10.10, -2.20];
 /// The 寺门`s piers: how wide one is, in metres.
 const GATE_PIER: f32 = 0.52;
 
@@ -79,8 +87,10 @@ pub fn dai_temple() -> Value {
         &document(),
         &crate::settlement_plants::Extra::none(),
         &|_, _| 0.0,
-        [15.5, 6.2, 14.0],
-        [-1.4, 4.2, -0.8],
+        // **Backed off to take the whole wat in**: two buildings, the yard between them and the wall round both. A plate that cuts
+        // the 戒堂 at its edge is a plate of one hall.
+        [24.0, 10.5, 22.0],
+        [0.0, 3.4, -2.0],
         FIELD_OF_VIEW,
         "dai_temple",
     )
@@ -336,6 +346,65 @@ pub fn document() -> Building {
         0.14,
     ) {
         skeleton.roofs.push(roof.with_covering(TILES));
+    }
+
+    // **The 戒堂, the wat's second building.** A wat is not one hall: the 戒堂 is where the monks are ordained, it stands **behind**
+    // the 大殿`s platform and to its **east**, so the plate sees both: it is smaller and its platform is lower — and it is closed, because the rite it holds
+    // is not a public one. Two buildings on one axis, one open and one shut, is what an ordination hall is for.
+    let [uposatha_x, uposatha_z] = UPOSATHA_AT;
+    let uposatha_half = UPOSATHA[0] * 0.5;
+    let uposatha_deep = UPOSATHA[1] * 0.5;
+    skeleton.slabs.push(building::Slab::floor(
+        ops::wound(vec![
+            [
+                uposatha_x - uposatha_half - 0.60,
+                uposatha_z - uposatha_deep - 0.60,
+            ],
+            [
+                uposatha_x + uposatha_half + 0.60,
+                uposatha_z - uposatha_deep - 0.60,
+            ],
+            [
+                uposatha_x + uposatha_half + 0.60,
+                uposatha_z + uposatha_deep + 0.60,
+            ],
+            [
+                uposatha_x - uposatha_half - 0.60,
+                uposatha_z + uposatha_deep + 0.60,
+            ],
+        ]),
+        0.0,
+        UPOSATHA_PLINTH,
+    ));
+    let mut uposatha = Mass::new(
+        ops::wound(vec![
+            [uposatha_x - uposatha_half, uposatha_z - uposatha_deep],
+            [uposatha_x + uposatha_half, uposatha_z - uposatha_deep],
+            [uposatha_x + uposatha_half, uposatha_z + uposatha_deep],
+            [uposatha_x - uposatha_half, uposatha_z + uposatha_deep],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, UPOSATHA_PLINTH))
+        .collect(),
+        UPOSATHA_PLINTH + UPOSATHA_HIGH,
+    );
+    uposatha.wall = WALL;
+    uposatha.slab = 0.26;
+    let uposatha_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(uposatha);
+    if let Some(roof) = derive::gable_roof_by(
+        uposatha_id,
+        &skeleton.masses[uposatha_id.0],
+        UPOSATHA_OVERHANG,
+        UPOSATHA_OVERHANG,
+        UPOSATHA_RISE,
+        SINK,
+        ROOF_THICKNESS * 0.8,
+    ) {
+        skeleton.roofs.push(roof.with_covering(TILES));
+    }
+    if let Some(roof) = skeleton.roofs.last() {
+        derive::crown_gables(&mut skeleton.masses[uposatha_id.0], roof);
     }
 
     Building::new(skeleton)

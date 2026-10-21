@@ -2665,3 +2665,16 @@ past the gap's own edges, and the wall lengths either side of that gap own the s
 
 **Identity: 38 scenes, 130 847 rows**; `dai_temple` 1 563 → **1 773** — a lintel's faces and top, two piers' and their joins, and
 the gate's own roof. The document is 7.60 MB.
+## Round 115: the 缅寺's 戒堂
+
+A wat is not one hall. The **戒堂** is where the monks are ordained: it stands beside the 大殿 and clear of its platform, it is
+smaller, its platform is lower, and it is **closed** — the rite it holds is not a public one. Two roofs of different size on one
+yard, one open and one shut, is what an ordination hall is for.
+
+**Where a second building goes is decided by the plate, not by the map.** Built behind the 大殿 it was invisible: the hall's own
+roof is 4.6 m of pitch across the whole axis. Set to its **east** it stands beside it, and the compound is widened from `2.4 m` to
+`5.6 m` because a wat's yard is not a corridor — and because a yard that does not hold both buildings is a yard with one building
+in it.
+
+**Identity: 38 scenes, 131 366 rows**; `dai_temple` 1 773 → **2 292** — a second platform, a second hall with its crowned gable,
+and its own roof and covering. The document is 7.6 MB.
