@@ -2729,3 +2729,10 @@ no ids — the same answer the hamlet's own palms gave. What moves is the **docu
 are three crowns of leaf geometry, and the channel that names masonry does not name a leaf.
 
 **Identity: 38 scenes, 133 857 rows** (unchanged); `dai_temple` **2 389** (unchanged); the document 7.79 → **31.41 MB**.
+## Round 119: the spire's lotus and needle
+
+The 塔's spire was **one column** — a chimney on a bell. It is six bands now: the bell, its shoulder, the **lotus seat** that pinches
+the bell in, the spire, and two bands of needle above it. `(0.62, 0.95), (0.46, 0.55), (0.44, 0.18), (0.30, 0.85), (0.20, 0.55),
+(0.11, 0.62)` — each carried by the one under it, and the pinch is the whole difference between a stupa and a stack.
+
+**Identity: 38 scenes, 133 935 rows**; `dai_temple` 2 389 → **2 428** — three more bands' faces and tops. The document is 31.4 MB.

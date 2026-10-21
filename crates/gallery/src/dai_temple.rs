@@ -473,8 +473,17 @@ pub fn document() -> Building {
         // **A band's plan sets its wall.** A wall wider than half the plan folds the inner loop (`OffsetEdgeFolded`) and a plan that
         // shrinks past nothing gives a negative wall (`MassThickness { wall: -0.0102 }`, measured here) — so the bell and the spire
         // are `0.62`, `0.46` and `0.30` across their half, and their wall is a fraction of that and never a number of its own.
-        for (index, high) in [(0usize, 0.95_f32), (1, 1.55), (2, 1.30)] {
-            let size = [0.62_f32, 0.46, 0.30][index];
+        // **The bell, its shoulder, the lotus seat, the spire and the needle**, six bands: `(half width, height)`. A stupa's spire
+        // is not one column — it is a **lotus seat** where the bell ends and a **tapering needle** above it, and a spire without
+        // that pinch is a chimney.
+        for (size, high) in [
+            (0.62_f32, 0.95_f32),
+            (0.46, 0.55),
+            (0.44, 0.18),
+            (0.30, 0.85),
+            (0.20, 0.55),
+            (0.11, 0.62),
+        ] {
             let mut band = Mass::new(
                 ops::wound(vec![
                     [stupa[0] - size, stupa[1] - size],
