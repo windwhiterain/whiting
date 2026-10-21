@@ -3434,3 +3434,10 @@ and a different profile — that is the one thing this type would be recognised 
 **Identity: 45 scenes, 156 460 rows**; `longhouse` **137** — a body, its roof and nineteen posts. The document is 7.10 MB. **The small table is
 itself the measurement**: this type is one room, and everything the gallery's other houses spend their rows on (courts, galleries, eaves, sills)
 a longhouse does not have.
+## Round 175: the way up to a 干栏's floor
+
+A stilted house has no stair inside it: the household climbs a **notched log or a plank ladder** set against the long side and takes it up at
+night — which is why the round-174 plate showed a twenty-one metre house with no way into it. Two stringers and four rungs now lean from the
+ground to the floor's edge, on the wall the camera looks at.
+
+**Identity: 45 scenes, 156 496 rows**; `longhouse` 137 → **173** — two stringers and four rungs. The document is 7.11 MB.

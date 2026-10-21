@@ -43,6 +43,14 @@ const POST: f32 = 0.22;
 const POST_SPACING: f32 = 2.60;
 const POST_INSET: f32 = 0.40;
 
+/// The 独木梯 against the long side: how far along the wall it stands, how wide it is, how far its foot is set out from the floor's edge, a
+/// stringer's section and how many rungs it carries.
+const LADDER_X: f32 = 6.20;
+const LADDER_WIDE: f32 = 0.36;
+const LADDER_FOOT: f32 = 1.05;
+const LADDER_POST: f32 = 0.09;
+const LADDER_RUNGS: usize = 4;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the scene: from the side and low, because a longhouse is a length and a roof and both are read along the long wall.
@@ -81,6 +89,41 @@ pub fn document() -> building::Building {
                 POST,
             ));
         }
+    }
+
+    // **The 独木梯: the way up to the floor.** A 干栏 has no stair inside it — the household climbs a **notched log** or a plank ladder set against
+    // the long side, and takes it up at night. Two stringers and four rungs, from the ground to the floor's edge, leaning on the wall the
+    // camera looks at.
+    let foot = rows + LADDER_FOOT;
+    let head = rows - 0.16;
+    for side in [-1.0_f32, 1.0] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [LADDER_X + side * LADDER_WIDE, 0.0, foot],
+            },
+            building::Anchor::Free {
+                at: [LADDER_X + side * LADDER_WIDE, LEG, head],
+            },
+            [1.0, 0.0],
+            LADDER_POST,
+            LADDER_POST,
+        ));
+    }
+    for rung in 1..=LADDER_RUNGS {
+        let along = rung as f32 / (LADDER_RUNGS + 1) as f32;
+        let z = foot + (head - foot) * along;
+        let y = LEG * along;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [LADDER_X - LADDER_WIDE, y, z],
+            },
+            building::Anchor::Free {
+                at: [LADDER_X + LADDER_WIDE, y, z],
+            },
+            [0.0, 1.0],
+            LADDER_POST * 0.8,
+            LADDER_POST * 1.1,
+        ));
     }
 
     building::Building::new(skeleton)
