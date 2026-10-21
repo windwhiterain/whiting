@@ -37,6 +37,9 @@ const JOINT: f32 = 0.05;
 const FLAG: f32 = 0.07;
 /// The channel down the lane`s middle: half its width, and how deep it stands below the walked strips.
 const CHANNEL: f32 = 0.34;
+/// The 街沿石: how wide a kerb strip is and how high it stands above the flags.
+const KERB: f32 = 0.26;
+const KERB_HIGH: f32 = 0.13;
 /// The streets water: where the well stands, its half width, its wall and its curbs height, and the trough beside it.
 const WELL_AT: [f32; 2] = [7.4, 2.05];
 const WELL_HALF: f32 = 0.72;
@@ -116,6 +119,25 @@ pub fn document() -> Building {
                 top,
             ));
         }
+    }
+
+    // **The 街沿石: a kerb down each side of the lane.** A street laid in flags and stopping at the yards' own paving has no edge —
+    // it bleeds into them. Two strips of stone run the lane's whole length, a hand's height proud of the flags, and they are the
+    // line the street is read by: the flags between them, the yards beyond them.
+    for (near, far) in [
+        (-LANE_HALF, -LANE_HALF + KERB),
+        (LANE_HALF - KERB, LANE_HALF),
+    ] {
+        skeleton.slabs.push(building::Slab::paving(
+            ops::wound(vec![
+                [LANE_FROM, near],
+                [LANE_TO, near],
+                [LANE_TO, far],
+                [LANE_FROM, far],
+            ]),
+            FLAG,
+            KERB_HIGH,
+        ));
     }
 
     // **A wall at each end, with the lane's width left open.** A street with two mouths and no third is a street a garrison

@@ -2613,3 +2613,11 @@ The leaves are `derive::leaf` — round 100's helper, which is now the third doc
 so a leaf is a panel and not a post.
 
 **Identity: 37 scenes, 129 062 rows**; `benzu_miao` 1 531 → **1 549** — two leaves and the threshold. The document is 7.53 MB.
+## Round 111: the 街沿石
+
+A street laid in flags and stopping at the yards' own paving has **no edge** — it bleeds into them. Two strips of stone run the
+lane's whole length now, a hand's height proud of the flags: `KERB` wide, `KERB_HIGH` high, and they are the line the street is
+read by — the flags between them, the channel down the middle, the yards beyond.
+
+**Identity: 37 scenes, 129 074 rows**; `slate_street` 1 980 → **1 992** — two kerbs' tops and their four edges each. The document
+is 7.69 MB.
