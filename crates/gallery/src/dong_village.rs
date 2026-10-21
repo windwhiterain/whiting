@@ -35,6 +35,9 @@ const BRIDGE_AT: [f32; 2] = [46.4, LANE_Z];
 /// The 水碾房 below the bridge, on the stream's own line: its race runs in the stream's direction, which is the lane's.
 const MILL_AT: [f32; 2] = [40.0, 12.0];
 
+/// The 牌坊 on the square's own axis, where the lane enters it: its plane across z, its place in x.
+const ARCH_AT: [f32; 2] = [-14.0, LANE_Z];
+
 /// The 禾仓群 at the village's edge: how many stores, where the first stands, how far apart, each one's plan, how high its floor is posted and how tall
 /// the store is, a post's section and how far its cap stands out.
 const STORES: usize = 3;
@@ -769,6 +772,17 @@ pub fn document() -> Building {
     assert!(
         ops::merge(&mut skeleton, mill),
         "the mill places no parts, so the merge always happens"
+    );
+
+    // **The 牌坊 where the lane enters the square.** A 侗 village`s memorial arch stands **on the way in**, and its square is the one place in this gallery wide
+    // enough for one: the lane is three metres of flags but the square is twenty-six across, and four posts on their stone drums need the room. Round 233`s
+    // own document, turned a quarter to face down the lane and translated, with none of its numbers restated.
+    let mut arch = crate::paifang::document().skeleton;
+    ops::rotate(&mut arch, [0.0, 0.0], core::f32::consts::FRAC_PI_2);
+    ops::translate(&mut arch, ARCH_AT);
+    assert!(
+        ops::merge(&mut skeleton, arch),
+        "the arch places no parts, so the merge always happens"
     );
 
     Building::new(skeleton)

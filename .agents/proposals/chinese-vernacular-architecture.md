@@ -4247,3 +4247,19 @@ the sky. A 牌坊's roof is a roof **between** the posts and it stands on the li
 
 **And the registration is now checked by the instrument rather than by the round's care**: `82 names, 69 of them buildings, 69 listed, unmeasured [], unknown
 []`, and `the walk asked for 69 and 69 printed a table` — the two lines round 232 added, doing their work on the first scene added after them.
+## Round 234: the 牌坊 where the lane enters the square
+
+Round 233 built the arch and left it standing in a field. **Two villages were tried before one held, and the first refusal is the round's measurement:**
+
+1. **the 石板街** — a 屯堡 street is **six metres wide between its house fronts**, and a 牌坊's four posts stand on drums `0.92 m` square at `±5.15 m`: **the drums
+   stand inside the houses.** Measured as `UnattachedOverlap` against the gate piers and the fronts, then withdrawn — **a memorial arch cannot stand in this
+   street**, which is a fact about the street and worth recording as one;
+2. **the 侗寨's square** — twenty-six metres across, and the lane enters it through exactly the kind of opening an arch marks. The arch stands there now,
+   turned a quarter to face down the lane, and the village's plate reads it against the drum tower behind.
+
+**`dong_village` and `dong_water` 10 747 → 10 883**, the arch's **136 rows**.
+
+**Identity: 69 scenes, 244 134 rows.**
+
+**And the axis was the first thing to get wrong**: the street runs along `x` and was addressed as if it ran along `z`, so the arch's first position put it
+**behind the camera**. A scene's own axis is written in its own plate, and the plate is the cheapest place to read it.
