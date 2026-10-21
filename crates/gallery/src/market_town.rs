@@ -41,6 +41,9 @@ const AWNING_THICK: f32 = 0.12;
 const COUNTER_JAMB: f32 = 0.52;
 const COUNTER_SILL: f32 = 0.72;
 const COUNTER_HEAD: f32 = 0.78;
+/// The counter plank across the mouth: its thickness and how far it stands proud of the wall.
+const PLANK: f32 = 0.14;
+const PLANK_PROUD: f32 = 0.34;
 /// The stage at the head and the arch at the entrance: where they stand, and the turn each takes.
 const STAGE_AT: [f32; 2] = [0.0, -SQUARE_DEEP - 3.40];
 const ARCH_AT: [f32; 2] = [0.0, SQUARE_DEEP + 2.10];
@@ -137,7 +140,7 @@ pub fn document() -> Building {
             )
             .is_some()
             {
-                let _ = ops::add_opening(
+                let cut = ops::add_opening(
                     &mut skeleton,
                     building::Opening::new(
                         face,
@@ -151,7 +154,38 @@ pub fn document() -> Building {
                         ),
                     ),
                 );
+                // **A refused mouth is a defect and not a detail**: the wide low counter tried in round 241 was refused and the `let _ =` swallowed it, which
+                // left ten blank walls and a plate that had to catch them. The count in this gallery is **sixteen** other swallowed `add_opening` calls, listed
+                // in the proposal as measured debt.
+                assert!(
+                    cut.is_some(),
+                    "the counter mouth is a hole the face accepts"
+                );
             }
+            // **The counter plank** across the mouth at the sill's own height: the board the goods are handed over. It is one member, and it is what turns a
+            // hole in a wall into a shop. It stands proud **into the square**, which is the wall's own place moved towards the square's middle.
+            let face_x = side * (SQUARE_HALF - 0.40);
+            let plank_x = face_x - side * PLANK_PROUD;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [
+                        plank_x,
+                        PAVING + COUNTER_SILL - PLANK * 0.5,
+                        z - SHOP_LONG * 0.5 + COUNTER_JAMB + 0.10,
+                    ],
+                },
+                building::Anchor::Free {
+                    at: [
+                        plank_x,
+                        PAVING + COUNTER_SILL - PLANK * 0.5,
+                        z + SHOP_LONG * 0.5 - COUNTER_JAMB - 0.10,
+                    ],
+                },
+                [1.0, 0.0],
+                PLANK,
+                PLANK,
+            ));
+
             // **The shop's own cap**, a step over its walls.
             skeleton.slabs.push(building::Slab::roof(
                 ops::wound(vec![

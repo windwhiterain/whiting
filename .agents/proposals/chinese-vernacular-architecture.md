@@ -4368,3 +4368,22 @@ three metres away in the square, which is where a customer stands, and **the tow
 sight**.
 
 **Identity: 74 scenes, 257 105 rows.**
+## Round 242: the counter plank, and the audit of every swallowed opening
+
+**The plank is there**: a board across each shop's counter mouth at the sill's own height, standing proud into the square — **one member per shop**, and it is what
+turns a hole in a wall into a shop. `market_town` 756 → **816** (ten planks of six rows each).
+
+**And the round measured the defect class round 241 found one instance of**: `grep 'let _ = ops::(add_opening|split_face)'` over the gallery returns **sixteen**
+sites where a refused opening is discarded in silence — the same shape that left ten blank walls in round 241 and that only a plate caught. They are listed here
+as **measured debt**, and the one in `market_town` is now **loud**:
+
+```rust
+let cut = ops::add_opening(...);
+assert!(cut.is_some(), "the counter mouth is a hole the face accepts");
+```
+
+**The list, for the next rounds** (file:line): `benzu_miao:522`, `dragon_kiln:93`, `drum_tower:428`, `fengshui_tower:131`, `hall:64`, `mushroom_house:436`,
+`mushroom_house:451`, `qiang_tower:416`, `rain_bridge:438`, `salt_village:193`, `slate_street:335`, `terrace:186`, `village:881`, `watchtower:116`,
+`wing:129` — and `market_town:140`, which is the one that now asserts.
+
+**Identity: 74 scenes, 257 225 rows.**
