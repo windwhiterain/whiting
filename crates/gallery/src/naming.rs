@@ -410,6 +410,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "bamboo_house" => crate::bamboo_house::document(),
         "log_house" => crate::log_house::document(),
         "village_west" => crate::village::document(),
+        "tuzhang_mouth" | "tuzhang_village" => crate::tuzhang_village::document(),
         "tuzhang_village" => crate::tuzhang_village::document(),
         "village_square" => crate::village::document(),
         "hillside_village" => crate::village::hillside_document(),

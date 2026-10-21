@@ -76,6 +76,26 @@ pub fn tuzhang_village() -> Value {
     )
 }
 
+/// The **close plate**: the village's mouth, where the flights of flags come up onto the lowest terrace and the cistern, the woodpile and the
+/// gate of the first yard stand within a few metres of each other.
+///
+/// # Why a second camera and not a second document
+///
+/// Round 171 put a `0.46 m` curb and a `1.45 m` woodpile into a village composed for its **terraces and roofs**, where they are a few pixels.
+/// The document is the same one; what a close plate changes is only **where the camera stands**, which is the cheaper of the two answers and
+/// the one round 161 measured.
+pub fn tuzhang_mouth() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [4.6, 4.2, 8.4],
+        [-6.2, 1.6, -6.6],
+        FIELD_OF_VIEW * 1.15,
+        "tuzhang_mouth",
+    )
+}
+
 /// Returns the document: three terraces, their retaining faces, five houses and the flights between them.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());

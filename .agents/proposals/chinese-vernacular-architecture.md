@@ -3393,3 +3393,14 @@ placements tried all read as blocks in the yards rather than as a cistern and a 
 that the village's camera is composed for its terraces and its roofs, and these objects need a closer plate of their own.
 
 **Identity: 43 scenes, 153 802 rows**; `tuzhang_village` 1 551 → **1 603** — two rims and two stacks. The document is 7.62 MB.
+## Round 172: the village's mouth, a second plate of one document
+
+Round 171 put a `0.46 m` cistern curb and a `1.45 m` woodpile into a village composed for its **terraces and roofs**, and said so. The answer is
+not a new object but **a second camera on the same document**: `tuzhang_mouth` stands in the first yard, where the flights of flags come up onto
+the lowest terrace, and at that distance the yard wall, its gate gap, the flights, the woodpile and the cistern rim all read.
+
+**One document, two plates.** The identity table carries both — `tuzhang_mouth` and `tuzhang_village` answer the **same 1 603 rows** — and that
+is the point: a plate is a composition of a document, and a document can carry more than one. The gallery's scenes have always been one
+document each; two of them now share one deliberately.
+
+**Identity: 44 scenes, 155 405 rows**; `tuzhang_mouth` **1 603** (the same document as `tuzhang_village`). The document is 7.62 MB.
