@@ -82,6 +82,11 @@ const POND: [f32; 2] = [3.60, 2.60];
 const POND_WALL: f32 = 0.30;
 const POND_HIGH: f32 = 0.48;
 
+/// The 石板小径: where it runs, half its width, and how many flags it is laid in.
+const PATH_X: f32 = -9.40;
+const PATH_HALF: f32 = 0.75;
+const PATH_FLAGS: usize = 9;
+
 const SUN: [f64; 3] = [-26.0, 30.0, 20.0];
 const SUN_IRRADIANCE: f64 = 3.3;
 const SHADOW_EXTENT: f64 = 52.0;
@@ -312,6 +317,28 @@ pub fn document() -> Building {
                 0.11,
             ));
         }
+    }
+
+    // **The 石板小径: the flagged path from the lane to the racks.** The lane, the pond, the racks and the square are four pieces of
+    // ground that a village walks between, and at the moment they are four pieces of ground a village walks across. The path is laid
+    // in the lane's own flags — one run of them, from the lane's north edge up the square's west side to the racks' foot — so the
+    // pieces are joined by the same stone.
+    let from = LANE_Z + LANE_HALF;
+    let to = RACK_FROM + RACK_GAP * (RACKS - 1) as f32;
+    let run = (to - from) / PATH_FLAGS as f32;
+    for flag in 0..PATH_FLAGS {
+        let near = from + run * flag as f32 + JOINT * 0.5;
+        let far = from + run * (flag + 1) as f32 - JOINT * 0.5;
+        skeleton.slabs.push(building::Slab::paving(
+            ops::wound(vec![
+                [PATH_X - PATH_HALF, near],
+                [PATH_X + PATH_HALF, near],
+                [PATH_X + PATH_HALF, far],
+                [PATH_X - PATH_HALF, far],
+            ]),
+            0.0,
+            PAVING,
+        ));
     }
 
     Building::new(skeleton)

@@ -3014,3 +3014,10 @@ as the thing a village draws water from.
 
 **Identity: 40 scenes, 145 796 rows**; `dong_village` 8 005 → **8 018** — a rim's four faces, its top and its inner loop. The document is
 9.80 MB.
+## Round 143: the 石板小径
+
+The lane, the pond, the racks and the square are four pieces of ground that a village walks between — and until this round they were four
+pieces of ground a village walks **across**. A flagged path runs from the lane's north edge up the square's west side to the racks' foot,
+nine flags in the lane's own joint, so four pieces of ground are joined by the same stone.
+
+**Identity: 40 scenes, 145 850 rows**; `dong_village` 8 018 → **8 072** — nine flags' tops and edges. The document is 9.80 MB.
