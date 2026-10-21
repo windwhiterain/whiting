@@ -3215,3 +3215,21 @@ piece of a 碉楼 that is **drainage and not structure**. Four strips, because t
 `APRON_HIGH` proud of the yard's floor so the band reads as its own stone.
 
 **Identity: 41 scenes, 147 534 rows**; `qiang_tower` 1 085 → **1 109** — four strips' tops and edges. The document is 7.47 MB.
+## Round 160: the 蓄水池, and a refactor withdrawn
+
+The round opened with the bigger idea — **a second tower in the yard**, which is what makes a 羌寨 rather than a household — and it needed the
+tower extracted into a function so it could be called twice. The extraction compiled and the second tower placed, but the build then refused
+with `MiterTooLong { mass: 25, node: 3, reach: 3.005 }` and **would not say which mass it was**: three positions, two head geometries and a
+revert of the yard all answered the same error. **The refactor is withdrawn rather than shipped half-diagnosed**, and the worktree was
+reverted to the branch's own commit before anything else went in.
+
+What landed instead is the yard's **蓄水池**. A 羌寨 stands on a slope and water is carried up to it, so every yard keeps a stone tank
+against its wall — a rim a course high with its lid open, and the same answer every well and pond in this project has given: **a mass whose
+wall is thick enough to be a ring**.
+
+**The plate is honest about it and no more**: the tank stands in the yard's near-left corner, which from this camera is the tower's own shadow,
+so the frame shows a shadowed block and not a cistern. It is measured in the table; **the placement is the next round's first question**, and
+the answer is probably to move the camera rather than the tank.
+
+**Identity: 41 scenes, 147 547 rows**; `qiang_tower` 1 109 → **1 122** — a rim's four faces, its top and its inner loop. The document is
+7.47 MB.

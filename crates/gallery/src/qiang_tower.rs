@@ -72,6 +72,11 @@ const GATE_HEAD: f32 = 0.42;
 const APRON: f32 = 0.85;
 const APRON_HIGH: f32 = 0.09;
 
+/// The 蓄水池 in the yard's corner: where it stands, its plan and its height.
+const CISTERN_AT: [f32; 2] = [-7.40, -7.60];
+const CISTERN: f32 = 1.70;
+const CISTERN_HIGH: f32 = 0.72;
+
 /// The 木廊 on the 碉房: how far out the deck stands in the houses own coordinates, its depth, its length, its level, its slab, its
 /// posts, a posts section and the rails height above the deck.
 const HOUSE_AT: [f32; 2] = [14.20, 2.60];
@@ -437,6 +442,25 @@ pub fn document() -> Building {
         ));
     }
 
+    // **The 蓄水池: the cistern in the yard's corner.** A 羌寨 stands on a slope and water is carried up to it, so every yard keeps a stone
+    // tank — a rim a course high with its lid open, set against the wall where the roof's water can run into it. It is a mass whose wall
+    // is thick enough to be a ring, the answer every well and pond in this project has given.
+    let [cistern_x, cistern_z] = CISTERN_AT;
+    let mut tank = building::Mass::new(
+        ops::wound(vec![
+            [cistern_x - CISTERN * 0.5, cistern_z - CISTERN * 0.5],
+            [cistern_x + CISTERN * 0.5, cistern_z - CISTERN * 0.5],
+            [cistern_x + CISTERN * 0.5, cistern_z + CISTERN * 0.5],
+            [cistern_x - CISTERN * 0.5, cistern_z + CISTERN * 0.5],
+        ])
+        .into_iter()
+        .map(|at| building::PlanNode::new(at, 0.0))
+        .collect(),
+        CISTERN_HIGH,
+    );
+    tank.wall = CISTERN * 0.20;
+    tank.slab = 0.14;
+    skeleton.masses.push(tank);
     // **The yard's floor.** A courtyard is a floor and not a field: the 羌 pave the yard with flat stones, and the plate reads the walls as
     // enclosing something the moment there is a surface inside them. It runs to the walls' inner faces, so no paving stands under a wall.
     skeleton.slabs.push(building::Slab::paving(
