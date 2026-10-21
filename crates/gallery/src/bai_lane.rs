@@ -35,6 +35,12 @@ const LANE_HALF: f32 = 3.20;
 const LANE_FROM: f32 = -21.0;
 const LANE_TO: f32 = 21.0;
 
+/// The lane`s well: where it stands, its half width, its own wall and its curb`s height.
+const WELL_AT: [f32; 2] = [0.0, -13.0];
+const WELL_HALF: f32 = 0.72;
+const WELL_WALL: f32 = 0.24;
+const WELL_HIGH: f32 = 0.85;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the lane: from its south end, looking north between the gates.
@@ -87,6 +93,26 @@ pub fn document() -> building::Building {
         0.0,
         0.06,
     ));
+
+    // **The lane's well.** A 白族 lane has one, and it is the lane's institution: the courts have their own water in their
+    // yards, and the lane's well is where the lane meets. It is a mass whose wall is thick enough to be a ring — `0.24 m` in a
+    // `1.44 m` plan, so the inner loop cannot fold (round 73) — which is the same answer the Dai hamlet's well-head gave.
+    let well = WELL_AT;
+    let mut ring = building::Mass::new(
+        building::ops::wound(vec![
+            [well[0] - WELL_HALF, well[1] - WELL_HALF],
+            [well[0] + WELL_HALF, well[1] - WELL_HALF],
+            [well[0] + WELL_HALF, well[1] + WELL_HALF],
+            [well[0] - WELL_HALF, well[1] + WELL_HALF],
+        ])
+        .into_iter()
+        .map(|at| building::PlanNode::new(at, 0.0))
+        .collect(),
+        WELL_HIGH,
+    );
+    ring.wall = WELL_WALL;
+    ring.slab = 0.18;
+    skeleton.masses.push(ring);
 
     building::Building::new(skeleton)
 }

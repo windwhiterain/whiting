@@ -2283,3 +2283,15 @@ a gap made for a stair that did not exist.
 
 **Identity: 35 scenes, 125 181 rows**; `earthen_house` 182 → **230** — eight treads, their sides and their reveals. The
 document is 4.27 MB.
+## Round 88: the lane's well
+
+A 白族巷 has a well, and it is the lane's institution: the courts keep their own water in their yards, and **the well is where
+the lane meets**. It stands at the lane's south end — a stone curb `1.44 m` across whose wall is `0.24 m`, so what the expansion
+draws is a ring with a hole in plan and the inner loop cannot fold — with two clumps of bamboo beside it, because a lane's
+planting is watered from the well.
+
+The well is a **mass** and not a member, for the same reason the Dai hamlet's well-head is: a well has an inside, and a block
+with no inside is a block.
+
+**Identity: 35 scenes, 125 194 rows**; `bai_lane` 5 535 → **5 548** — the curb's four faces, its top and its hole. Two clumps
+were added and the identity does not count them, because plants are not building elements. The document is 20.35 MB.
