@@ -87,6 +87,11 @@ const GALLERY_POST: f32 = 0.15;
 const BENCH_HIGH: f32 = 0.46;
 const BENCH_WIDE: f32 = 0.34;
 
+/// The 匾额: its width, its height, and how high its centre stands above the halls plinth — and how far the boards stand proud of
+/// the face they hang on.
+const PLAQUE: [f32; 3] = [2.60, 0.78, 3.05];
+const BOARD_PROUD: f32 = 0.07;
+
 /// The 山门: how wide it is either side of the axis, how thick, how high, the wall in it, and where it stands.
 const SHANMEN_HALF: f32 = 6.20;
 const SHANMEN_THICK: f32 = 0.60;
@@ -337,6 +342,36 @@ pub fn document() -> Building {
                 building::Opening::new(front, 0, column, inset),
             );
         }
+    }
+
+    // **The 匾额 and the 楹联.** A 大殿's colonnade is not bare: over the middle door hangs the **plaque** that names the god, and on
+    // each flanking bay a pair of **couplet boards**. They are members — a board has no inside — set `BOARD_PROUD` off the front face,
+    // and the face they hang on is the one the court plate looks at, which is why they are worth drawing at all.
+    let face_z = HALL_Z - HALL_DEPTH * 0.5 - BOARD_PROUD;
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [-PLAQUE[0] * 0.5, HALL_PLINTH + PLAQUE[2], face_z],
+        },
+        building::Anchor::Free {
+            at: [PLAQUE[0] * 0.5, HALL_PLINTH + PLAQUE[2], face_z],
+        },
+        [0.0, 1.0],
+        0.09,
+        PLAQUE[1],
+    ));
+    for across in [-1.0_f32, 1.0] {
+        let x = across * HALL_WIDTH / 6.0;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, HALL_PLINTH + 1.15, face_z],
+            },
+            building::Anchor::Free {
+                at: [x, HALL_PLINTH + 2.65, face_z],
+            },
+            [1.0, 0.0],
+            0.075,
+            0.34,
+        ));
     }
 
     // **The 戏台's mouth**: one opening the width of the stage, on the face that looks at the 大殿 (`+z`, `edge 2`).

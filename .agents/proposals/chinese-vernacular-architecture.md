@@ -2907,3 +2907,15 @@ is in the code as a rule now, not as an anecdote: **a member's across is the run
 
 **Identity: 39 scenes, 137 680 rows**; `benzu_miao` 1 809 → **1 893** — twelve legs and two planks, and `benzu_miao_court` with it.
 The document is 7.64 MB.
+## Round 135: the 匾额 and the 楹联
+
+A 大殿's colonnade is not bare: over the middle door hangs the **plaque** that names the god, and on each flanking bay a pair of
+**couplet boards**. Three members `BOARD_PROUD` off the front face — the one the compound plate looks at, which is why they are worth
+drawing at all.
+
+**The court's plate cannot show them**, and that is the reverse of round 131: the court camera stands on the 大殿's step looking at the
+戏台, so the hall's own front is behind it. Two plates of one temple, each with the face the other cannot see — which is what the pair
+was for.
+
+**Identity: 39 scenes, 137 716 rows**; `benzu_miao` 1 893 → **1 911** — a plaque and two couplet boards with their sections and ends.
+The document is 7.65 MB.
