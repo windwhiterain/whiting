@@ -3742,3 +3742,15 @@ a plate is a **line of sight**, not a document; and **a change that moves neithe
 
 **The next fifty-six rounds have one obvious shape**: the debts this catalogue has written down. A third plate for the 傈僳 village's west end is paid;
 the 苗寨's posts, the 侗寨's own wares, the 土掌房's racks seen close, and the longhouse's thatch being wool rather than grass are not.
+## Round 201: the retaining face held the shelf up, not stood on it
+
+Round 200 recorded that the 苗寨's stilt posts could not be seen and blamed the camera. **The camera was right and the wall was wrong**: round 198 built
+each terrace's retaining face to `RETAIN_HIGH` **above** its shelf, so a two-metre wall stood in front of every house's underfloor and hid the one thing
+the type is made of. **A retaining wall's top is its shelf's level and its bottom is the ground** — the terrace above is what it carries — so the face
+now runs from `0` to `level`, and the lowest terrace, which stands on the ground, has no face at all.
+
+**The posts are visible, and the table says what changed**: `miao_village` 13 179 → **13 166** — thirteen rows fewer, which is exactly the first
+terrace's face and its slab going away. **A fix's table moves differently from an addition's**: an addition counts what it put in, and a fix counts
+what it took out.
+
+**Identity: 57 scenes, 213 758 rows**. The document is 11.04 MB.

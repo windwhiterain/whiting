@@ -109,6 +109,12 @@ pub fn document() -> Building {
             level,
             level + PAVING,
         ));
+        // **The face holds the shelf up; it is not a parapet on top of it.** Round 198 built it `RETAIN_HIGH` above the shelf, which stood a
+        // two-metre wall in front of every house's underfloor and hid the one thing this type is made of. A retaining wall's top is its shelf's
+        // level and its bottom is the ground: **the terrace above is what it carries**.
+        if step == 0 {
+            continue;
+        }
         let mut face = Mass::new(
             ops::wound(vec![
                 [-TERRACE_HALF, front],
