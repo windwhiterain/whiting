@@ -4310,3 +4310,19 @@ lesson rounds 222 and 225 paid — **a camera is not above the village, it is ab
 
 **And one honest limit**: the axis is read **approximately** in this frame — the arch sits behind the tower and the stage at the far left rather than in a line,
 because the square's three marks do not stand on one straight line and the plate does not pretend they do.
+## Round 238: the 场镇, the fifteenth settlement — and the gallery's first town
+
+The gallery had twelve villages and **not one town**. A 西南 场镇 is not a village with more houses: **it is a market with buildings round it**, and its ground is one
+open paved square that exists for the day the country comes in to trade. Everything in it is addressed to the market: **the 戏台 is where the crowd is held, the
+牌坊 is where it is counted, and the shop fronts are temporary stalls made permanent** — a wall with a counter and an awning over it.
+
+**Two types composed, twenty shop masses of its own**: rounds 235 and 236 built the stage and the arch and had nowhere to put them together; here they are, the
+stage at the square's head facing down it and the arch at its entrance across the road, with **five shops a side, each with its awning and its two posts**.
+
+**Identity: 72 scenes, 256 087 rows**; `market_town` **605** — the stage's 93, the arch's 136, ten shops, ten awnings, twenty posts and the square itself.
+
+**The first camera stood at the arch and cut it in half**; the second steps back **ten metres and twenty up**, and the plate reads as a market day's town: the
+arch in the foreground, the flagged square, two counters either side and the stage closing the axis.
+
+**And the instrument self-reports again**: `85 names, 72 buildings, 72 listed, unmeasured [], unknown []`, `72 asked, 72 printed` — the fourth round in a row
+where the registration check is what says the scene is real.
