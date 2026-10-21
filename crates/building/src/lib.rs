@@ -79,7 +79,7 @@ pub use covering::{Covering, CoveringFault, RollId, RollSurface};
 pub use expand::{BuildError, Problem, build};
 pub use frontage::{Frontage, FrontageFault, Plot};
 pub use grid::{Bay, FaceGrid, FaceRef, GRID_TOLERANCE, Grids, Rhythm};
-pub use mass::{Attachment, AuthoredLoop, Join, Mass, MassId, PlanNode};
+pub use mass::{Attachment, AuthoredLoop, Join, Level, Mass, MassId, PlanNode};
 pub use member::{Anchor, Member, MemberId, MemberSurface};
 pub use mesh::{
     BuildingFace, BuildingMesh, CornerNormals, Element, MassSurface, RoofSurface, SolidId,

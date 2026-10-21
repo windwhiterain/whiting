@@ -113,14 +113,27 @@ pub enum Problem {
         /// How many nodes it has.
         nodes: usize,
     },
-    /// A mass carries more sections than the expander builds: the multi-section wall -- a battered foot, a
-    /// projecting floor -- is authored in the document and **not yet expanded**, so it is refused by name
-    /// rather than drawn as one band from its foot to its top with its middle sections silently dropped.
-    SectionsNotExpanded {
+    /// Two sections of one mass disagree about how many nodes their loops have, so no strip can be built
+    /// between them: a band pairs node `i` of one section with node `i` of the next.
+    SectionCountMismatch {
         /// The mass.
         mass: MassId,
-        /// How many sections it carries.
-        levels: usize,
+        /// Which section disagrees.
+        band: usize,
+        /// How many nodes it has.
+        nodes: usize,
+        /// How many the first section has.
+        first: usize,
+    },
+    /// An opening or a grid names a face of a mass drawn in several bands, and neither can be placed on one
+    /// strip of such a face.
+    BandedMassCut {
+        /// The mass.
+        mass: MassId,
+        /// The face that was cut.
+        face: FaceRef,
+        /// How many openings name it; zero means a grid does.
+        openings: usize,
     },
     /// A roof plane has fewer than two rows, so it spans nothing.
     PlaneTooShort {
@@ -1251,15 +1264,9 @@ fn expand_mass(
             slab: mass.slab,
         }]);
     }
-    // **A multi-section wall is authored and not yet expanded.** The sections between the foot and the top are the
-    // geometry the levels exist for, and until the expander builds them a document that carries one is refused by
-    // name rather than drawn as a single band with its middle sections dropped.
-    if mass.levels.len() > 2 {
-        return Err(vec![Problem::SectionsNotExpanded {
-            mass: id,
-            levels: mass.levels.len(),
-        }]);
-    }
+    // **A mass with more than two sections expands one strip of wall per pair**, and every strip is its own
+    // band: `banded_mass` walks the pairs, closes the foot with the base annulus and the crown with the wall top,
+    // and nothing else changes about a mass — its plate is still its own solid, authored by the scene.
     let mut problems = Vec::new();
     let outline_of = AuthoredLoop::Outline { mass: id };
     let Some(loops) = loops_of(skeleton, outline_of, mass.wall, &mut problems) else {
@@ -1278,7 +1285,11 @@ fn expand_mass(
         &mass.crown_elevations(),
     );
     let mut solid = Solid::default();
-    ring_walk(&mut solid, &ring, skeleton, &grouped, &mut problems);
+    if mass.levels.len() > 2 {
+        banded_mass(&mut solid, mass, id, skeleton, &grouped, &mut problems);
+    } else {
+        ring_walk(&mut solid, &ring, skeleton, &grouped, &mut problems);
+    }
     // **A courtyard is built before anything is spliced, and refused with the mass.** The ring is
     // built in its own point numbering by the module that owns it, and only the ones that came back
     // whole are handed to the mesh — so a mass whose second courtyard cannot be drawn contributes
@@ -1381,7 +1392,7 @@ impl Ring<'_> {
 
     /// Returns the four surfaces one edge of this ring is drawn on.
     fn surfaces(&self, edge: usize) -> RingSurfaces {
-        RingSurfaces::of(self.loop_of, edge)
+        RingSurfaces::of(self.loop_of, edge, 0)
     }
 }
 
@@ -1409,12 +1420,16 @@ struct RingSurfaces {
 
 impl RingSurfaces {
     /// Returns the surfaces one edge of a ring is drawn on.
-    fn of(loop_of: AuthoredLoop, edge: usize) -> Self {
+    fn of(loop_of: AuthoredLoop, edge: usize, band: usize) -> Self {
         match loop_of {
             AuthoredLoop::Outline { .. } => Self {
-                authored: MassSurface::OuterWall { edge },
-                offset: MassSurface::InnerWall { edge },
-                top: MassSurface::WallTop { edge, half: 0 },
+                authored: MassSurface::OuterWall { edge, band },
+                offset: MassSurface::InnerWall { edge, band },
+                top: MassSurface::WallTop {
+                    edge,
+                    band,
+                    half: 0,
+                },
                 base: MassSurface::WallBase,
             },
             AuthoredLoop::Void { void, .. } => Self {
@@ -1638,6 +1653,171 @@ pub(crate) fn splice_expansion(
 /// **Every refusal lands in `problems` rather than in a return value**, so a ring with two bad holes
 /// reports both and the caller decides what to do with the list; the whole-list-or-nothing rule is
 /// the caller's, because it is the one that knows whether this ring is the only thing a mass has.
+/// Walks a mass of more than two sections into **one strip of wall per pair of sections**.
+///
+/// # Invariants
+///
+/// - **The strips share their loops, so there is nothing between them to close.** Band `k`'s top loop *is*
+///   section `k + 1`'s loop, and band `k + 1`'s bottom loop is that same section: the two meet on one authored loop
+///   rather than on two loops computed to coincide, which is the rule this crate is built on — faces meet because
+///   they were built from the same authored row, never because two numbers happened to be equal. What is open is
+///   the foot and the crown, and they close exactly as a single band's do: the base annulus at the first section,
+///   the wall top at the last.
+/// - **A wall that leans is a strip and not a special case.** A section inset from the one below gives a strip
+///   leaning in — 收分 — and a section outside it gives one leaning out. A section at **the same elevation** with a
+///   different plan gives a horizontal strip, which is the soffit a projecting floor stands on. All three are the
+///   same four points and the same quad.
+/// - **The band is in the element, and `band: 0` is the foot's**, so a single-band mass's sentences are unchanged
+///   and a leaning wall's strips are not gathered into one "planar" group.
+/// - **A banded mass carries no openings and no grids**, and says so by name: both are placed against a face read
+///   as one strip between a ground line and a top, and a banded face is several strips. Cutting a hole across them
+///   is a change those readers have not been given, and a hole placed on the wrong strip is worse than a refusal.
+fn banded_mass(
+    solid: &mut Solid,
+    mass: &Mass,
+    id: MassId,
+    skeleton: &BuildingSkeleton,
+    grouped: &BTreeMap<FaceRef, Vec<usize>>,
+    problems: &mut Vec<Problem>,
+) {
+    let loop_of = AuthoredLoop::Outline { mass: id };
+    let levels = &mass.levels;
+    let count = levels[0].outline.len();
+    for (band, level) in levels.iter().enumerate() {
+        if level.outline.len() != count {
+            problems.push(Problem::SectionCountMismatch {
+                mass: id,
+                band,
+                nodes: level.outline.len(),
+                first: count,
+            });
+            return;
+        }
+    }
+    if let Some((face, holes)) = grouped
+        .iter()
+        .find(|(face, holes)| face.mass == id && !holes.is_empty())
+    {
+        problems.push(Problem::BandedMassCut {
+            mass: id,
+            face: *face,
+            openings: holes.len(),
+        });
+        return;
+    }
+    if let Some(face) = skeleton
+        .grids
+        .faces()
+        .into_iter()
+        .find(|face| face.mass == id)
+    {
+        problems.push(Problem::BandedMassCut {
+            mass: id,
+            face,
+            openings: 0,
+        });
+        return;
+    }
+    // One offset loop per section: a wall has its thickness at every level, so its inner face leans with the outer.
+    let mut offsets: Vec<Vec<Vec2>> = Vec::with_capacity(levels.len());
+    for level in levels {
+        let area = level.plan_area();
+        let Some(offset) = offset_loop(
+            &level.outline,
+            loop_of,
+            mass.wall,
+            area,
+            OffsetSide::Inward,
+            problems,
+        ) else {
+            return;
+        };
+        offsets.push(offset);
+    }
+    // **One point per corner per section, shared by the two bands that meet there.** A solid is closed because
+    // the strips *name* one vertex per corner and not two that were computed to the same coordinates: `point`
+    // pushes and does not weld, so a band that made its own copy of a section would leave the ring open at every
+    // joint -- measured as `SolidOpen { loops: 8 }` on the first pier this walk built.
+    let mut outer: Vec<Vec<u32>> = Vec::with_capacity(levels.len());
+    let mut inner: Vec<Vec<u32>> = Vec::with_capacity(levels.len());
+    for (index, level) in levels.iter().enumerate() {
+        let mut out_loop = Vec::with_capacity(count);
+        let mut in_loop = Vec::with_capacity(count);
+        for node in 0..count {
+            let at = level.outline[node];
+            out_loop.push(solid.point(lift(at.position, at.elevation)));
+            in_loop.push(solid.point(lift(offsets[index][node], at.elevation)));
+        }
+        outer.push(out_loop);
+        inner.push(in_loop);
+    }
+    // The strips, band by band.
+    for band in 0..levels.len() - 1 {
+        let (low_outer, high_outer) = (&outer[band], &outer[band + 1]);
+        let (low_inner, high_inner) = (&inner[band], &inner[band + 1]);
+        for edge in 0..count {
+            let next = (edge + 1) % count;
+            let surfaces = RingSurfaces::of(loop_of, edge, band);
+            solid.quad(
+                [
+                    high_outer[edge],
+                    high_outer[next],
+                    low_outer[next],
+                    low_outer[edge],
+                ],
+                Element::Mass(id, surfaces.authored),
+            );
+            solid.quad(
+                [
+                    high_inner[next],
+                    high_inner[edge],
+                    low_inner[edge],
+                    low_inner[next],
+                ],
+                Element::Mass(id, surfaces.offset),
+            );
+        }
+    }
+    // **The crown and the foot close the ring**: the wall top over the last section and the base annulus under
+    // the first, which are the two faces a band cannot supply because there is no band above or below it.
+    let last = levels.len() - 1;
+    for edge in 0..count {
+        let next = (edge + 1) % count;
+        let surfaces = RingSurfaces::of(loop_of, edge, last - 1);
+        let corners = [
+            outer[last][edge],
+            inner[last][edge],
+            inner[last][next],
+            outer[last][next],
+        ];
+        let warp = warp_of(solid, corners);
+        let element = Element::Mass(id, surfaces.top);
+        if warp > crate::validate::PLANARITY_TOLERANCE {
+            let halves = halves_of(surfaces.top);
+            solid.triangle(
+                [corners[0], corners[1], corners[2]],
+                Element::Mass(id, halves.0),
+            );
+            solid.triangle(
+                [corners[0], corners[2], corners[3]],
+                Element::Mass(id, halves.1),
+            );
+        } else {
+            solid.quad(corners, element);
+        }
+        let base = RingSurfaces::of(loop_of, edge, 0);
+        solid.quad(
+            [
+                outer[0][edge],
+                outer[0][next],
+                inner[0][next],
+                inner[0][edge],
+            ],
+            Element::Mass(id, base.base),
+        );
+    }
+}
+
 pub(crate) fn ring_walk(
     solid: &mut Solid,
     ring: &Ring<'_>,
@@ -1840,9 +2020,17 @@ fn warp_of(solid: &Solid, corners: [u32; 4]) -> f32 {
 /// parallel — which a corner's miter never is.
 fn halves_of(surface: MassSurface) -> (MassSurface, MassSurface) {
     match surface {
-        MassSurface::WallTop { edge, .. } => (
-            MassSurface::WallTop { edge, half: 0 },
-            MassSurface::WallTop { edge, half: 1 },
+        MassSurface::WallTop { edge, band, .. } => (
+            MassSurface::WallTop {
+                edge,
+                band,
+                half: 0,
+            },
+            MassSurface::WallTop {
+                edge,
+                band,
+                half: 1,
+            },
         ),
         MassSurface::VoidTop { void, edge, .. } => (
             MassSurface::VoidTop {

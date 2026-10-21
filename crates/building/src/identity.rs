@@ -257,18 +257,37 @@ fn roof_title(id: RoofId) -> String {
     format!("roof {}", id.0)
 }
 
+/// Returns the sentence for a wall surface: **band 0 reads as it always has**, and a band above it is named.
+///
+/// # Invariants
+///
+/// **A name is a sentence a person reads and not a key.** The first band is every wall this crate drew before a
+/// mass could have several, so its sentence stays byte for byte what the recorded readings hold; a higher band
+/// adds one clause, because two strips of one wall over one edge would otherwise answer the same sentence and a
+/// reader would have no way to tell which they were looking at.
+fn wall_band(what: &str, edge: usize, band: usize) -> String {
+    match band {
+        0 => format!("{what} edge {edge}"),
+        _ => format!("{what} edge {edge}, band {band}"),
+    }
+}
+
 /// Returns the sentence for one of a mass's surfaces.
 fn mass_surface(surface: MassSurface) -> String {
     match surface {
-        MassSurface::OuterWall { edge } => format!("outer wall over edge {edge}"),
-        MassSurface::InnerWall { edge } => format!("inner wall over edge {edge}"),
+        MassSurface::OuterWall { edge, band } => wall_band("outer wall over", edge, band),
+        MassSurface::InnerWall { edge, band } => wall_band("inner wall over", edge, band),
         // **The second half of a warped strip is named and the first is not.** A strip is one plane
         // unless a crown warps it, so the name every recorded reading holds — "the wall top over edge
         // 2" — is still the strip's first triangle, and only the second half a crown creates needs a
         // name of its own.
-        MassSurface::WallTop { edge, half: 0 } => format!("wall top over edge {edge}"),
-        MassSurface::WallTop { edge, half } => {
-            format!("the second plane of the wall top over edge {edge} (half {half})")
+        MassSurface::WallTop {
+            edge,
+            band,
+            half: 0,
+        } => wall_band("wall top over", edge, band),
+        MassSurface::WallTop { edge, band, half } => {
+            format!("the second plane of the wall top over edge {edge} (band {band}, half {half})")
         }
         MassSurface::WallBase => "its wall's base".to_owned(),
         // A courtyard's faces are named by the courtyard first, so a person asking about "void 0" gets every face of

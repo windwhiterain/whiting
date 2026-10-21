@@ -337,7 +337,8 @@ fn report_cut(name: &str, skeleton: &BuildingSkeleton, uncut: f32, holes: &[usiz
                 .faces
                 .iter()
                 .filter(|face| {
-                    face.element == Element::Mass(MassId(0), MassSurface::OuterWall { edge: 0 })
+                    face.element
+                        == Element::Mass(MassId(0), MassSurface::OuterWall { edge: 0, band: 0 })
                 })
                 .count();
             println!("  the first wall's outer face is {wall_faces} triangles");

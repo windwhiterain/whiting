@@ -111,3 +111,40 @@ by `whiting-document` and is green in 3.89 s.
 sections answers [`Problem::SectionsNotExpanded`] rather than being drawn as one band from its foot to its top with
 its middle sections dropped. Building those bands — the battered wall and the projecting floor, with the soffit a
 projection needs — is the next round's work, and this note is what makes it the next round rather than a surprise.
+## Landed: the bands, and the first battered wall
+
+The expander builds a **strip of wall per pair of sections**, so a mass's sections are geometry and no longer a
+promise. The three cases the note named are one case now — the same four points and the same quad:
+
+| the two sections | the strip |
+| --- | --- |
+| equal plans | vertical wall, which is every mass the gallery had |
+| the upper **inside** | leaning in — **收分**, the battered earth wall |
+| the upper **outside** | leaning out — 挑出, a projecting floor |
+| **equal elevations, different plans** | horizontal, which is the soffit a projection stands on |
+
+Four things the walk had to get right, each measured on the way:
+
+- **the strips share their loops**, so the only faces a band cannot supply are the foot's annulus and the crown's
+  wall top — and there is nothing between two bands to close;
+- **points are shared, not recomputed.** `Solid::point` pushes and never welds, so a band that made its own copy of a
+  section left the ring open: `SolidOpen { loops: 8 }` and `SolidNonManifold` on the very first pier;
+- **the band is in the element.** `OuterWall`, `InnerWall` and `WallTop` carry a `band`, because two leaning strips
+  in one planarity group are two non-coplanar faces in one group — which the validator would have reported as a
+  real fault. `band: 0` reads exactly as it always did, so every recorded sentence still holds;
+- **a banded mass carries no openings and no grids**, and says so by name (`BandedMassCut`): both are placed against
+  one strip between a ground line and a top, and a hole put on the wrong strip is worse than a refusal.
+
+**The first battered wall in the gallery is the 风雨桥's two abutments** — each a mass of three sections, each inset
+`0.28` from the one below. Identity: `rain_bridge` 1 602 → **1 632 rows**, and **the other twenty-two scenes are
+unchanged to the row**.
+
+### What the piers taught, and why they are still posts
+
+The masonry piers this round wanted to draw were refused, and the reason is a real limitation of another check:
+`validate`'s `UnattachedOverlap` compares **two plans and carries no elevation**, so a masonry pier under a timber
+gallery is an overlap however far apart in height the two stand. Two battered piers were built and reported
+(`MassThickness` on a zero wall first, then the overlap), and the bridge's piers went back to the posts they were.
+The abutments are the same masonry in the one place on that bridge where no other mass shares their plan. A
+**`StoreyUnder`** relation — "this mass stands under that one" — is what the piers would need, and it is a relation
+and not a level.

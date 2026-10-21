@@ -304,6 +304,26 @@ impl Mass {
         }
     }
 
+    /// Builds a mass **from its sections**, bottom first, at least two.
+    ///
+    /// This is what a multi-section mass is authored with: a battered pier, a projecting floor's wall, an earth
+    /// wall that leans in. [`Mass::new`] is the two-section case and is written in terms of this one's shape.
+    pub fn of_sections(levels: Vec<Level>) -> Self {
+        assert!(
+            levels.len() >= 2,
+            "a mass is at least a foot and a top; {} section(s) is not a mass",
+            levels.len()
+        );
+        Self {
+            levels,
+            wall: 0.3,
+            slab: 0.4,
+            attachment: None,
+            name: None,
+            voids: Vec::new(),
+        }
+    }
+
     /// Sets the wall top over chosen nodes: one elevation per outline node.
     ///
     /// A crown shorter than the outline leaves the remaining nodes at the level top, which is what the accessor

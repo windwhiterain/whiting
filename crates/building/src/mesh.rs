@@ -26,15 +26,27 @@ use crate::roof::RoofId;
 /// Which surface of a mass a face belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MassSurface {
-    /// The face seen from outside, one per outline edge.
+    /// The face seen from outside, one per outline edge **per band**.
+    ///
+    /// # Invariants
+    ///
+    /// **The band is part of the identity of the face and not a detail of it.** A mass with several sections has
+    /// one strip of wall between each pair, and the strips are coplanar only while the sections' plans are equal;
+    /// an element is a *planar* shading group, so two leaning strips in one element would be reported as a
+    /// non-planar surface by the very check that exists to catch a real one. Naming the band keeps every strip its
+    /// own group, and `band: 0` is the foot's.
     OuterWall {
         /// Index of the outline edge.
         edge: usize,
+        /// Which pair of sections the strip is between: `0` is the foot's.
+        band: usize,
     },
-    /// The face seen from inside, one per outline edge.
+    /// The face seen from inside, one per outline edge per band.
     InnerWall {
         /// Index of the outline edge.
         edge: usize,
+        /// Which pair of sections the strip is between: `0` is the foot's.
+        band: usize,
     },
     /// The ring of wall top between the outer and inner faces, one per outline edge.
     ///
@@ -51,6 +63,8 @@ pub enum MassSurface {
     WallTop {
         /// Index of the outline edge.
         edge: usize,
+        /// Which pair of sections the strip is between: `0` is the foot's.
+        band: usize,
         /// Which triangle of the strip: `0`, or `1` for the second half of a warped strip.
         half: usize,
     },

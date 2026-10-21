@@ -112,10 +112,14 @@ fn river(_x: f64, z: f64) -> f64 {
         f64::from(RIVER_BED) + t * f64::from(BANK_HEIGHT - RIVER_BED)
     }
 }
-/// The piers: `PIERS` sets of `PIER_POSTS` stone posts, `PIER` square, standing in the water.
+/// The two piers: their plan centres, how many posts each of them stands on, how wide a post is, and how deep
+/// the deck runs either side of the bridge`s own axis.
 const PIERS: [f32; 2] = [-6.5, 6.5];
 const PIER_POSTS: [f32; 3] = [-1.4, 0.0, 1.4];
 const PIER: f32 = 0.45;
+
+/// How far each abutment section is inset from the one below it, in metres: the batter of its cut stone.
+const ABUTMENT_BATTER: f32 = 0.28;
 
 /// How many bays the gallery is open in, down each of its long sides, and how each bay is cut.
 ///
@@ -452,21 +456,36 @@ pub fn document() -> Building {
         gallery_base,
     ));
 
-    // **The bridge lands on two stone abutments.** The deck used to stop in mid-air on both banks, which is what
-    // a plate does when nothing under it is authored: an abutment is the plate's own end carried down into the
-    // bank, and it is a slab rather than a mass because a retaining block has no inside.
+    // **The bridge lands on two cut-stone abutments, and each of them is battered.** An abutment is the plate's own
+    // end carried down into the bank, and it is a **mass of three sections** rather than a slab because a batter is
+    // what cut stone does when it carries something: a slab has one plan and therefore cannot lean. This is the
+    // first mass in the gallery whose sections are not two, and it is here rather than under the deck because no
+    // other mass shares its plan.
     for side in [-1.0_f32, 1.0] {
         let x = side * (half + 1.2);
-        skeleton.slabs.push(building::Slab::plate(
-            vec![
-                [x - 0.9, -deep - 0.9],
-                [x + 0.9, -deep - 0.9],
-                [x + 0.9, deep + 0.9],
-                [x - 0.9, deep + 0.9],
-            ],
-            RIVER_BED,
-            gallery_base,
-        ));
+        let rise = gallery_base - f32::from(RIVER_BED);
+        let sections: Vec<building::Level> = [(0.0_f32, 0.0_f32), (0.5, 0.5), (1.0, 1.0)]
+            .iter()
+            .map(|(share, inset)| {
+                let half_x = 0.9 - ABUTMENT_BATTER * inset;
+                let half_z = deep + 0.9 - ABUTMENT_BATTER * inset;
+                building::Level::flat(
+                    &[
+                        PlanNode::new([x - half_x, -half_z], 0.0),
+                        PlanNode::new([x + half_x, -half_z], 0.0),
+                        PlanNode::new([x + half_x, half_z], 0.0),
+                        PlanNode::new([x - half_x, half_z], 0.0),
+                    ],
+                    f32::from(RIVER_BED) + rise * share,
+                )
+            })
+            .collect();
+        let mut abutment = Mass::of_sections(sections);
+        // **A mass is a shell, and a thickness of zero is refused** (`MassThickness`), so an abutment carries a wall
+        // like any other masonry: its inside is not drawn and nothing is cut into it.
+        abutment.wall = 0.35;
+        abutment.slab = 0.25;
+        skeleton.masses.push(abutment);
     }
 
     // **The two heads: a flight of stone steps from each abutment up to the road on the bank.** The deck stands
@@ -511,7 +530,10 @@ pub fn document() -> Building {
         ));
     }
 
-    // **The piers: three stone posts to a set, standing in the water** and carrying the deck.
+    // **The piers stand in the water as posts**, one set of three to a pier. They are members and not masses because
+    // a mass's plan may not overlap another mass's plan at all: `validate`'s `UnattachedOverlap` is a question about
+    // two plans and carries no elevation, so a masonry pier under a timber gallery is reported as an overlap however
+    // far apart in height the two stand. Measured on this bridge, at the first pier the banded walk drew.
     for x in PIERS {
         for z in PIER_POSTS {
             skeleton.members.push(building::Member::new(
