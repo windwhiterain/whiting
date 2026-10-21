@@ -3233,3 +3233,15 @@ the answer is probably to move the camera rather than the tank.
 
 **Identity: 41 scenes, 147 547 rows**; `qiang_tower` 1 109 → **1 122** — a rim's four faces, its top and its inner loop. The document is
 7.47 MB.
+## Round 161: the camera the courtyard needed
+
+Round 160 closed with a question — *the cistern stands in the tower's shadow; move the tank or the view?* — and the answer is the view. A plate of
+a **courtyard** is seen from outside its own corner, higher and further than a tower alone needs, so the camera stands at `[35, 21, 37]` looking
+at `[4, 9, 1]` with a `0.62`-radian field instead of `0.5`. Both walls, the yard's floor, the tower and its ladder, the house and its gallery,
+and the cistern in the near-left corner are in one frame now.
+
+**A camera moves no identity row**: 41 scenes, **147 547 rows**, unchanged from main by design. What the round changes is the plate, and the
+record's evidence for it is that the frame the round before it could not compose is composed.
+
+**And it settles a rule this project keeps re-learning**: when a small object cannot be seen, the first question is **where the camera stands**,
+not where the object goes. Rounds 123, 130, 137 and 155 all moved the object; this one moved the view, and it was cheaper.

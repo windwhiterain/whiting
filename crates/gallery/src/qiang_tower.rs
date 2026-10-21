@@ -91,7 +91,7 @@ const GALLERY_RAIL: f32 = 0.92;
 
 /// length, its height and a posts section.
 
-const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.5;
+const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.62;
 
 /// Builds the scene: from the ground's own level, close enough that the batter reads.
 pub fn qiang_tower() -> Value {
