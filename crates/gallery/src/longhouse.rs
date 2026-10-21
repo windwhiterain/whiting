@@ -20,6 +20,7 @@
 //!   interior light to show them (round 121).
 
 use building::derive::{self, RoofStyle, Starter};
+use building::ops;
 use definition::Value;
 
 /// The house: one long body under one ridge.
@@ -50,6 +51,11 @@ const LADDER_WIDE: f32 = 0.36;
 const LADDER_FOOT: f32 = 1.05;
 const LADDER_POST: f32 = 0.09;
 const LADDER_RUNGS: usize = 4;
+
+/// The 敞廊 along the long side: its half length, how deep it runs past the wall and how thick its deck is.
+const GALLERY_HALF: f32 = 8.20;
+const GALLERY: f32 = 0.95;
+const GALLERY_DECK: f32 = 0.12;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
@@ -89,6 +95,36 @@ pub fn document() -> building::Building {
                 POST,
             ));
         }
+    }
+
+    // **The 敞廊: the open gallery along the long side.** A 干栏's day happens outside its rooms: the floor runs on past the wall under the same
+    // eave, and a row of posts carries its edge. It is **a floor and a row of posts**, and it is what makes the long wall a house instead of a
+    // wall — the roof already reaches over it, because a longhouse's eave is `1.05 m` and the gallery is narrower than that.
+    let wall = STARTER.depth * 0.5;
+    skeleton.slabs.push(building::Slab::paving(
+        ops::wound(vec![
+            [-GALLERY_HALF, wall],
+            [GALLERY_HALF, wall],
+            [GALLERY_HALF, wall + GALLERY],
+            [-GALLERY_HALF, wall + GALLERY],
+        ]),
+        LEG - GALLERY_DECK,
+        LEG,
+    ));
+    let gallery_bays = (GALLERY_HALF * 2.0 / POST_SPACING).round().max(1.0) as usize;
+    for bay in 0..=gallery_bays {
+        let x = -GALLERY_HALF + 2.0 * GALLERY_HALF * bay as f32 / gallery_bays as f32;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, 0.0, wall + GALLERY - POST * 0.5],
+            },
+            building::Anchor::Free {
+                at: [x, LEG, wall + GALLERY - POST * 0.5],
+            },
+            [1.0, 0.0],
+            POST,
+            POST,
+        ));
     }
 
     // **The 独木梯: the way up to the floor.** A 干栏 has no stair inside it — the household climbs a **notched log** or a plank ladder set against

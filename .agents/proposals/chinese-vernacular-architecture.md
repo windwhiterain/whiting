@@ -3441,3 +3441,13 @@ night — which is why the round-174 plate showed a twenty-one metre house with 
 ground to the floor's edge, on the wall the camera looks at.
 
 **Identity: 45 scenes, 156 496 rows**; `longhouse` 137 → **173** — two stringers and four rungs. The document is 7.11 MB.
+## Round 176: the 敞廊
+
+A 干栏's day happens **outside its rooms**: the floor runs on past the long wall under the same eave, and a row of posts carries its edge. It is a
+floor and a row of posts, and it is what makes a twenty-one metre wall a house instead of a wall.
+
+**It is entirely under the roof, and that is right**: the eave hangs `1.05 m` and the gallery is `0.95 m` deep, so from outside the plate shows the
+**row of posts** under the eave and not a deck — the gallery is shelter, not a balcony. The round records that as the shape it is rather than as
+a failure to be seen.
+
+**Identity: 45 scenes, 156 544 rows**; `longhouse` 173 → **221** — a deck and its posts. The document is 7.12 MB.
