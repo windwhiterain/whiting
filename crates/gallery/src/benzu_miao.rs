@@ -83,6 +83,10 @@ const GALLERY: f32 = 1.60;
 const GALLERY_POSTS: usize = 5;
 const GALLERY_POST: f32 = 0.15;
 
+/// The 坐凳栏杆 under the 庑: how high the seat is and how wide.
+const BENCH_HIGH: f32 = 0.46;
+const BENCH_WIDE: f32 = 0.34;
+
 /// The 山门: how wide it is either side of the axis, how thick, how high, the wall in it, and where it stands.
 const SHANMEN_HALF: f32 = 6.20;
 const SHANMEN_THICK: f32 = 0.60;
@@ -280,6 +284,39 @@ pub fn document() -> Building {
         {
             skeleton.roofs.push(roof.with_covering(TILES));
         }
+
+        // **The 坐凳栏杆: the bench rail along the colonnade.** A 庑 is where the village sits to watch the 戏台 — the rail's top is
+        // the seat, a plank `BENCH_WIDE` across at `BENCH_HIGH`, carried on a leg at every post. A gallery with no bench is a
+        // corridor; a gallery with one is the place a temple fair is watched from.
+        let bench_x = face + inward * 0.10;
+        for index in 0..=GALLERY_POSTS {
+            let z = from + (to - from) * index as f32 / GALLERY_POSTS as f32;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [bench_x, 0.0, z],
+                },
+                building::Anchor::Free {
+                    at: [bench_x, BENCH_HIGH - 0.04, z],
+                },
+                [1.0, 0.0],
+                GALLERY_POST * 0.55,
+                GALLERY_POST * 0.55,
+            ));
+        }
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [bench_x, BENCH_HIGH, from],
+            },
+            building::Anchor::Free {
+                at: [bench_x, BENCH_HIGH, to],
+            },
+            // **The plank`s across is `x` because its run is `z`.** This is the fifth time a member's `across` has been written as its
+            // own run in this project (rounds 100, 106, 128, 133 and here), so the rule is stated as a rule: **a member's across is
+            // the run turned a quarter** — `[dy, -dx]` or its negative — and never the run.
+            [1.0, 0.0],
+            BENCH_WIDE,
+            0.07,
+        ));
     }
 
     // **The 大殿's front is a colonnade**: three bays, and the middle one is a door two bays wide, because the god is behind

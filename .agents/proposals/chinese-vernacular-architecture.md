@@ -2895,3 +2895,15 @@ the lesson rounds 100, 106 and 128 have each paid for, now written beside the li
 
 **Identity: 39 scenes, 137 512 rows**; `benzu_miao` 1 657 → **1 809** — twelve posts, two beams and two gallery roofs — and
 `benzu_miao_court` with it, the same document under its second camera. The document is 7.61 MB.
+## Round 134: the 坐凳栏杆 under the 庑
+
+A 庑 is where the village sits to watch the 戏台, and a gallery with no bench is a corridor. Each gallery has a **bench rail** now:
+a plank `BENCH_WIDE` across at `BENCH_HIGH`, carried on a leg at every post — so the rail's top is the seat, which is what a
+**坐凳栏杆** is.
+
+**And the round paid a fifth time for one mistake.** `MemberDegenerate { length: 7.9 }` on the planks, because a member's `across` was
+written as its own run — after round 100's door leaf, round 106's burner, round 128's deck rail and round 133's gallery beam. The rule
+is in the code as a rule now, not as an anecdote: **a member's across is the run turned a quarter**, and never the run.
+
+**Identity: 39 scenes, 137 680 rows**; `benzu_miao` 1 809 → **1 893** — twelve legs and two planks, and `benzu_miao_court` with it.
+The document is 7.64 MB.
