@@ -87,6 +87,15 @@ const UPOSATHA_AT: [f32; 2] = [10.10, -2.20];
 /// The 寺门`s piers: how wide one is, in metres.
 const GATE_PIER: f32 = 0.52;
 
+/// The 经幡柱 outside the gate: how far either side of the axis, how far out, how high, the poles section, the cross-arms reach
+/// and how long a banner hangs.
+const FLAG_X: f32 = 4.60;
+const FLAG_OUT: f32 = 2.10;
+const FLAG_HIGH: f32 = 6.80;
+const FLAG_POLE: f32 = 0.17;
+const FLAG_ARM: f32 = 1.10;
+const FLAG_CLOTH: f32 = 2.60;
+
 /// The 塔: where it stands in the yard, its square, the height of one course and how many, how far each course draws in, the
 /// wall inside it and the platform it rises from.
 const STUPA_AT: [f32; 2] = [10.40, 5.20];
@@ -415,6 +424,50 @@ pub fn document() -> Building {
         0.14,
     ) {
         skeleton.roofs.push(roof.with_covering(TILES));
+    }
+
+    // **The 经幡柱: the flag poles outside the gate.** Every Dai wat has them — two tall poles either side of the entrance, each with
+    // a cross-arm, and a banner hanging from each arm. They are members and not masses because a pole has no inside: a post, an arm
+    // and a cloth, six members in all, and they are the first thing that tells a traveller that this is a temple and not a house.
+    for across in [-1.0_f32, 1.0] {
+        let x = across * FLAG_X;
+        let pole = gate_z + FLAG_OUT;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free { at: [x, 0.0, pole] },
+            building::Anchor::Free {
+                at: [x, FLAG_HIGH, pole],
+            },
+            [1.0, 0.0],
+            FLAG_POLE,
+            FLAG_POLE,
+        ));
+        // The arm reaches towards the gate's axis, and the banner hangs off its end.
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, FLAG_HIGH - 0.30, pole],
+            },
+            building::Anchor::Free {
+                at: [x - across * FLAG_ARM, FLAG_HIGH - 0.30, pole],
+            },
+            [0.0, 1.0],
+            FLAG_POLE * 0.5,
+            FLAG_POLE * 0.5,
+        ));
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x - across * (FLAG_ARM - 0.10), FLAG_HIGH - 0.34, pole],
+            },
+            building::Anchor::Free {
+                at: [
+                    x - across * (FLAG_ARM - 0.10),
+                    FLAG_HIGH - 0.34 - FLAG_CLOTH,
+                    pole,
+                ],
+            },
+            [1.0, 0.0],
+            FLAG_POLE * 0.14,
+            FLAG_ARM * 0.55,
+        ));
     }
 
     // **The 戒堂, the wat's second building.** A wat is not one hall: the 戒堂 is where the monks are ordained, it stands **behind**

@@ -2761,3 +2761,13 @@ finding as the 腰檐's warp in round 93.
 
 **Identity: 38 scenes, 134 079 rows**; `dai_temple` 2 458 → **2 500** — the dais's top and four edges, and twelve nave posts with
 their sections. The document is 31.4 MB.
+## Round 122: the 经幡柱
+
+Every Dai wat has them: **two tall poles either side of the gate**, each with a cross-arm, and a banner hanging from each arm. Six
+members — a post, an arm and a cloth, twice — and they are the first thing that tells a traveller this is a temple and not a house.
+
+**Members and not masses**, because a pole has no inside: the crate's `Mass` is a ring with a wall and a pole is not, and the arm and
+the cloth are the sections a member already carries.
+
+**Identity: 38 scenes, 134 151 rows**; `dai_temple` 2 500 → **2 536** — six members with their sections and their ends. The document
+is 31.5 MB.
