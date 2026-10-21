@@ -66,6 +66,9 @@ const YARD: f32 = 5.60;
 const WALL_HIGH: f32 = 1.55;
 const WALL_THICK: f32 = 0.40;
 const WALL_WALL: f32 = 0.16;
+/// The walls 压顶: how thick the cap is and how far it stands proud of the wall on either side.
+const COPE: f32 = 0.09;
+const COPE_PROUD: f32 = 0.11;
 const GATE_HALF: f32 = 1.60;
 const YARD_PAVING: f32 = 0.06;
 
@@ -288,6 +291,20 @@ pub fn document() -> Building {
         wall.wall = WALL_WALL;
         wall.slab = 0.18;
         skeleton.masses.push(wall);
+        // **The 压顶: a tile cap over the wall's top.** A wall that stops in a bare plane is an unfinished wall, and the gate porch
+        // above the gap is tiled — a compound whose gate is roofed and whose wall is not is a gate standing in a field. The cap is
+        // a roof slab `COPE` thick and a hand wider than the wall on either side, the same answer the 石板街's kerb gave at the
+        // other scale.
+        skeleton.slabs.push(building::Slab::roof(
+            vec![
+                [from[0] - COPE_PROUD, from[1] - COPE_PROUD],
+                [to[0] + COPE_PROUD, from[1] - COPE_PROUD],
+                [to[0] + COPE_PROUD, to[1] + COPE_PROUD],
+                [from[0] - COPE_PROUD, to[1] + COPE_PROUD],
+            ],
+            WALL_HIGH,
+            WALL_HIGH + COPE,
+        ));
     }
     skeleton.slabs.push(building::Slab::paving(
         ops::wound(vec![

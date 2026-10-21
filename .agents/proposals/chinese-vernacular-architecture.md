@@ -2736,3 +2736,11 @@ the bell in, the spire, and two bands of needle above it. `(0.62, 0.95), (0.46, 
 (0.11, 0.62)` — each carried by the one under it, and the pinch is the whole difference between a stupa and a stack.
 
 **Identity: 38 scenes, 133 935 rows**; `dai_temple` 2 389 → **2 428** — three more bands' faces and tops. The document is 31.4 MB.
+## Round 120: the wall's 压顶
+
+The compound wall stopped in a **bare plane** while the gate above its gap was tiled: a compound whose gate is roofed and whose wall
+is not is a gate standing in a field. Five caps now run along the five lengths — a roof slab `COPE` thick and a hand wider than the
+wall on either side, the same answer the 石板街's kerb gave at the other scale.
+
+**Identity: 38 scenes, 133 995 rows**; `dai_temple` 2 428 → **2 458** — five caps' tops and four edges each. The document is
+31.4 MB.
