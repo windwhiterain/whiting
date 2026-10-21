@@ -107,6 +107,25 @@ const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 const GROUND_DIVISIONS: usize = 120;
 const GROUND_EXTENT: f64 = 44.0;
 
+/// The terrace the house stands on: its own edge, the distance the ground takes to fall, and how far it falls.
+///
+/// **A 蘑菇房 stands in a field of terraces and not on a plain.** The drop is in front of the house, where the frame
+/// can see it, and it is one step and not a slope: a terrace is a level the water is held on.
+const TERRACE_EDGE: f64 = 4.6;
+const TERRACE_FALL: f64 = 0.9;
+const TERRACE_DROP: f64 = 1.35;
+
+/// Returns the ground's elevation at a plan point: level to the house, then down one terrace, then level again.
+fn terrace(_x: f64, z: f64) -> f64 {
+    if z <= TERRACE_EDGE {
+        0.0
+    } else if z >= TERRACE_EDGE + TERRACE_FALL {
+        -TERRACE_DROP
+    } else {
+        -TERRACE_DROP * (z - TERRACE_EDGE) / TERRACE_FALL
+    }
+}
+
 /// The air over the hillside.
 fn atmosphere() -> Atmosphere {
     Atmosphere::new()
@@ -224,7 +243,7 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
     let extras = building_extras();
     let point = extras.point_schema();
     let plain = not_authored_extras();
-    let yard = ground::mesh(&building, GROUND_DIVISIONS, GROUND_EXTENT, |_, _| 0.0);
+    let yard = ground::mesh(&building, GROUND_DIVISIONS, GROUND_EXTENT, terrace);
 
     Value::structure([
         ("name".to_owned(), Value::String(name.to_owned())),
@@ -392,6 +411,17 @@ pub fn document() -> Building {
     skeleton
         .slabs
         .push(building::Slab::plate(foot, -PLINTH, 0.0));
+    // **The terrace's edge is stone**, because a step in a field is a retaining wall: two runs along `TERRACE_EDGE`,
+    // standing from the lower level up to a kerb above the house's own floor, which is what holds the upper level.
+    let edge = TERRACE_EDGE as f32;
+    for side in [-1.0_f32, 1.0] {
+        skeleton.walls.push(building::wall::Wall::new(
+            PlanNode::new([side * (half + 1.4), edge], -TERRACE_DROP as f32 - 0.2),
+            PlanNode::new([side * 0.2, edge], -TERRACE_DROP as f32 - 0.2),
+            0.46,
+            0.16,
+        ));
+    }
     // **The door and the two windows**, on the room's own long face at `+z`: three bays, the door in the middle.
     if let Some(edge) = facade::edge_on(&skeleton.masses[room_id.0], deep, true) {
         let face = building::grid::FaceRef::new(room_id, edge);

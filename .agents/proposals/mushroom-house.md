@@ -29,3 +29,15 @@ The door is the middle of three bays on the long face, with a window either side
 - **the thatch's laps**: the straw is bound in courses whose laps would need a covering of its own.
 
 Identity: **274 rows**, and twenty-four scenes in the gallery.
+## The terrace under it
+
+The type was drawn on a plain, and a 蘑菇房 is never on one: it stands in a field of terraces, each a **level the
+water is held on**. The scene's ground is now one step and not a slope — level to the house, down `1.35 m` over
+`0.9 m` of fall, level again — with the drop **in front of the house** where the frame can see it, and **two runs of
+stone** standing from the lower level up to a kerb above the house's own floor, which is what a terrace's edge
+actually is.
+
+Identity: 274 → **286 rows** (two runs of wall, six rows each).
+
+**What it still is not**: a field of terraces. One step is the type's setting in one frame; a hillside of them is the
+village's business, and the village's own terrace is built the same way.
