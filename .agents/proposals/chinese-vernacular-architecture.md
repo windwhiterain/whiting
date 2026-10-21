@@ -1856,3 +1856,25 @@ tree**, the rest to clumps: a canopy over the yards and brush along the wall.
 
 **Identity: 27 scenes, 110 245 rows, unchanged** — plants are not building elements. Documents: the hamlet at 43.17 MB
 (from 20.63 with clumps alone) and `hillside_village` at **126.28 MB** (from 110.32).
+## Round 66: the 藏族碉房, the gallery's eleventh type
+
+**A stone fortress a family lives in.** The other ten types are one to two storeys because their materials are light —
+bamboo, earth, timber, boards. This one is **six hundred millimetres of stone**, which is why it can be three storeys, and
+its windows are small and high because a window is a hole in a wall that must still carry.
+
+It is built the way this crate allows a tall house to be built — **two masses, the third storey standing back by `0.40 m`
+on the lower one's roof and carried through `Join::Storey`** — with a flat threshing floor on each tier, a parapet round
+each, a 煨桑炉 in the top roof's corner and one timber gallery on the sunny face.
+
+Two things were measured on the way:
+
+- **a mass inside another mass's plan is refused**, and the refusal is asked of every pair: the burner as a mass read as
+  `UnattachedOverlap { mass: 0, other: 2 }` *and* `{ mass: 1, other: 2 }`, because its plan lies inside both tiers', and an
+  attachment to one of them does not answer the other. It is drawn as **four walls of members** now, which is a ring of
+  stone with a fire in it and has no plan to overlap.
+- **a balcony with rails and no deck is a frame in the air**, which is what the first gallery drew: two posts, two rails
+  and nothing to stand on. Its floor is three planks across the brackets, and its posts run from the **first roof** rather
+  than hanging off the wall.
+
+**Identity: 28 scenes, 110 529 rows**, of which `tibetan_house` is **284** — a tower of two tiers, four windows, a door,
+two parapets, a burner and a gallery.

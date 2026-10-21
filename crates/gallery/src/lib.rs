@@ -130,6 +130,7 @@ mod sunlight;
 pub mod sweep_picture;
 pub mod terrace;
 mod terraces;
+pub mod tibetan;
 mod tidewater;
 mod tiles;
 /// Standing a leaf's rigid frame as the scene instance that draws it.
@@ -224,6 +225,7 @@ impl Gallery {
             "street",
             "street_arcade",
             "terrace",
+            "tibetan_house",
             "wing",
             "workshop",
             "yard",
@@ -335,6 +337,7 @@ impl Gallery {
             "rain_bridge" => rain_bridge::rain_bridge(),
             "stilt_gallery" => stilt::stilt_gallery(),
             "terrace" => terrace::terrace(),
+            "tibetan_house" => tibetan::tibetan_house(),
             "wing" => wing::wing(),
             "workshop" => workshop::workshop(),
             "yard" => yard::yard(),
