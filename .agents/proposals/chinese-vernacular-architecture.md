@@ -3944,3 +3944,22 @@ are the one public work this scene has been without since round 145.
 
 **The rule this round paid for twice**: **check what the document already draws before adding what it "lacks"** — and check it by reading, because both
 refusals arrived after the code was written.
+## Round 215: the 穿枋, and a note in this repository that was wrong
+
+The detail the tradition is **named for** had never been drawn, and `chuandou.rs`'s own notes gave the reason: *"a member laid through another member's
+own section is not something this crate's members can say."* **That was wrong**, and it was wrong in the same file: the 挑枋 thirty lines below it has
+**started inside a post's own section since the round it was written in**. A member that begins inside another member is exactly what a 穿枋 is.
+
+Two rows of tie beam now run the whole colonnade **through** every post, standing `14 cm` proud past the outermost one at each end — which is how a
+passer-by knows the frame is threaded and not nailed, and the eaves' shadows on the ground show the two beams as clearly as the posts.
+
+**The type's table, read on all three scenes that compose it**: `chuandou_house` 1 157 → **1 169**, `dong_village` 10 372 → **10 408**,
+`naxi_court` 3 583 → **3 619**. **Two members per house, thirty-six rows per house**, and the village's three houses and the court's three make the
+larger numbers exactly.
+
+**Identity: 60 scenes, 229 752 rows**.
+
+**The lesson is not about members, it is about notes**: a limitation written in a file's header is a **claim**, and this one survived fourteen rounds
+of work on the same file because it was never re-measured. Round 207 paid for the same mistake with `spirv-val` in another project — *"when a tool or a
+backend is not available, look for it before repeating it"* — and here it was *"when a note says the crate cannot say something, check whether it
+already does."*

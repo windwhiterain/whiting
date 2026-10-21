@@ -31,6 +31,12 @@ const HEIGHT: f32 = 3.70;
 const PORCH: f32 = 1.60;
 const POSTS: usize = 6;
 const POST: f32 = 0.17;
+
+/// The 穿枋: how many rows of tie beam, how far each stands proud of the outermost post, its section and its height.
+const TIE_ROWS: usize = 2;
+const TIE_PROUD: f32 = 0.14;
+const TIE: f32 = 0.13;
+const TIE_HIGH: f32 = 0.19;
 /// The bracket: how far the 挑枋 reaches past the posts, its section, and how far the 撑弓 drops down the post.
 const CANTILEVER: f32 = 0.74;
 const BRACKET: f32 = 0.13;
@@ -79,6 +85,26 @@ pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
     let half = WIDTH * 0.5;
     let deep = DEPTH * 0.5;
+
+    // **The 穿枋.** The detail the tradition is named for: the tie beams that run **through** the posts, bay to bay, and **stand proud past the outermost
+    // post at each end** — which is how a passer-by knows the frame is threaded and not nailed. This file's own notes said a member laid through another
+    // member's section is *"not something this crate's members can say"*; **that was wrong** — the 挑枋 in the loop above has been starting inside a post's
+    // own section since it was written, and a member that begins inside another member is exactly what a 穿枋 is.
+    let colonnade = deep + PORCH;
+    for row in 0..TIE_ROWS {
+        let up = HEIGHT * (0.42 + 0.34 * row as f32);
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [-half - TIE_PROUD, up, colonnade - POST * 0.5],
+            },
+            building::Anchor::Free {
+                at: [half + TIE_PROUD, up, colonnade - POST * 0.5],
+            },
+            [0.0, 1.0],
+            TIE,
+            TIE_HIGH,
+        ));
+    }
 
     // **The body: one mass of boards**, standing back from the colonnade by `PORCH`. A board wall is thin and it is not the
     // structure — the posts are — so the mass is a wall and its own openings, and the posts stand in front of it.
