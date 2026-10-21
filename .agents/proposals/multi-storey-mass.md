@@ -411,3 +411,31 @@ openings the way every wall in this gallery does — **no cut ever lands on an i
 
 Identity: `street` and `street_arcade` 11 950 → **12 550 rows**, `village_square` 17 426 → **18 026** (it holds a street
 row), and **twenty-one of twenty-four scenes unchanged**.
+## Round 49: a banded mass's wall is not cut, and now it says so
+
+`Problem::BandedMassCut` has been declared since the band walk was written and **raised nowhere**: a face of a mass
+drawn in several bands could be cut, the cut subdivided the loop it landed on, and the shell came back open —
+`SolidOpen`, `SolidNonManifold`, and sixteen holes on the probe. It is raised now, in `resolve_holes`, for any mass with
+more than two sections:
+
+```text
+mode: cut
+refused: BuildError { problems: [BandedMassCut { mass: MassId(0), face: FaceRef { edge: 2, band: 0,
+                             void: None, loop_side: Authored }, openings: 1 }] }
+```
+
+**Why a refusal and not a fix.** The measurement says the seam is three faces on one edge: the band below's wall top, the
+band above's wall bottom, and the strip of wall top between them. The strip is emitted **per station span** (it always
+was — `cut_edge` walks the stations), so with no cut the two walls meet on one edge and the strip is only the crown's;
+with a cut the wall's top edge is broken at every jamb, the band above's bottom edge is not, and drawing the strip over
+the stations makes the third face. **The stations the cut adds must reach the sections above**, which is a change to the
+band walk and not to this function: every section above a cut band would have to carry the same nodes, and a refusal is
+better than a shell with holes in it until it does.
+
+### What this unblocks and what it costs
+
+- **measured**: no scene cuts a banded mass — the bridge's piers and abutments are banded and uncut, the 骑楼's two
+  masses are one band each — so **all twenty-five scenes are unchanged at 105 876 rows** and the bridge, street and
+  一颗印 documents all still build.
+- **it costs the tiered 土掌房 its openings**, which is exactly what round 48 measured: the setback band walks and
+  closes, and the door in the wall below it is the cut that opens the shell.

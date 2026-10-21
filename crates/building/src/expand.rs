@@ -2819,11 +2819,30 @@ fn resolve_holes(
     // group is keyed by the exact face, so an opening that names an edge this loop does not have is
     // seen here instead of being missed by every edge's lookup — which is the difference between a
     // named refusal and a hole that was quietly never cut.
+    // **A mass drawn in several bands is not cut, and this is where that is said.** A cut subdivides the loop of the
+    // band it lands on: the wall's top edge is broken at every jamb the cut added. The band above starts from the
+    // section's own nodes, so the two disagree at every one of those stations and the shell opens — measured on the
+    // four-section probe as sixteen holes, eight on each of the two section lines, with three faces meeting on the
+    // crown's own edge (the band below's wall top, the band above's wall bottom, and the strip between them). Making
+    // the stations reach the sections above is the fix; until it exists this is a refusal instead of a shell with holes
+    // in it.
+    let banded = skeleton
+        .masses
+        .get(ring.loop_of.mass().0)
+        .is_some_and(|mass| mass.levels.len() > 2);
     for (face, indices) in grouped {
         if face.mass != ring.loop_of.mass()
             || face.void != ring.loop_of.void()
             || face.band != ring.band
         {
+            continue;
+        }
+        if banded {
+            problems.push(Problem::BandedMassCut {
+                mass: ring.loop_of.mass(),
+                face: *face,
+                openings: indices.len(),
+            });
             continue;
         }
         // **A hole is cut through both of the ring's faces from the loop the walk reads**, so one
