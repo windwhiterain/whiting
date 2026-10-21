@@ -37,6 +37,9 @@ const PROJECT: f32 = 2.2;
 
 fn main() {
     let cut = std::env::args().any(|argument| argument == "cut");
+    // **`setback` shrinks the plan instead of projecting it**: the third and fourth sections are the first plan inset,
+    // which is what a two-tier house is — a lower wall, a terrace, and a room above standing back from its edge.
+    let setback = std::env::args().any(|argument| argument == "setback");
     let plan = [
         [-WIDTH * 0.5, -DEPTH * 0.5],
         [WIDTH * 0.5, -DEPTH * 0.5],
@@ -74,7 +77,14 @@ fn main() {
         cut_the_front(&mut skeleton);
     }
 
-    println!("mode: {}", if cut { "cut" } else { "plain" });
+    println!(
+        "mode: {}",
+        match (cut, setback) {
+            (true, _) => "cut",
+            (false, true) => "setback",
+            (false, false) => "plain",
+        }
+    );
     match build(&skeleton) {
         Ok(built) => {
             println!("expands: {} faces", built.faces.len());
