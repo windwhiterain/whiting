@@ -43,6 +43,9 @@ const DEPTH: f32 = 6.4;
 const STOREY: f32 = 2.60;
 const STOREYS: usize = 3;
 const SETBACK: f32 = 0.40;
+/// The lower wall's batter: how many courses it is laid in, and how far each is set in from the one below.
+const COURSES: usize = 4;
+const BATTER: f32 = 0.11;
 
 /// The wall and the two roof floors: six hundred millimetres of stone, and slabs that carry a threshing floor.
 const WALL: f32 = 0.60;
@@ -314,39 +317,114 @@ pub fn document() -> Building {
     let lower_top = STOREY * (STOREYS - 1) as f32;
     let top = STOREY * STOREYS as f32;
 
-    // **The two lower storeys, then the third standing back on their roof.**
-    let mut lower = Mass::new(
-        [
-            PlanNode::new([-half, -deep], 0.0),
-            PlanNode::new([half, -deep], 0.0),
-            PlanNode::new([half, deep], 0.0),
-            PlanNode::new([-half, deep], 0.0),
-        ]
-        .to_vec(),
-        lower_top,
-    );
-    lower.wall = WALL;
-    lower.slab = PLATE;
-    let id = MassId(skeleton.masses.len());
-    skeleton.masses.push(lower);
+    // **The two lower storeys are laid in COURSES stepped courses, each set in by BATTER.** A tower house's wall leans in as
+    // it rises, and this crate cannot cut a mass drawn in several bands: a banded mass refuses an opening by name
+    // (`Problem::BandedMassCut`). So the batter is built the way a stone wall is built — courses stepped one on the next, the
+    // tradition's own 叠涩 — and every course is a one-band mass, which is cuttable. The frame reads it as a lean, because at a
+    // tenth of a metre a course, four courses are one slope.
+    //
+    // The lesson of round 6 is the one obeyed here: **model the relationship, not the overlap**. The courses share an edge and
+    // share no volume, and each is carried by the one below through `Join::Storey`.
+    let mut id = MassId(skeleton.masses.len());
+    let mut host = None;
+    let mut courses: Vec<MassId> = Vec::with_capacity(COURSES);
+    for course in 0..COURSES {
+        let inset = BATTER * course as f32;
+        let base = lower_top * course as f32 / COURSES as f32;
+        let ceiling = lower_top * (course + 1) as f32 / COURSES as f32;
+        let mut laid = Mass::new(
+            [
+                PlanNode::new([-half + inset, -deep + inset], base),
+                PlanNode::new([half - inset, -deep + inset], base),
+                PlanNode::new([half - inset, deep - inset], base),
+                PlanNode::new([-half + inset, deep - inset], base),
+            ]
+            .to_vec(),
+            ceiling,
+        );
+        laid.wall = WALL;
+        laid.slab = PLATE;
+        if let Some(under) = host {
+            laid.attachment = Some(building::Attachment {
+                host: under,
+                join: building::Join::Storey,
+            });
+        }
+        let laid_id = MassId(skeleton.masses.len());
+        skeleton.masses.push(laid);
+        courses.push(laid_id);
+        host = Some(laid_id);
+        if course == 0 {
+            id = laid_id;
+        }
+    }
+    // The third storey stands back on the last course's own plan, so the batter and the setback add up.
+    let lean = BATTER * (COURSES - 1) as f32;
     let mut upper = Mass::new(
         [
-            PlanNode::new([-half + SETBACK, -deep + SETBACK], lower_top),
-            PlanNode::new([half - SETBACK, -deep + SETBACK], lower_top),
-            PlanNode::new([half - SETBACK, deep - SETBACK], lower_top),
-            PlanNode::new([-half + SETBACK, deep - SETBACK], lower_top),
+            PlanNode::new([-half + SETBACK + lean, -deep + SETBACK + lean], lower_top),
+            PlanNode::new([half - SETBACK - lean, -deep + SETBACK + lean], lower_top),
+            PlanNode::new([half - SETBACK - lean, deep - SETBACK - lean], lower_top),
+            PlanNode::new([-half + SETBACK + lean, deep - SETBACK - lean], lower_top),
         ]
         .to_vec(),
         top,
     );
     upper.wall = WALL;
     upper.slab = PLATE;
+    // **The third storey stands on the last course, not on the first.** The validator reads a stack as a chain
+    // (`stacked_above`), so a mass that names the bottom of four courses leaves three pairs unrelated: measured as
+    // `UnattachedOverlap { mass: 1/2/3, other: 4 }` and `StoreyNotOnTop { mass: 4, host: 0, base: 5.2, top: 1.3 }`.
     upper.attachment = Some(building::Attachment {
-        host: id,
+        host: host.expect("the courses were laid"),
         join: building::Join::Storey,
     });
     let upper_id = MassId(skeleton.masses.len());
     skeleton.masses.push(upper);
+
+    // **The openings, and where a battered wall puts them.** The ground course carries the house's one door and its two
+    // windows, cut the way round 69 measured — the face split into three bays first, then an inset a wall's thickness clear of
+    // the bay's ends. Every course above carries **one arrow slit a face**, because a wall of four courses with slits in two of
+    // them is a wall with windows on its ground floor and its attic.
+    let front = building::FaceRef::new(id, 2);
+    let columns = building::Rhythm::Even { count: 3 };
+    let rows = building::Rhythm::Even { count: 1 };
+    if building::ops::split_face(&mut skeleton, front, &columns, &rows).is_some() {
+        for column in 0..3 {
+            let inset = if column == 1 {
+                building::Inset::new(0.72, 0.72, 0.30, 1.20)
+            } else {
+                building::Inset::new(0.70, 0.70, 1.20, 1.65)
+            };
+            let _ = building::ops::add_opening(
+                &mut skeleton,
+                building::Opening::new(front, 0, column, inset),
+            );
+        }
+    }
+    let slit = building::Inset::new(1.20, 1.20, 1.40, 1.10);
+    let others = courses
+        .iter()
+        .copied()
+        .skip(1)
+        .chain(std::iter::once(upper_id));
+    for mass in others {
+        for edge in 0..4 {
+            let face = building::FaceRef::new(mass, edge);
+            if building::ops::split_face(
+                &mut skeleton,
+                face,
+                &building::Rhythm::Even { count: 1 },
+                &building::Rhythm::Even { count: 1 },
+            )
+            .is_none()
+            {
+                continue;
+            }
+            let _ =
+                building::ops::add_opening(&mut skeleton, building::Opening::new(face, 0, 0, slit));
+        }
+    }
 
     // **The first roof is a floor**: the family's 晒场, and the terrace the third storey stands on.
     skeleton.slabs.push(

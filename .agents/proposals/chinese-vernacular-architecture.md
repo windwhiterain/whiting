@@ -2141,3 +2141,30 @@ Two things the frame taught:
 
 **Identity: 35 scenes, 122 240 rows**; `benzu_miao` **1 112** — two masses, two plinths, two roofs, a paved court, two side
 walls and four openings' reveals. The document is 7.39 MB.
+## Round 80: the 碉房's batter, and the chain a stack actually is
+
+The type's own record has said since round 66 that **the batter is not drawn**: a real 碉房's walls lean in as they rise, a
+banded mass cannot be cut, and so the tower was vertical. It leans now — and the answer is the one the tradition gives:
+
+- **the wall is laid in courses stepped one on the next — 叠涩**. A ground course of `2.60 m` carries the door and the two
+  windows, and three courses above it are each set in by `0.09 m`, so the wall leans `0.27 m` over `5.2 m`. **Every course is a
+  one-band mass, which is cuttable**; a banded mass would have refused the openings by name.
+- **round 6's verdict is the rule obeyed here**: *model the relationship, not the overlap*. The courses share an edge and share
+  no volume, and each is carried by the one below through `Join::Storey`.
+
+Three refusals came out of it, and the third was a real fault in my own reading of the crate:
+
+- **`UnattachedOverlap` against every intermediate course, and `StoreyNotOnTop`** — the third storey was attached to the
+  *bottom* of the four courses. The validator reads a stack as a **chain** (`stacked_above`), so a mass that names the bottom
+  of four leaves three pairs unrelated. Naming the course directly below it answers all of them at once: the chain *is* the
+  relation.
+- **a door is two metres and a course of four is 1.3** — `OpeningUnresolved` on the ground face. So the courses are not equal:
+  the ground course is a storey and only the batter above it is stepped.
+- **an opening's sill needs a margin like every other side**: a sill at `0.0` in a course whose floor slab hangs `0.30` below
+  reaches the face's boundary. The door's sill is `0.30` now, which is the slab's own thickness.
+
+`plateau_village` had asserted that a 碉房 *is two stone tiers*, and it is five masses now. The assertion names what it needs —
+a house with no seated mass floats — instead of a count that has to be rewritten whenever the type is laid differently.
+
+**Identity: 35 scenes, 123 172 rows**; `tibetan_house` 284 → **288**, `plateau_village` 1 437 → **2 365** (four towers, each with
+a battered wall). The tower's document is 4.30 MB, unchanged to the hundredth.

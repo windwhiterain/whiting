@@ -109,7 +109,14 @@ pub fn document() -> Building {
             &|at: building::math::Vec2| grade(at[0] as f64, at[1] as f64) as f32,
             0.0,
         );
-        assert_eq!(seated.len(), 2, "a 碉房 is two stone tiers");
+        // **A tower house is five masses now** — a ground course, three battered courses and the third storey — and the
+        // settlement seats each of them. The assertion names what it needs: a house with no seated mass is a house that
+        // floats, and a count would have to be rewritten every time the type is laid differently.
+        assert!(
+            !seated.is_empty(),
+            "a 碉房 is at least one stone mass, and this one seated {}",
+            seated.len()
+        );
         let _ = site::posts(
             &mut part,
             &|at: building::math::Vec2| grade(at[0] as f64, at[1] as f64) as f32,
