@@ -3658,3 +3658,15 @@ lens and the stupa — **a plate of an object is a plate of its line of sight**,
 is the one where the object is in front of everything else.
 
 **Identity: 53 scenes, 179 474 rows**; `dai_stupa` **2 807** (the same document as `dai_temple`). The document is 8.16 MB.
+## Round 195: the 街门, seen for the first time
+
+The project has built this gate **six times** — the street's two mouths (141), the yards (157), the courts (163) — and had **never looked at one from
+inside the lane**: the street's own plate stands twenty-two metres west and the gate is a rectangle at its far end. `slate_gate` is five metres from
+the east mouth, and the two piers, the head over the gap, the two leaves, the threshold and the flags under them are the whole frame.
+
+**The round also found the gallery's second registration list.** A scene needs not only `Gallery::names` and `naming::building_of` but a **`build`
+arm**, and a missing one answers
+`not implemented: \`slate_gate\` is not one of the 67 scenes the suite covers: …`. **The message is the best in the crate** — it names the missing
+scene and prints the contract it violated — and the round records it because the list is easy to forget and impossible to misread.
+
+**Identity: 54 scenes, 181 632 rows**; `slate_gate` **2 158** (the same document as `slate_street`). The document is 7.76 MB.

@@ -74,6 +74,26 @@ const SHADOW_EXTENT: f64 = 52.0;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
+/// The **close plate**: the street's east 街门 from inside the lane, where the gate's head, its two leaves, its threshold, its 门枕石 and the flags
+/// under them are the whole frame.
+///
+/// # Why a second camera and not a second document
+///
+/// Rounds 141 and 149 built this gate and its stones, and the street's own plate stands twenty-two metres west of them and looks down the lane —
+/// where the gate is a rectangle at the far end. Round 190 and 194 are the same move; this is the gate the project has built **six times** and had
+/// never looked at.
+pub fn slate_gate() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [18.6, 2.4, 2.6],
+        [25.0, 2.2, -1.4],
+        FIELD_OF_VIEW * 1.15,
+        "slate_gate",
+    )
+}
+
 /// Builds the street: from its south mouth, looking north between the two rows.
 pub fn slate_street() -> Value {
     crate::village::scene_of(
