@@ -4354,3 +4354,17 @@ two rows of shops with their awnings, and the stage closing the axis at the head
 composition changes the plate's frame and not only its content** (rounds 222, 225, 234 and this one).
 
 **Identity: 73 scenes, 256 309 rows.**
+## Round 241: the shop fronts get their mouths, and a silent refusal is caught by its own plate
+
+A shop front in a market town is **a hole before it is a wall**: goods are handed across a counter that stands open to the square from morning to dark. Ten shops now
+have **a mouth in the middle third of their square-facing wall**, cut with the same `split_face` and `Opening` the 塔门, the loopholes and the head carriages use.
+
+**The first attempt left every wall solid and said nothing.** A wide low counter — one bay with a `1.30 m` jamb either side — came out of a bay **smaller than its
+own inset**, and `add_opening` answered an error that the `let _ =` swallowed. **The plate caught it in one look**: ten blank walls where ten mouths should be.
+The mouth is now **the middle third of the front**, which is a shopfront's real proportion and a hole the builder accepts.
+
+**`market_town` 716 → 756, and `market_shops` is the ninth plate taken of an existing document** (rounds 161, 172 and the seven since): a shop front is read from
+three metres away in the square, which is where a customer stands, and **the town's own plate looks along the square with both rows turned across its line of
+sight**.
+
+**Identity: 74 scenes, 257 105 rows.**

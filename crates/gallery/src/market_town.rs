@@ -37,6 +37,10 @@ const SHOP_HIGH: f32 = 3.55;
 const AWNING: f32 = 1.85;
 const AWNING_HIGH: f32 = 2.75;
 const AWNING_THICK: f32 = 0.12;
+/// The counter mouth in each shop's square-facing wall: its jamb and head insets, and how high the counter stands.
+const COUNTER_JAMB: f32 = 0.52;
+const COUNTER_SILL: f32 = 0.72;
+const COUNTER_HEAD: f32 = 0.78;
 /// The stage at the head and the arch at the entrance: where they stand, and the turn each takes.
 const STAGE_AT: [f32; 2] = [0.0, -SQUARE_DEEP - 3.40];
 const ARCH_AT: [f32; 2] = [0.0, SQUARE_DEEP + 2.10];
@@ -56,6 +60,25 @@ pub fn market_town() -> Value {
         [-4.2, 3.4, -6.0],
         FIELD_OF_VIEW * 1.12,
         "market_town",
+    )
+}
+
+/// The **counters plate**: one shop front at a man's height, with its mouth and its awning.
+///
+/// # Why a second camera
+///
+/// Round 241 cut a **counter mouth** in every shop's square-facing wall and the town's own plate could not show one: that plate looks **along** the square, and
+/// both rows stand with their counters turned across its line of sight. A shop front is read from the square, three metres from it, which is where a customer
+/// stands — round 172's rule, taken for the ninth time.
+pub fn market_shops() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [-6.2, 2.3, 7.4],
+        [-14.6, 2.1, 6.6],
+        FIELD_OF_VIEW * 0.72,
+        "market_shops",
     )
 }
 
@@ -96,7 +119,39 @@ pub fn document() -> Building {
             // **The ring's offset stays under half the narrow side** (rounds 74, 144, 171): the narrow side here is the shop's length across the square.
             body.wall = SHOP_LONG * 0.14;
             body.slab = 0.18;
+            let id = building::MassId(skeleton.masses.len());
             skeleton.masses.push(body);
+            // **The counter mouth.** A shop front in a market town is **a hole before it is a wall**: the goods are handed across a counter that stands open to
+            // the square from morning to dark. The mouth is one bay of the square-facing face, cut from `COUNTER_SILL` up — the same `split_face` and
+            // `Opening` the 塔门 and the 碉樓's loopholes use.
+            //
+            // The wound rectangle's faces are: `0` the `-z` side, `1` the `+x` side, `2` the `+z` side and `3` the `-x` side — so **the square-facing face is
+            // `1` for the west row and `3` for the east one**.
+            let facing = if side < 0.0 { 1 } else { 3 };
+            let face = building::FaceRef::new(id, facing);
+            if ops::split_face(
+                &mut skeleton,
+                face,
+                &building::Rhythm::Even { count: 3 },
+                &building::Rhythm::Even { count: 1 },
+            )
+            .is_some()
+            {
+                let _ = ops::add_opening(
+                    &mut skeleton,
+                    building::Opening::new(
+                        face,
+                        0,
+                        1,
+                        building::Inset::new(
+                            COUNTER_JAMB,
+                            COUNTER_JAMB,
+                            COUNTER_SILL,
+                            COUNTER_HEAD,
+                        ),
+                    ),
+                );
+            }
             // **The shop's own cap**, a step over its walls.
             skeleton.slabs.push(building::Slab::roof(
                 ops::wound(vec![
