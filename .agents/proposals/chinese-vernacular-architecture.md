@@ -3897,3 +3897,17 @@ walled street; in the 白族 lane it rises past a gate that frames it. **One typ
 made on the 屯堡's street: **a composed type's rows appear once per scene that composes it, and the difference is the type**.
 
 The document is **20.59 MB** — the largest here, because this lane is three 三坊一照壁 courts and now a tower.
+## Round 212: the 风铎
+
+Every Chinese pagoda hangs a small bronze bell from **each corner of every eave**, and the sound of them is what a village remembers of its tower on a
+windy night. It is the type's smallest member and its most characteristic detail: a `4.5 cm` stem under the corner and a `10.5 cm` bell at its end,
+four to a storey, seven storeys.
+
+**The bells are what turned it from a stack of plates into a pagoda.** Rounds 207–210 built the storeys, the eaves, the niches and the door, and the
+plate still read as seven boxes between seven discs; **the corner bells give every disc a shadow under it and every storey an edge**, and the silhouette
+is now unmistakably a Chinese tower.
+
+**Three scenes moved by exactly the same amount**: `fengshui_tower` 503 → **839**, `slate_street` 2 661 → **2 997**, `bai_lane` 6 297 → **6 633** — the
+bells are **336 rows** in each, which is the composition check this round could make on two villages at once.
+
+**Identity: 60 scenes, 226 078 rows**.

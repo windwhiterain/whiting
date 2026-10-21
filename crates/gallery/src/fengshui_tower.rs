@@ -38,6 +38,12 @@ const NICHE_PROUD: f32 = 0.035;
 /// The 塔门: its jamb inset and the depth of wall above its head.
 const DOOR_JAMB: f32 = 0.155;
 const DOOR_HEAD: f32 = 0.42;
+/// The 风铎 at every eave corner: how far in from the corner it hangs, its stem's length and section, and the bell's own drop and width.
+const BELL_INSET: f32 = 0.16;
+const BELL_DROP: f32 = 0.20;
+const BELL_STEM: f32 = 0.045;
+const BELL: f32 = 0.24;
+const BELL_WIDE: f32 = 0.105;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.52;
 
@@ -178,6 +184,37 @@ pub fn document() -> Building {
             high,
             high + EAVE_THICK,
         ));
+
+        // **The 风铎 at the eave's four corners.** Every Chinese pagoda hangs a small bronze bell from each corner of every eave, and the sound of them
+        // is what a village remembers of its tower on a windy night. They are the type's smallest members and its most characteristic detail: a short
+        // stem under the corner and a wider bell at its end.
+        for corner_x in [-1.0_f32, 1.0] {
+            for corner_z in [-1.0_f32, 1.0] {
+                let at = [corner_x * (out - BELL_INSET), corner_z * (out - BELL_INSET)];
+                skeleton.members.push(building::Member::new(
+                    building::Anchor::Free {
+                        at: [at[0], high, at[1]],
+                    },
+                    building::Anchor::Free {
+                        at: [at[0], high - BELL_DROP, at[1]],
+                    },
+                    [1.0, 0.0],
+                    BELL_STEM,
+                    BELL_STEM,
+                ));
+                skeleton.members.push(building::Member::new(
+                    building::Anchor::Free {
+                        at: [at[0], high - BELL_DROP, at[1]],
+                    },
+                    building::Anchor::Free {
+                        at: [at[0], high - BELL_DROP - BELL, at[1]],
+                    },
+                    [1.0, 0.0],
+                    BELL_WIDE,
+                    BELL_WIDE,
+                ));
+            }
+        }
     }
 
     // **The spire**: a mast above the topmost eave with two bands on it.
