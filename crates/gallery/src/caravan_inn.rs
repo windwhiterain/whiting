@@ -37,6 +37,8 @@ const GALLERY_DECK: f32 = 0.14;
 const RAIL: f32 = 0.92;
 const RAIL_SECTION: f32 = 0.09;
 const POST: f32 = 0.17;
+/// The upper floor's own height, which is the rooms over the gallery.
+const UPPER_HIGH: f32 = 2.90;
 /// The stable down one side: its own long side, its low wall's height and its roof's oversail.
 const STABLE_LONG: f32 = 7.20;
 const STABLE_DEEP: f32 = 3.30;
@@ -155,6 +157,43 @@ pub fn document() -> Building {
             POST,
         ));
     }
+
+    // **The upstairs, which is what round 228 said was missing.** The inn's rooms stand **behind the gallery and over the ground floor**, as an attached mass
+    // with `Join::Storey` — the answer the 土掌房 gave in round 169 and the 风水塔 re-paid in round 207 — set back by the gallery's own depth so the gallery
+    // is a **floor with a roof over it** rather than a shelf on a wall. Its cap is a second roof at the upper height, which is what makes the building
+    // read as two storeys from the yard.
+    let upper_at = inn_at + GALLERY * 0.5;
+    let upper_deep = INN_DEEP - GALLERY;
+    let mut upper = Mass::new(
+        ops::wound(vec![
+            [-INN_LONG * 0.5, upper_at - upper_deep * 0.5],
+            [INN_LONG * 0.5, upper_at - upper_deep * 0.5],
+            [INN_LONG * 0.5, upper_at + upper_deep * 0.5],
+            [-INN_LONG * 0.5, upper_at + upper_deep * 0.5],
+        ])
+        .into_iter()
+        .map(|at| building::PlanNode::new(at, PAVING + INN_HIGH))
+        .collect(),
+        PAVING + INN_HIGH + UPPER_HIGH,
+    );
+    // **The ring's offset stays under half the narrow side** (rounds 74, 144, 171): the narrow side is the upper floor's own depth.
+    upper.wall = upper_deep * 0.20;
+    upper.slab = 0.16;
+    upper.attachment = Some(building::Attachment {
+        host: building::MassId(0),
+        join: building::Join::Storey,
+    });
+    skeleton.masses.push(upper);
+    skeleton.slabs.push(building::Slab::roof(
+        ops::wound(vec![
+            [-cap_x, upper_at - upper_deep * 0.5 - 0.55],
+            [cap_x, upper_at - upper_deep * 0.5 - 0.55],
+            [cap_x, upper_at + upper_deep * 0.5 + 0.55],
+            [-cap_x, upper_at + upper_deep * 0.5 + 0.55],
+        ]),
+        PAVING + INN_HIGH + UPPER_HIGH,
+        PAVING + INN_HIGH + UPPER_HIGH + 0.17,
+    ));
 
     // **The stable** down the yard's west side: an open front of posts and a low wall behind them.
     let stable_x = -YARD_HALF + STABLE_DEEP * 0.5;

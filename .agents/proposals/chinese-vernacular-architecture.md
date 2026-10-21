@@ -4170,3 +4170,18 @@ honest state of a two-storey building in a catalogue with no upstairs**, and it 
 
 **The first camera was too high and the second is at a man's height**, which is the third time this half of the gallery has learned that **a yard is
 photographed from inside it and not from above it** (rounds 195, 203 and 225 are the others).
+## Round 229: the inn's upstairs
+
+Round 228 said the weakest part of the 马店 was its inn: *"the rooms over the gallery are the interior this crate does not have, so the gallery is drawn as a
+floor and a rail, and the inn reads as a low block with a shelf on it."* **The rooms are not interior — they are a second storey**, and a second storey is an
+**attached mass with `Join::Storey`**: the answer the 土掌房 gave in round 169 and the 风水塔 re-paid in round 207. The upper floor is set back by the
+gallery's own depth, so the gallery is a **floor with a roof over it**, and its own cap gives the building **two eaves lines** — which is what makes a
+two-storey house read as one from the yard.
+
+**Two refusals, both named**: `StoreyNotOnTop { mass: 1, host: 1 }` when the upper mass hosted itself (a mass must attach to an **earlier** one), and
+`UnattachedOverlap { 0, 1 }` while that stood — **the overlap error was a symptom of the failed attachment and not a second defect.**
+
+**Identity: 66 scenes, 243 294 rows**; `caravan_inn` 159 → **178** — an upper floor of a hundred and forty rows' fabric and its cap.
+
+**And the debt is retired rather than carried**: `caravan_inn.rs`'s "what it does not draw" now says the upstairs **is** drawn and that the interior behind it
+is not — which is the distinction the last ten rounds kept confusing.
