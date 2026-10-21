@@ -2191,3 +2191,18 @@ what the crate's own cut rules insist on.
 **Identity: 35 scenes, 123 107 rows**; `tibetan_house` 288 → **323** (the third course and the façade's small high windows),
 `plateau_village` 2 365 → **2 265** (four towers, each laid differently). The lean is `0.15 m` a course — steeper than a real
 碉房's 3–5 %, and the module says so rather than pretending the number is surveyed.
+## Round 82: the tower gains a storey so its batter can be honest
+
+Round 81 had to choose between a real ratio and a visible lean, and it chose **17 %** — a wall steeper than any 碉房. The
+reason was arithmetic: the batter region was one storey, and three courses over 1.75 m cannot be both.
+
+**So the tower is four storeys now.** The batter region is two storeys, the ground course still carries the door, and the four
+courses above it step in by `0.07 m` each — **0.28 m of lean in 5.2 m, which is six per cent** and is what a coursed stone
+tower actually does. The frame still reads it: the wall's silhouette narrows visibly over its height, and the bands are there
+to be counted.
+
+The camera rose with the house — a four-storey 碉房 is 10.4 m and the plate is about its whole height.
+
+**Identity: 35 scenes, 123 909 rows**; `tibetan_house` 323 → **349** (the fourth storey's walls, its slits and its roof
+floor), `plateau_village` 2 265 → **3 041** (four towers, each a storey taller). The tower's document is 4.14 MB, and the
+module's own note no longer has to apologise for the number.
