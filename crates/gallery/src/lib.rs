@@ -81,6 +81,7 @@ pub mod compound;
 pub mod dai_temple;
 /// The dawn over the rice terraces, held as numbers so a tracer can be handed it as a world.
 mod dawn;
+pub mod dong_village;
 pub mod drum_tower;
 mod dunes;
 pub mod earthen;
@@ -224,6 +225,7 @@ impl Gallery {
             "shed",
             "stilt",
             "dai_temple",
+            "dong_village",
             "drum_tower",
             "earthen_house",
             "bai_court",
@@ -349,6 +351,7 @@ impl Gallery {
             "street_arcade" => street::street_arcade(),
             "stilt" => stilt::stilt(),
             "dai_temple" => dai_temple::dai_temple(),
+            "dong_village" => dong_village::dong_village(),
             "drum_tower" => drum_tower::drum_tower(),
             "earthen_house" => earthen::earthen_house(),
             "bai_court" => bai_court::bai_court(),

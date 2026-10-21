@@ -2957,3 +2957,23 @@ tall as a man. A 戏台 with no back doors is a stage nobody can walk onto.
 
 **What the plate shows and does not**: the doors sit on the stage's shaded side, so they read as two dark patches on a dark wall — the
 frame is honest about them but not generous. They are measured in the table, which is the part this round can claim.
+## Round 139: the 侗寨, the gallery's seventh settlement
+
+**The first settlement built around a single vertical.** Every other one here is a row: the 傣寨 a line of houses on a well, the
+屯堡石板街 two rows facing each other, the 白族巷 three courts on a lane. A 侗寨 is not a row — it is a **square with a tower on it**,
+and the houses stand round the square.
+
+Three reused documents and two new slabs:
+
+- **`drum_tower::document()` at the origin** — seven storeys of skirted eaves, the settlement's one purpose-built object;
+- **three `chuandou::document()`s round it**, each turned so its porch faces the tower: a Dong house **is** a 穿斗 frame, so the
+  gallery already had the type and this scene is a composition and not a new building;
+- **the 鼓楼坪**, paved as one slab, because the space round a drum tower is a floor where the village meets and sings, and not a road;
+- **the lane**, laid in flags and running past the square's south side — the same joint vocabulary the 石板街 uses, at the other end
+  of the province.
+
+**The camera was too close on the first plate**: the houses cropped at the edges and the tower filled the frame. A tower in the middle
+of a village is a picture of **the village**, not of the tower, and the second camera is backed off to take the square in.
+
+**Identity: 40 scenes, 145 516 rows**; `dong_village` **7 738** — a tower, three houses, a square and twenty flags. The document is
+9.70 MB.
