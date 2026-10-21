@@ -3451,3 +3451,15 @@ floor and a row of posts, and it is what makes a twenty-one metre wall a house i
 a failure to be seen.
 
 **Identity: 45 scenes, 156 544 rows**; `longhouse` 173 → **221** — a deck and its posts. The document is 7.12 MB.
+## Round 177: the 景颇寨, the tenth settlement
+
+A 景颇 village is not a courtyard and not a street of houses: it is **three or four longhouses on a ridge with a lane between them**, and the lane
+is the whole public space the village has. Three `longhouse::document()`s either side of a paved lane — each already carrying its posts, its 敞廊
+and its ladder — and the gate this project has built seven times: two wall lengths either side of the gap, a head across it, two leaves.
+
+**The settlement adds no type at all.** Every part is a document or an arrangement the gallery already had; the round's own code is 90 lines of
+layout. That is the composition move at its plainest — the 侗寨, the 羌寨, the 纳西 court and now the 景颇寨 are **four arrangements of existing
+parts**, and the table shows it: three longhouses are only **720 rows**, against the 侗寨's 8 520, because a longhouse is one room and its village
+is three of them.
+
+**Identity: 46 scenes, 157 264 rows**; `jingpo_village` **720**. The document is 7.28 MB.

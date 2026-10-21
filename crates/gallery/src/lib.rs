@@ -96,6 +96,7 @@ pub mod house;
 /// Public so that `examples/alpine_probe.rs` can report on the skeleton without compiling the
 /// whole document: the massif is this crate's one authored geometry, and the cheap half of the
 /// authoring loop is the only way to iterate on it.
+pub mod jingpo_village;
 pub mod landscape;
 mod lanterns;
 pub mod log_house;
@@ -237,6 +238,7 @@ impl Gallery {
             "benzu_miao",
             "benzu_miao_court",
             "bamboo_house",
+            "jingpo_village",
             "log_house",
             "village_west",
             "tuzhang_mouth",
@@ -368,6 +370,7 @@ impl Gallery {
             "benzu_miao" => benzu_miao::benzu_miao(),
             "benzu_miao_court" => benzu_miao::court(),
             "bamboo_house" => bamboo_house::bamboo_house(),
+            "jingpo_village" => jingpo_village::jingpo_village(),
             "log_house" => log_house::log_house(),
             "village_west" => village::village_west(),
             "tuzhang_mouth" => tuzhang_village::tuzhang_mouth(),
