@@ -103,3 +103,25 @@ It is a *view* and not a building, and that is the honest description: the geome
 this scene adds is the reading — a village of several peoples is only a village when one frame can hold it.
 
 Identity: 25 scenes, **105 876 rows**, of which `village_west` is the same **18 205** as the square's own document.
+## Round 55: the 蘑菇房's straw goes back to the village
+
+Round 45 dropped the straw bundles from the village's 蘑菇房 on a `1.09e-3` planarity report. Round 54 showed that report
+was **the validator's own plane fit cancelling itself to zero** — the bundles were never out of plane. They are back:
+
+| scene | before | after |
+| --- | --- | --- |
+| `village_square` | 18 205 | **18 415** |
+| `village_west` | 18 205 | **18 415** |
+| `hillside_village` | 5 775 | **5 985** |
+
+**26 scenes, 107 270 rows**, and the other twenty-three are unchanged.
+
+The village's sixth building is now finished as the type is: a Hani house under a straw cap, standing down the hill from
+the 侗族 tower, with the 骑楼 row along the lane and two 土掌房 and two 木楞房 round the square — **six buildings, three
+house types, one tower and one gate**, and a covering on every roof that is meant to have one.
+
+### What is left that this arc knows about
+
+- **a hip's end planes carry no rolls**, by construction: their bands converge on the crest and the rolls there are
+  skipped by the guard. A thatched hip therefore has two smooth faces. It is honest and it is recorded in the covering's
+  own comment; a fix would be a covering laid per plane rather than per band.

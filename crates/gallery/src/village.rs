@@ -672,17 +672,15 @@ pub fn compose(ground: impl Fn(f64, f64) -> f64, lane: bool, platform: f32) -> B
         (crate::log_house::document().skeleton, LOG_WEST, true),
         (crate::log_house::document().skeleton, LOG_EAST, true),
         // **The 蘑菇房 is the village's sixth building and its third house type**, and it is seated like the others.
-        // **Two things of its own document are dropped, both of them site work**: its terrace edge, because on this hill
-        // the seat gives that kerb's two ends two different grounds; and its straw covering, because the bundles are
-        // close-scene geometry and one of their two hip rolls leaves its own plane by `1.09e-3` — a millimetre, at a
-        // tolerance of `1e-3`, on a roof that is planar to `0.9e-3` before the seat rounds its coordinates.
+        // **Its terrace edge is dropped**, because a kerb is site work: the document authors one for the scene whose
+        // ground steps down in front of the house, and on this hill the seat gives that kerb's two ends two different
+        // grounds. **Its straw stays on**: the covering was dropped in round 45 on a `1.09e-3` planarity report that
+        // turned out to be the validator's own plane fit cancelling itself to zero (round 54), so the bundles are
+        // geometry again and the village gets them.
         (
             {
                 let mut part = crate::mushroom_house::document().skeleton;
                 part.walls.clear();
-                for roof in &mut part.roofs {
-                    roof.covering = None;
-                }
                 part
             },
             MUSHROOM_AT,
