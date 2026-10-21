@@ -61,9 +61,9 @@ const ROOF_THICKNESS: f32 = 0.18;
 
 /// The thatch, as bundles: `period` of plan, `fill` of that wide, `height` proud of the skin.
 const THATCH: Covering = Covering {
-    period: 0.30,
-    fill: 0.62,
-    height: 0.09,
+    period: 0.17,
+    fill: 0.70,
+    height: 0.055,
 };
 
 /// The piles under the veranda's edge, and the stair up to it.
@@ -354,7 +354,7 @@ pub fn document() -> Building {
         // plane by `1.10e-3` against a tolerance of `1e-3` — the same millimetre that kept the 蘑菇房`s straw out of the
         // village in round 45. Two types, two hip roofs, the same two corner rolls: the fault is in `covering`, not in
         // either house, and it is recorded where the roll is built.
-        skeleton.roofs.push(roof);
+        skeleton.roofs.push(roof.with_covering(THATCH));
     }
 
     // **One seat and one stilt**: the floor is `FLOOR` above the ground, and the posts fill what the seat opened.

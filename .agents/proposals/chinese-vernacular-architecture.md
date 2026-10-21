@@ -1623,3 +1623,38 @@ round should start.
 **Landed**: the census itself, behind `ROLL_DEBUG`, and **26 scenes at 106 060 rows, unchanged**. The 竹楼's thatch stays
 off until the disagreement is understood; a covering that one reading calls flat and another calls twisted is not a
 covering to ship.
+## Round 54: the validator's plane fit was cancelling itself to zero
+
+Five rounds of hypotheses, and the sixth was not about rolls at all. **The validator's least-squares plane was wrong**, and
+the whole coverage story follows from it:
+
+```
+rotation_of:  tangent = shifted - sign * sqrt(shifted^2 + 1)
+```
+
+For a covariance matrix — whose entries are **square metres** — `shifted` is routinely large enough that both terms are the
+same `f32`. The difference is then exactly **zero**: the rotation becomes the identity, Jacobi never diagonalises the
+matrix, and the "smallest direction" it hands back is a **coordinate axis** rather than a normal. A plane is then measured
+against the wrong normal, and a surface that is flat to `0.08 mm` reads `1.106e-3`.
+
+The reciprocal form is algebraically the same root and has no cancellation:
+
+```rust
+let tangent = -sign / (shifted.abs() + (shifted * shifted + 1.0).sqrt());
+```
+
+### What it settles
+
+- **the 竹楼's thatch is back**, and the roof has its bundles: `bamboo_house` 184 → **764 rows**;
+- **26 scenes at 106 640 rows**, and the other twenty-five are **unchanged to the row** — the fit only ever reported
+  false positives, and it now reports none;
+- the two rolls that five rounds could not explain were never twisted: they were **measured against an axis**.
+
+It also closes the arc that began in round 45, when the 蘑菇房's straw was dropped from the village on the same
+`1.085e-3`. That measurement was the same defect, and the straw can come back.
+
+### The lesson worth keeping
+
+Every guard this arc added was a guard on the *expansion* — the tolerance, the plane's construction, the spike test, the
+element's name — and none of them could ever have worked, because the reading that was wrong was **the one doing the
+accusing**. When a measurement disagrees with a hand computation, the disagreement is a defect in the measurement.

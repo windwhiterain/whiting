@@ -3185,7 +3185,13 @@ fn rotation_of(value: &[[f32; 3]; 3], row: usize, column: usize) -> (f32, f32) {
     let off = value[row][column];
     let shifted = difference / (2.0 * off);
     let sign = if shifted >= 0.0 { 1.0 } else { -1.0 };
-    let tangent = shifted - sign * (shifted * shifted + 1.0).sqrt();
+    // **The tangent is taken in the form that does not cancel.** `shifted - sign * sqrt(shifted^2 + 1)` is the textbook
+    // root, and for a covariance — whose entries are square metres — `shifted` is routinely large enough that the two
+    // terms are the same `f32`: the difference is then exactly zero, the rotation becomes the identity, the matrix is
+    // never diagonalised, and the "smallest direction" it reports is a **coordinate axis** rather than a normal. The
+    // reciprocal form is algebraically the same root and has no cancellation. Measured on a 竹楼's hip: a roll whose four
+    // corners stand `0.08 mm` off a plane was reported `1.106e-3`, because the fitted normal was an axis.
+    let tangent = -sign / (shifted.abs() + (shifted * shifted + 1.0).sqrt());
     let cosine = 1.0 / (tangent * tangent + 1.0).sqrt();
     (cosine, tangent * cosine)
 }
