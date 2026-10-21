@@ -41,6 +41,9 @@ const SCREEN_HIGH: f32 = 3.10;
 const SCREEN_CAP: f32 = 0.16;
 /// The south wall either side of the screen, and its height.
 const SOUTH_HIGH: f32 = 2.30;
+/// The 丽江 gate: how wide a gap beside the screen it stands in, and how deep the head lies on the wall's own head.
+const GATE_CLEAR: f32 = 2.40;
+const GATE_HEAD: f32 = 0.46;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
@@ -116,16 +119,23 @@ pub fn document() -> Building {
         SCREEN_HIGH,
         SCREEN_HIGH + SCREEN_CAP,
     ));
-    // **And the two lengths that close the rest of the south side**, from the screen's ends out to the court's corners.
+    // **And the lengths that close the rest of the south side.** The left one runs from the screen's end to the corner; the right one starts
+    // **`GATE_CLEAR` past the screen** and leaves the gap a 丽江 gate stands in — because a court closed on four sides is a court with no
+    // door in it, which is what round 162 shipped.
     for side in [-1.0_f32, 1.0] {
         let inner = side * SCREEN * 0.5;
-        let outer = side * (COURT_X + 0.45);
+        let gate = side * (SCREEN * 0.5 + GATE_CLEAR);
+        let (from, _) = if side < 0.0 {
+            (inner, gate)
+        } else {
+            (gate, inner)
+        };
         let mut wall = Mass::new(
             ops::wound(vec![
-                [inner, COURT_Z - SCREEN_THICK * 0.5],
-                [outer, COURT_Z - SCREEN_THICK * 0.5],
-                [outer, COURT_Z + SCREEN_THICK * 0.5],
-                [inner, COURT_Z + SCREEN_THICK * 0.5],
+                [from, COURT_Z - SCREEN_THICK * 0.5],
+                [side * (COURT_X + 0.45), COURT_Z - SCREEN_THICK * 0.5],
+                [side * (COURT_X + 0.45), COURT_Z + SCREEN_THICK * 0.5],
+                [from, COURT_Z + SCREEN_THICK * 0.5],
             ])
             .into_iter()
             .map(|at| PlanNode::new(at, 0.0))
@@ -135,6 +145,53 @@ pub fn document() -> Building {
         wall.wall = SCREEN_THICK * 0.30;
         wall.slab = 0.16;
         skeleton.masses.push(wall);
+    }
+
+    // **The 丽江门楼: the gate house in that gap.** A stone head across it, resting on the screen's end and the wall's end; two leaves that
+    // close it; and a lean-to over it that sheds into the lane — the head is the host and the roof is `derive::lean_to`'s, which is the
+    // pair every gate in this project has used since round 89.
+    let gate_x = SCREEN * 0.5 + GATE_CLEAR * 0.5;
+    let mut head = Mass::new(
+        ops::wound(vec![
+            [SCREEN * 0.5, COURT_Z - SCREEN_THICK * 0.5],
+            [SCREEN * 0.5 + GATE_CLEAR, COURT_Z - SCREEN_THICK * 0.5],
+            [SCREEN * 0.5 + GATE_CLEAR, COURT_Z + SCREEN_THICK * 0.5],
+            [SCREEN * 0.5, COURT_Z + SCREEN_THICK * 0.5],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, SOUTH_HIGH))
+        .collect(),
+        SOUTH_HIGH + GATE_HEAD,
+    );
+    head.wall = SCREEN_THICK * 0.32;
+    head.slab = 0.14;
+    let head_id = building::MassId(skeleton.masses.len());
+    skeleton.masses.push(head);
+    for side in [-1.0_f32, 1.0] {
+        if let Some(leaf) = building::derive::leaf(
+            [gate_x + side * (GATE_CLEAR * 0.5 - 0.05), 0.10, COURT_Z],
+            GATE_CLEAR * 0.5 - 0.10,
+            SOUTH_HIGH - 0.24,
+            0.07,
+            [-side, 0.0],
+        ) {
+            skeleton.members.push(leaf);
+        }
+    }
+    let plan = [
+        [SCREEN * 0.5 - 0.30, COURT_Z - 1.05],
+        [SCREEN * 0.5 + GATE_CLEAR + 0.30, COURT_Z - 1.05],
+        [SCREEN * 0.5 + GATE_CLEAR + 0.30, COURT_Z + 1.05],
+        [SCREEN * 0.5 - 0.30, COURT_Z + 1.05],
+    ];
+    if let Some(roof) = building::derive::lean_to(
+        head_id,
+        plan,
+        SOUTH_HIGH + GATE_HEAD,
+        SOUTH_HIGH + GATE_HEAD + 0.75,
+        0.13,
+    ) {
+        skeleton.roofs.push(roof);
     }
     let _ = screen_id;
 

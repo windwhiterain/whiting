@@ -3263,3 +3263,13 @@ gap and not a gate.
 
 **Identity: 42 scenes, 151 069 rows**; `naxi_court` **3 522** — three houses, the court, the screen wall and two lengths. The document is
 8.15 MB.
+## Round 163: the 丽江门楼, and the door round 162 shipped without
+
+Round 162 closed the 纳西 court on four sides and put **no door in it**: the screen wall took the middle of the south side and the two lengths
+took the rest, so the court was a sealed box. The right-hand length now starts **`GATE_CLEAR` past the screen**, and a **门楼** stands in the
+gap: a stone head resting on the screen's end and the wall's end, two leaves, and a lean-to over it that sheds into the lane.
+
+**It is the same gate this project has built five times**: the head is the **host** and the roof is `derive::lean_to`'s (round 89's pair), the
+head spans exactly the gap so it owns no wall's plan (round 114), and the leaves are `derive::leaf`'s panels — the **sixth** gate to hang them.
+
+**Identity: 42 scenes, 151 100 rows**; `naxi_court` 3 522 → **3 553** — a head, two leaves and a gate roof. The document is 8.16 MB.
