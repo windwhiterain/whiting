@@ -190,6 +190,18 @@ pub enum Join {
     },
     /// A storey standing on the host's top: same plan centre, base at the host's top, inside its plan.
     Storey,
+    /// A mass standing **under** the host and carrying it: the host's foot is this mass's top, and this mass's plan
+    /// is inside the host's.
+    ///
+    /// # Invariants
+    ///
+    /// **It is the mirror of [`Storey`](Self::Storey) and it is a relation rather than an overlap.** A bridge's
+    /// masonry pier and the timber gallery over it share a plan for as long as the bridge stands; without a word for
+    /// that, `validate`'s overlap question reports the pair as two masses in each other's way — which is what
+    /// happened to this bridge's piers before the variant existed. The two claims are the ones a storey makes, read
+    /// the other way round: the touching elevations are the carried mass's foot on the carrier's top, and the
+    /// contained plan is the carrier's inside the carried.
+    Under,
 }
 
 /// The host a mass is joined to, and how.

@@ -114,9 +114,13 @@ fn river(_x: f64, z: f64) -> f64 {
 }
 /// The two piers: their plan centres, how many posts each of them stands on, how wide a post is, and how deep
 /// the deck runs either side of the bridge`s own axis.
+/// The two piers: their plan centres, how wide and how deep each is at the bed, how far each section is inset
+/// from the one below it, and how thick its stones are.
 const PIERS: [f32; 2] = [-6.5, 6.5];
-const PIER_POSTS: [f32; 3] = [-1.4, 0.0, 1.4];
-const PIER: f32 = 0.45;
+const PIER_HALF: f32 = 1.9;
+const PIER_DEEP: f32 = 1.85;
+const PIER_BATTER: f32 = 0.42;
+const PIER_WALL: f32 = 0.45;
 
 /// How far each abutment section is inset from the one below it, in metres: the batter of its cut stone.
 const ABUTMENT_BATTER: f32 = 0.28;
@@ -530,20 +534,37 @@ pub fn document() -> Building {
         ));
     }
 
-    // **The piers stand in the water as posts**, one set of three to a pier. They are members and not masses because
-    // a mass's plan may not overlap another mass's plan at all: `validate`'s `UnattachedOverlap` is a question about
-    // two plans and carries no elevation, so a masonry pier under a timber gallery is reported as an overlap however
-    // far apart in height the two stand. Measured on this bridge, at the first pier the banded walk drew.
+    // **The piers are masonry, they are battered, and each of them is joined `Under` its gallery.** A pier shares a
+    // plan with the deck it carries, and `validate`'s overlap question carries no elevation — so the relation is what
+    // says the pair are not in each other's way, and it makes the same two claims of them that a storey makes of the
+    // floor it stands on, read the other way round: the gallery's foot is the pier's top, and the pier's plan stands
+    // inside the gallery's. Each pier is **one mass of three sections**, inset from the one below by `PIER_BATTER`.
     for x in PIERS {
-        for z in PIER_POSTS {
-            skeleton.members.push(building::Member::new(
-                building::Anchor::Free { at: [x, -0.6, z] },
-                building::Anchor::Free { at: [x, DECK, z] },
-                [1.0, 0.0],
-                PIER,
-                PIER,
-            ));
-        }
+        let rise = gallery_base - f32::from(RIVER_BED);
+        let sections: Vec<building::Level> = [(0.0_f32, 0.0_f32), (0.45, 0.45), (1.0, 1.0)]
+            .iter()
+            .map(|(share, inset)| {
+                let half_x = PIER_HALF - PIER_BATTER * inset;
+                let half_z = PIER_DEEP - PIER_BATTER * inset;
+                building::Level::flat(
+                    &[
+                        PlanNode::new([x - half_x, -half_z], 0.0),
+                        PlanNode::new([x + half_x, -half_z], 0.0),
+                        PlanNode::new([x + half_x, half_z], 0.0),
+                        PlanNode::new([x - half_x, half_z], 0.0),
+                    ],
+                    f32::from(RIVER_BED) + rise * share,
+                )
+            })
+            .collect();
+        let mut pier = Mass::of_sections(sections);
+        pier.wall = PIER_WALL;
+        pier.slab = 0.25;
+        pier.attachment = Some(building::Attachment {
+            host: gallery_id,
+            join: building::Join::Under,
+        });
+        skeleton.masses.push(pier);
     }
 
     // **The railing down both edges of the deck**: a post every `RAIL_SPACING` and a top rail over them. It

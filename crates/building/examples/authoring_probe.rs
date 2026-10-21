@@ -531,7 +531,7 @@ fn verbs() {
             .attachment
             .map(|attachment| match attachment.join {
                 Join::Wing { station } => station,
-                Join::Storey => 0.0,
+                Join::Storey | Join::Under => 0.0,
             })
     );
     println!(

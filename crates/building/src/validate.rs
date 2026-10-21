@@ -402,6 +402,29 @@ pub enum Violation {
         /// How much of that area stands over the host.
         shared: f32,
     },
+    /// A mass joined `Under` its host does not reach the host's foot: a carrying mass's top and the mass it
+    /// carries stand apart in elevation.
+    UnderNotCarrying {
+        /// The carrying mass.
+        mass: MassId,
+        /// The mass it claims to carry.
+        host: MassId,
+        /// The carrying mass's own top.
+        top: f32,
+        /// The host's own foot.
+        foot: f32,
+    },
+    /// A mass joined `Under` its host reaches past the host's plan, so it carries something wider than itself.
+    UnderOverhangs {
+        /// The carrying mass.
+        mass: MassId,
+        /// The mass it claims to carry.
+        host: MassId,
+        /// Its own plan area.
+        area: f32,
+        /// The area it shares with the host.
+        shared: f32,
+    },
     /// A mass names a host that does not exist, so the attachment it authorizes is not one.
     MassHostMissing {
         /// The mass.
@@ -1356,6 +1379,38 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                             let slack = TOUCH_TOLERANCE * area.sqrt() * 4.0;
                             if area > AREA_TOLERANCE && (area - shared).abs() > slack {
                                 violations.push(Violation::StoreyOverhangs {
+                                    mass: id,
+                                    host: attachment.host,
+                                    area,
+                                    shared,
+                                });
+                            }
+                        }
+                    }
+                }
+                // **A mass under its host makes the same two claims a storey makes, read the other way round**:
+                // its top meets the host's foot, and its plan stands inside the host's. The overlap question is
+                // dropped for a pair with a relation between it, so without this the variant would be an exemption
+                // rather than a relation.
+                Some(host) if attachment.join == Join::Under => {
+                    if (mass.highest_top() - host.lowest()).abs() > TOUCH_TOLERANCE {
+                        violations.push(Violation::UnderNotCarrying {
+                            mass: id,
+                            host: attachment.host,
+                            top: mass.highest_top(),
+                            foot: host.lowest(),
+                        });
+                    }
+                    if let Some(area) = signed_plan_area(&mass.outline()) {
+                        let one: Vec<Vec2> =
+                            mass.outline().iter().map(|node| node.position).collect();
+                        let other: Vec<Vec2> =
+                            host.outline().iter().map(|node| node.position).collect();
+                        if let Some(shared) = crate::clip::shared_area(&one, &other) {
+                            if area > AREA_TOLERANCE
+                                && (area - shared).abs() > TOUCH_TOLERANCE * area.sqrt() * 4.0
+                            {
+                                violations.push(Violation::UnderOverhangs {
                                     mass: id,
                                     host: attachment.host,
                                     area,
@@ -3256,6 +3311,8 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         // The third slot is the host's own index, so the two sorts the same way the overlap does.
         Violation::StoreyNotOnTop { mass, host, .. } => (3, mass.0 as u64, host.0 as u64, 0, 2),
         Violation::StoreyOverhangs { mass, host, .. } => (3, mass.0 as u64, host.0 as u64, 0, 3),
+        Violation::UnderNotCarrying { mass, host, .. } => (3, mass.0 as u64, host.0 as u64, 0, 4),
+        Violation::UnderOverhangs { mass, host, .. } => (3, mass.0 as u64, host.0 as u64, 0, 5),
         Violation::UnattachedOverlap { mass, other } => (3, mass.0 as u64, other.0 as u64, 0, 0),
         // **Rank `3` and its fourth slot, beside `UnattachedOverlap` and not at the end.** The two are
         // one question asked of one pair of masses — whether two unattached plans share area — and the

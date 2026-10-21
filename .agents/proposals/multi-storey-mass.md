@@ -148,3 +148,24 @@ gallery is an overlap however far apart in height the two stand. Two battered pi
 The abutments are the same masonry in the one place on that bridge where no other mass shares their plan. A
 **`StoreyUnder`** relation — "this mass stands under that one" — is what the piers would need, and it is a relation
 and not a level.
+## `Join::Under`: the piers come back
+
+The masonry piers the last round could not draw are drawn, and the reason they could not is now a variant instead
+of a warning: `validate`'s overlap question compares two plans and carries no elevation, so a pier under a gallery is
+an overlap however far apart the two stand in height. **A relation says otherwise, and a relation is what the pair
+actually has.**
+
+`Join::Under` is `Join::Storey`'s mirror, and it is checked as strictly:
+
+| claim | read for a storey | read for an under |
+| --- | --- | --- |
+| the touching elevations | the storey's base is the host's top | the carrier's top is the host's foot |
+| the contained plan | the storey's outline inside the host's | the carrier's outline inside the host's |
+| the refusal | `StoreyNotOnTop`, `StoreyOverhangs` | `UnderNotCarrying`, `UnderOverhangs` |
+
+The 风雨桥's two piers are **one mass of three sections each**, inset `0.42` from the one below — the batter the
+abutments got last round, now where it belongs. Identity: `rain_bridge` 1 632 → **1 638 rows**, and **the other
+twenty-two scenes are unchanged to the row**.
+
+**What the note said was wrong is now recorded as wrong in the right place**: a shared plan is not an overlap when a
+relation says why the two are one thing.

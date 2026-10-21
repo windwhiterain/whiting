@@ -777,6 +777,8 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::GridOnACrownedFace { .. } => "GridOnACrownedFace",
         Violation::ZeroHeight { .. } => "ZeroHeight",
         Violation::UnattachedOverlap { .. } => "UnattachedOverlap",
+        Violation::UnderNotCarrying { .. } => "UnderNotCarrying",
+        Violation::UnderOverhangs { .. } => "UnderOverhangs",
         Violation::OverlapNotMeasured { .. } => "OverlapNotMeasured",
         Violation::OutlineNotMeasured { .. } => "OutlineNotMeasured",
         Violation::MassHostMissing { .. } => "MassHostMissing",

@@ -479,7 +479,7 @@ fn report_split_host(name: &str, skeleton: &BuildingSkeleton) {
         .attachment
         .map_or(0.0, |attachment| match attachment.join {
             Join::Wing { station } => station,
-            Join::Storey => 0.0,
+            Join::Storey | Join::Under => 0.0,
         });
     println!("  host outline: {nodes} node(s), wing attached at station {station:.6}");
     match build(skeleton) {
