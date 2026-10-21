@@ -3463,3 +3463,13 @@ parts**, and the table shows it: three longhouses are only **720 rows**, against
 is three of them.
 
 **Identity: 46 scenes, 157 264 rows**; `jingpo_village` **720**. The document is 7.28 MB.
+## Round 178: the 寨门's posts and the 牛头桩
+
+A 景颇 village is known by two things at its door: the **tall carved posts** of the gate, and the **skull posts** inside it — every buffalo
+sacrificed at a 目瑙纵歌 leaves its horns on a post, and a village with many posts is a village with a history. Two gate posts with a beam
+between them, and three skull posts along the lane's edge.
+
+**They give the village a skyline.** Round 177's plate was three low roofs on a flat lane; the gate posts are the only thing in the settlement
+taller than the houses, and they read at once.
+
+**Identity: 46 scenes, 157 300 rows**; `jingpo_village` 720 → **756** — two gate posts, a beam and three skull posts. The document is 7.30 MB.

@@ -34,6 +34,14 @@ const HEAD_HIGH: f32 = 0.46;
 /// How far the village's wall runs beyond the lane on each side.
 const WALL_SPAN: f32 = 15.0;
 
+/// The 寨门's posts: their section, their height, and the 牛头桩 inside the gate — how many, how far apart, their section and height.
+const GATE_POST: f32 = 0.26;
+const GATE_POST_HIGH: f32 = 4.40;
+const SKULL_POSTS: usize = 3;
+const SKULL_GAP: f32 = 2.80;
+const SKULL_POST: f32 = 0.20;
+const SKULL_HIGH: f32 = 2.35;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the scene: from the lane's mouth, so the gate frames the two long roofs and the third behind them.
@@ -126,6 +134,57 @@ pub fn document() -> Building {
         ) {
             skeleton.members.push(leaf);
         }
+    }
+
+    // **The 寨门's posts and the 牛头桩.** A 景颇 village is known by the **tall carved posts** at its gate and by the **skull posts** inside it:
+    // every buffalo sacrificed at a 目瑙纵歌 leaves its horns on a post, and a village with many posts is a village with a history. Two gate
+    // posts with a beam between them, and three skull posts along the lane's edge.
+    for side in [-1.0_f32, 1.0] {
+        let z = side * (LANE_HALF + GATE_POST * 0.5);
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [GATE_AT + WALL_THICK * 0.5, 0.0, z],
+            },
+            building::Anchor::Free {
+                at: [GATE_AT + WALL_THICK * 0.5, GATE_POST_HIGH, z],
+            },
+            [1.0, 0.0],
+            GATE_POST,
+            GATE_POST,
+        ));
+    }
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [
+                GATE_AT + WALL_THICK * 0.5,
+                GATE_POST_HIGH - GATE_POST,
+                -LANE_HALF - GATE_POST,
+            ],
+        },
+        building::Anchor::Free {
+            at: [
+                GATE_AT + WALL_THICK * 0.5,
+                GATE_POST_HIGH - GATE_POST,
+                LANE_HALF + GATE_POST,
+            ],
+        },
+        [1.0, 0.0],
+        GATE_POST * 0.8,
+        GATE_POST * 0.9,
+    ));
+    for index in 0..SKULL_POSTS {
+        let x = GATE_AT - 5.60 - SKULL_GAP * index as f32;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, 0.0, LANE_HALF - SKULL_POST * 0.5],
+            },
+            building::Anchor::Free {
+                at: [x, SKULL_HIGH, LANE_HALF - SKULL_POST * 0.5],
+            },
+            [1.0, 0.0],
+            SKULL_POST,
+            SKULL_POST,
+        ));
     }
 
     Building::new(skeleton)
