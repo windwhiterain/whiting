@@ -78,6 +78,11 @@ const STAGE_RAIL_HIGH: f32 = 0.86;
 const STAGE_RAIL_BAYS: usize = 6;
 const STAGE_RAIL_POST: f32 = 0.085;
 
+/// The 庑: how far the colonnade stands out from the side wall, how many posts carry it, and a posts section.
+const GALLERY: f32 = 1.60;
+const GALLERY_POSTS: usize = 5;
+const GALLERY_POST: f32 = 0.15;
+
 /// The 山门: how wide it is either side of the axis, how thick, how high, the wall in it, and where it stands.
 const SHANMEN_HALF: f32 = 6.20;
 const SHANMEN_THICK: f32 = 0.60;
@@ -230,6 +235,51 @@ pub fn document() -> Building {
         wall.wall = SIDE_WALL;
         wall.slab = 0.20;
         skeleton.masses.push(wall);
+        let wall_id = MassId(skeleton.masses.len() - 1);
+
+        // **The 庑: a colonnade and a lean-to in front of that wall.** A temple's court is flanked by **covered galleries**, not by
+        // a fence: the wall is their back, `GALLERY` posts stand in front of it, and a lean-to sheds from the wall's head into the
+        // court. Without them the court is a yard between two buildings; with them it is a courtyard, which is what a 本主庙 is
+        // arranged as.
+        let inward = if across < 0.0 { 1.0_f32 } else { -1.0 };
+        let face = across + inward * GALLERY;
+        for index in 0..=GALLERY_POSTS {
+            let z = from + (to - from) * index as f32 / GALLERY_POSTS as f32;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [face, 0.0, z] },
+                building::Anchor::Free {
+                    at: [face, SIDE_HIGH - 0.55, z],
+                },
+                [1.0, 0.0],
+                GALLERY_POST,
+                GALLERY_POST,
+            ));
+        }
+        // The gallery's beam, and its roof: a lean-to from the wall's head down over the posts.
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [face, SIDE_HIGH - 0.62, from],
+            },
+            building::Anchor::Free {
+                at: [face, SIDE_HIGH - 0.62, to],
+            },
+            // **The section's `across` is the run's perpendicular**: the beam runs along `z`, so its across is `x`. Passed as the run
+            // itself it is `MemberDegenerate { length: 7.9 }` — the lesson rounds 100, 106 and 128 all paid for.
+            [1.0, 0.0],
+            GALLERY_POST * 1.2,
+            GALLERY_POST * 1.5,
+        ));
+        let roof_plan = [
+            [across - inward * SIDE_THICK * 0.5, from - 0.30],
+            [face + inward * 0.55, from - 0.30],
+            [face + inward * 0.55, to + 0.30],
+            [across - inward * SIDE_THICK * 0.5, to + 0.30],
+        ];
+        if let Some(roof) =
+            derive::lean_to(wall_id, roof_plan, SIDE_HIGH - 0.60, SIDE_HIGH + 0.10, 0.12)
+        {
+            skeleton.roofs.push(roof.with_covering(TILES));
+        }
     }
 
     // **The 大殿's front is a colonnade**: three bays, and the middle one is a door two bays wide, because the god is behind

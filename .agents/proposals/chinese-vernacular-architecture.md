@@ -2882,3 +2882,16 @@ way of standing a well on the ground**: what a plate reads as the same thing is 
 
 **Identity: 39 scenes, 137 100 rows**; `bai_lane` 5 732 → **5 744** — the platform's top and edges and the step's. The document is
 20.4 MB.
+## Round 133: the 庑
+
+A temple's court is flanked by **covered galleries**, not by a fence. The two side walls were the last of the yard: they are the
+galleries' **back walls** now, with `GALLERY` posts standing in front of each, a beam across their heads, and a **lean-to shedding
+from the wall's head into the court** — six posts and a beam a side, and their own roofs.
+
+Without them a court is a yard between two buildings; with them it is a 本主庙, which is what the type is arranged as.
+
+The beam's section cost the round's first refusal: `MemberDegenerate { length: 7.9 }`, because its `across` was passed as the run —
+the lesson rounds 100, 106 and 128 have each paid for, now written beside the line that pays for it a fourth time.
+
+**Identity: 39 scenes, 137 512 rows**; `benzu_miao` 1 657 → **1 809** — twelve posts, two beams and two gallery roofs — and
+`benzu_miao_court` with it, the same document under its second camera. The document is 7.61 MB.
