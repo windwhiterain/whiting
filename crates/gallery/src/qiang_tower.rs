@@ -56,8 +56,19 @@ const LADDER_WIDE: f32 = 0.42;
 const LADDER_POST: f32 = 0.10;
 const LADDER_RUNGS: usize = 8;
 
+/// The 院墙: the yards own extents, its gates half width, the walls depth and its height.
+const YARD_WEST: f32 = -10.20;
+const YARD_EAST: f32 = 21.40;
+const YARD_SOUTH: f32 = -9.40;
+const YARD_TO: f32 = 12.60;
+const YARD_GATE: f32 = 1.60;
+const YARD_THICK: f32 = 0.48;
+const YARD_HIGH: f32 = 2.05;
+
 /// The 碉房 beside the tower: where it stands in the towers own coordinates.
 const HOUSE_AT: [f32; 2] = [14.20, 2.60];
+
+/// length, its height and a posts section.
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.5;
 
@@ -255,6 +266,35 @@ pub fn document() -> Building {
         ops::merge(&mut skeleton, house),
         "the house places no parts, so the merge always happens"
     );
+
+    // **The 院墙: the courtyard the tower stands in.** A 碉楼 and its 碉房 are one household's yard, and a yard is what a wall makes. Three
+    // lengths close the south and the west sides with a **gate gap** on the axis the camera looks through, so the plate reads a courtyard
+    // with a way into it and not two buildings on a plain.
+    //
+    // **The lengths do not share their corners**: the west length owns the corner square and the two south lengths start at its inner face,
+    // which is round 113's rule and the reason this block is three explicit rectangles instead of three from-to pairs.
+    for (x0, x1, z0, z1) in [
+        (YARD_WEST, YARD_WEST + YARD_THICK, YARD_SOUTH, YARD_TO),
+        (
+            YARD_WEST + YARD_THICK,
+            -YARD_GATE,
+            YARD_SOUTH,
+            YARD_SOUTH + YARD_THICK,
+        ),
+        (YARD_GATE, YARD_EAST, YARD_SOUTH, YARD_SOUTH + YARD_THICK),
+    ] {
+        let mut wall = building::Mass::new(
+            ops::wound(vec![[x0, z0], [x1, z0], [x1, z1], [x0, z1]])
+                .into_iter()
+                .map(|at| building::PlanNode::new(at, 0.0))
+                .collect(),
+            YARD_HIGH,
+        );
+        // **The ring's offset stays under half the wall's depth**: passing the depth itself folds the inner loop (round 144).
+        wall.wall = YARD_THICK * 0.36;
+        wall.slab = 0.16;
+        skeleton.masses.push(wall);
+    }
 
     Building::new(skeleton)
 }

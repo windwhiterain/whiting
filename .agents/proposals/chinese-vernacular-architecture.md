@@ -3161,3 +3161,19 @@ of its entrance. The house stands east of the ladder now, and the plate shows bo
 the pair the type is made of.
 
 **Identity: 41 scenes, 147 374 rows**; `qiang_tower` 889 → **949** — two stringers and eight rungs. The document is 7.42 MB.
+## Round 155: the 院墙, and a rack the plate could not separate
+
+The round opened with the 碉房's **晒架** — the flat roof is a household's drying floor, and a parapet with nothing behind it is a room
+nobody uses. **It was withdrawn**: the `tibetan` type's own roof carries a dark beam frame, and three more racks standing in it were
+photographed and then measured as *indistinguishable* — the plate came back looking the same as without them, twice. A change the frame
+cannot separate from what is already there is not a change; it is clutter with a measurement.
+
+What landed instead is the thing that makes the scene a place: **the 院墙**. A 碉楼 and its 碉房 are one household's yard, and a yard is
+what a wall makes. Three lengths close the south and the west sides with a **gate gap** on the axis the camera looks through, so the plate
+reads a courtyard with a way into it and not two buildings on a plain.
+
+**Two rules paid for it**: the lengths do **not share their corners** — the west length owns the corner square and the south lengths start
+at its inner face (round 113) — and the ring's offset stays **under half the wall's depth** (round 144). Both were measured this round as
+`UnattachedOverlap { 14, 15 }`, `{ 15, 16 }`, and the block is three explicit rectangles because of them.
+
+**Identity: 41 scenes, 147 413 rows**; `qiang_tower` 949 → **988** — three lengths' faces and tops. The document is 7.43 MB.
