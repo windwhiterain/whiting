@@ -87,28 +87,28 @@ use crate::skeleton::BuildingSkeleton;
 /// A mass with no crowns answers an empty vector, which every caller reads as *level at the mass's top*,
 /// so the levelled case is untouched and the two node counts never have to agree.
 pub(crate) fn court_crowns(mass: &Mass, void: usize) -> Vec<f32> {
-    if mass.crowns.is_empty() || mass.crowns.len() != mass.outline.len() {
+    if mass.top_is_level() {
         return Vec::new();
     }
     let Some(loop_) = mass.voids.get(void) else {
         return Vec::new();
     };
-    let count = mass.outline.len();
+    let count = mass.outline().len();
     loop_
         .iter()
         .map(|node| {
             let mut best = (f32::INFINITY, 0usize, 0.0_f32);
             for edge in 0..count {
-                let from = mass.outline[edge].position;
-                let to = mass.outline[(edge + 1) % count].position;
+                let from = mass.outline()[edge].position;
+                let to = mass.outline()[(edge + 1) % count].position;
                 let (along, distance) = nearest_on_edge(node.position, from, to);
                 if distance < best.0 {
                     best = (distance, edge, along);
                 }
             }
             let (_, edge, along) = best;
-            let low = mass.crowns[edge];
-            let high = mass.crowns[(edge + 1) % count];
+            let low = mass.crown().outline[edge].elevation;
+            let high = mass.crown().outline[(edge + 1) % count].elevation;
             low + (high - low) * along
         })
         .collect()

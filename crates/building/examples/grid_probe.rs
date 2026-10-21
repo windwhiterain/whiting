@@ -30,7 +30,7 @@ fn main() {
     println!(
         "the starter house has {} faces; wall top {:.4}",
         faces.len(),
-        skeleton.masses[0].top
+        skeleton.masses[0].highest_top()
     );
 
     println!("\n# one rhythm on every face: 3 bays across, 2 storeys up");

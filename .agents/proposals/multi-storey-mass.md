@@ -85,3 +85,29 @@ Nothing about `Roof` changes: a roof still names the mass it sits on and its eav
 - whether the plate at an interior level is a `Slab` the scene authors (today's way) or something the mass carries
   — the first is enough and is what the drum tower already does;
 - the cost of the change, which is a round of its own and cannot be measured from a note.
+## Landed: `Mass` is a stack of sections
+
+The migration is in, whole, on one branch — and **it changes nothing that is drawn**, which was the test it had to
+pass.
+
+| before | after |
+| --- | --- |
+| `Mass { outline, top, crowns }` | `Mass { levels: Vec<Level> }`; a level is a loop whose every node carries its own elevation |
+| `mass.outline` | `mass.outline()` / `mass.outline_mut()`; `mass.foot()`, `mass.crown()` |
+| `mass.top` | `mass.top_at(node)`, `mass.highest_top()`, `mass.lowest_top()`, `mass.crown_top()` |
+| `mass.crowns` | `mass.crown().outline[i].elevation`, `mass.crown_elevations()`, `mass.top_is_level()` |
+
+**Two faults became unrepresentable.** A crown can no longer disagree with the outline — the top section carries one
+elevation per node by construction — so `CrownCountMismatch` is no longer reported (the variant is left in the enum
+for a caller that still names it). And a seat can no longer move half a building: `site::seat` shifts **every**
+section with one `shift(delta)`, where it used to write the outline, the top and the crown vector separately.
+
+**Measured.** The migration touched **30 files** across `building` and `gallery`, and the number that matters is not
+that count: **all 23 scenes have exactly the same row count as before — 85 167 — and the drum tower's frame is
+byte-identical** (`sha256 8d49906…`, the same file the seven-open-storey round produced). The audit's closure grew
+by `whiting-document` and is green in 3.89 s.
+
+**What is refused by name.** The multi-section wall is *authored* and not yet *expanded*: a mass with more than two
+sections answers [`Problem::SectionsNotExpanded`] rather than being drawn as one band from its foot to its top with
+its middle sections dropped. Building those bands — the battered wall and the projecting floor, with the soffit a
+projection needs — is the next round's work, and this note is what makes it the next round rather than a surprise.

@@ -122,7 +122,7 @@ fn main() {
 
     // The floor stays level, which is what seating bought and posts must not spend.
     let levels: Vec<f32> = building.skeleton.masses[0]
-        .outline
+        .outline()
         .iter()
         .map(|node| node.elevation)
         .collect();

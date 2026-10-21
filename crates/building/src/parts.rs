@@ -318,10 +318,10 @@ impl Template {
         for mass in &self.masses {
             let mut reach = Bounds {
                 x: (f32::INFINITY, f32::NEG_INFINITY),
-                y: (mass.top, mass.top),
+                y: (mass.lowest_top(), mass.highest_top()),
                 z: (f32::INFINITY, f32::NEG_INFINITY),
             };
-            for node in &mass.outline {
+            for node in mass.outline() {
                 reach.x.0 = reach.x.0.min(node.position[0]);
                 reach.x.1 = reach.x.1.max(node.position[0]);
                 reach.z.0 = reach.z.0.min(node.position[1]);

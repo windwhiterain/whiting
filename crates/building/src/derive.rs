@@ -561,8 +561,8 @@ impl Eave {
     /// A parallelogram passes both, and so does every rectangle, which is the shape a starter and
     /// an author reach for first.
     fn read(mass: &Mass, overhang: f32, sink: f32) -> Option<Self> {
-        let elevation = mass.top - sink;
-        let nodes = offset_outward(&mass.outline, overhang, elevation);
+        let elevation = mass.lowest_top() - sink;
+        let nodes = offset_outward(&mass.outline(), overhang, elevation);
         Self::from_nodes(nodes, elevation)
     }
 
@@ -576,10 +576,10 @@ impl Eave {
     /// does not oversail its gable walls. `ends = sides` is the **悬山** every scene drew before a roof
     /// could say which end it meant, and it is the same call this file's other entry points make.
     fn read_by(mass: &Mass, sides: f32, ends: f32, sink: f32) -> Option<Self> {
-        let elevation = mass.top - sink;
-        let probe = offset_outward(&mass.outline, sides, elevation);
+        let elevation = mass.lowest_top() - sink;
+        let probe = offset_outward(&mass.outline(), sides, elevation);
         let long_side = long_side_of(&probe)?;
-        let count = mass.outline.len();
+        let count = mass.outline().len();
         let amounts: Vec<f32> = (0..count)
             .map(|index| {
                 if index == long_side || index == (long_side + 2) % count {
@@ -589,7 +589,7 @@ impl Eave {
                 }
             })
             .collect();
-        let nodes = offset_outward_by(&mass.outline, &amounts, elevation);
+        let nodes = offset_outward_by(&mass.outline(), &amounts, elevation);
         Self::from_nodes(nodes, elevation)
     }
 
@@ -951,7 +951,7 @@ fn rectangle(width: f32, depth: f32) -> Vec<PlanNode> {
 /// `O(nodes)` to offset, once.
 pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Option<Slab> {
     let lowest = mass.lowest();
-    if !(elevation > lowest && elevation < mass.top && thickness > 0.0) {
+    if !(elevation > lowest && elevation < mass.lowest_top() && thickness > 0.0) {
         return None;
     }
     Some(Slab::floor(inner_loop(mass, id)?, elevation - thickness, elevation).with_host(id))
@@ -978,7 +978,7 @@ pub fn rafter_tails(roof: &Roof, mass: &Mass, spacing: f32, width: f32, depth: f
     if spacing <= 0.0 || width <= 0.0 || depth <= 0.0 || roof.crest.len() < 2 {
         return Vec::new();
     }
-    let count = roof.eaves.len().min(mass.outline.len());
+    let count = roof.eaves.len().min(mass.outline().len());
     if count < 3 {
         return Vec::new();
     }
@@ -1005,8 +1005,8 @@ pub fn rafter_tails(roof: &Roof, mass: &Mass, spacing: f32, width: f32, depth: f
         if alignment < 0.999 {
             continue;
         }
-        let wall_from = mass.outline[edge].position;
-        let wall_to = mass.outline[(edge + 1) % count].position;
+        let wall_from = mass.outline()[edge].position;
+        let wall_to = mass.outline()[(edge + 1) % count].position;
         let steps = (length / spacing).ceil().max(1.0) as usize;
         for step in 0..steps {
             let t = (step as f32 + 0.5) / steps as f32;
@@ -1020,7 +1020,7 @@ pub fn rafter_tails(roof: &Roof, mass: &Mass, spacing: f32, width: f32, depth: f
             ];
             tails.push(Member::new(
                 crate::member::Anchor::Free {
-                    at: [wall[0], mass.top, wall[1]],
+                    at: [wall[0], mass.lowest_top(), wall[1]],
                 },
                 crate::member::Anchor::Free {
                     at: [outer[0], roof.eaves[edge].elevation, outer[1]],
@@ -1108,7 +1108,7 @@ pub fn court_paving(
 pub(crate) fn inner_loop(mass: &Mass, id: MassId) -> Option<Vec<Vec2>> {
     let mut problems = Vec::new();
     let inside = crate::expand::offset_loop(
-        &mass.outline,
+        &mass.outline(),
         crate::mass::AuthoredLoop::Outline { mass: id },
         mass.wall,
         mass.plan_area(),

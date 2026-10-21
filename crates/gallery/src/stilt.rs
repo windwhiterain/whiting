@@ -438,15 +438,20 @@ pub fn document() -> Building {
         .map(|point| point.elevation)
         .fold(f32::NEG_INFINITY, f32::max);
     let apex = ridge - roof.thickness - 0.01;
-    let level = skeleton.masses[0].top;
-    let nodes = skeleton.masses[0].outline.len();
+    let level = skeleton.masses[0].crown_top();
+    let nodes = skeleton.masses[0].outline().len();
     let mut crowns = vec![level; nodes];
     for (node, crown) in crowns.iter_mut().enumerate() {
         if under_the_ridge(&skeleton.masses[0], node, STARTER.width * 0.5) {
             *crown = apex;
         }
     }
-    skeleton.masses[0].crowns = crowns;
+    {
+        let top = skeleton.masses[0].crown_mut();
+        for (node, crown) in top.outline.iter_mut().enumerate() {
+            crown.elevation = crowns.get(node).copied().unwrap_or(level);
+        }
+    }
     gallery(&mut skeleton);
     Building::new(skeleton)
 }
@@ -645,7 +650,7 @@ fn foot_of_member(member: &building::Member) -> Option<[f32; 2]> {
 /// A gable end is a wall at one of the two extremes of the ridge's own axis, and its middle is the
 /// point where the gable's two rakes meet. The test reads the **plan**, so it survives seating.
 fn under_the_ridge(mass: &building::Mass, node: usize, half_width: f32) -> bool {
-    let at = mass.outline[node].position;
+    let at = mass.outline()[node].position;
     at[1].abs() < 1.0e-3 && (at[0].abs() - half_width).abs() < 1.0e-3
 }
 
@@ -655,11 +660,11 @@ fn under_the_ridge(mass: &building::Mass, node: usize, half_width: f32) -> bool 
 /// along it. Both stations are measured on the **closed** loop before either insertion, and answered
 /// far end first, because an insertion moves every station after it.
 fn gable_stations(mass: &building::Mass, half_width: f32) -> Vec<f32> {
-    let count = mass.outline.len();
+    let count = mass.outline().len();
     let lengths: Vec<f32> = (0..count)
         .map(|edge| {
-            let from = mass.outline[edge].position;
-            let to = mass.outline[(edge + 1) % count].position;
+            let from = mass.outline()[edge].position;
+            let to = mass.outline()[(edge + 1) % count].position;
             ((to[0] - from[0]).powi(2) + (to[1] - from[1]).powi(2)).sqrt()
         })
         .collect();
@@ -667,8 +672,8 @@ fn gable_stations(mass: &building::Mass, half_width: f32) -> Vec<f32> {
     let mut stations = Vec::new();
     let mut walked = 0.0_f32;
     for (edge, length) in lengths.iter().enumerate() {
-        let from = mass.outline[edge].position;
-        let to = mass.outline[(edge + 1) % count].position;
+        let from = mass.outline()[edge].position;
+        let to = mass.outline()[(edge + 1) % count].position;
         let gable = (from[0] - to[0]).abs() < 1.0e-4 && (from[0].abs() - half_width).abs() < 1.0e-4;
         if gable {
             stations.push((walked + length * 0.5) / perimeter);

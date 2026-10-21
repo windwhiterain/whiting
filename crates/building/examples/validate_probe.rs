@@ -421,7 +421,7 @@ fn hip_starter_with_a_floor_at_the_ground_line() -> BuildingSkeleton {
     let mut floor = floor_slab(&mass, MassId(0), 2.2, 0.22).expect("2.2 m is inside a 3.2 m wall");
     let thickness = floor.thickness();
     let lowest = mass
-        .outline
+        .outline()
         .iter()
         .map(|node| node.elevation)
         .fold(f32::INFINITY, f32::min);
@@ -1031,23 +1031,28 @@ fn report_strips(skeleton: &BuildingSkeleton) {
             );
             continue;
         };
-        let count = mass.outline.len();
+        let count = mass.outline().len();
         let under = |station: f32| {
-            let from = mass.outline[face.edge].elevation - mass.slab;
-            let to = mass.outline[(face.edge + 1) % count].elevation - mass.slab;
+            let from = mass.outline()[face.edge].elevation - mass.slab;
+            let to = mass.outline()[(face.edge + 1) % count].elevation - mass.slab;
             from + (to - from) * (station / length)
         };
         let floor = under(extents.from).max(under(extents.to));
         println!(
             "  opening {index} on edge {}: the strip runs u 0.0000..{length:.4}, its wall top is y {:.4}, and the\n    \
              ground line under this hole is at y {floor:.4}; the hole is u {:.4}..{:.4} by y {:.4}..{:.4}",
-            face.edge, mass.top, extents.from, extents.to, extents.low, extents.high
+            face.edge,
+            mass.highest_top(),
+            extents.from,
+            extents.to,
+            extents.low,
+            extents.high
         );
         println!(
             "    margins, each of which must stand above {GRID_TOLERANCE:.4} m: start {:.4}, end {:.4}, head {:.4}, sill {:.4}",
             extents.from,
             length - extents.to,
-            mass.top - extents.high,
+            mass.highest_top() - extents.high,
             extents.low - floor
         );
     }
@@ -1139,15 +1144,15 @@ fn main() {
     report_document("a house: one mass and a two plane roof", &house());
 
     let mut reversed = house();
-    reversed.masses[0].outline.reverse();
+    reversed.masses[0].outline_mut().reverse();
     report_document("mass outline walked the other way", &reversed);
 
     let mut flat = house();
-    flat.masses[0].top = -1.0;
+    flat.masses[0].set_top(-1.0);
     report_document("mass wall top below its outline", &flat);
 
     let mut stub = house();
-    stub.masses[0].outline.truncate(2);
+    stub.masses[0].outline_mut().truncate(2);
     report_document("mass outline of two nodes", &stub);
 
     report_document(
@@ -1504,7 +1509,7 @@ fn a_mass_outline_that_meets_itself() {
             Vec::new(),
         );
         let plan_of =
-            |mass: &Mass| -> Vec<Vec2> { mass.outline.iter().map(|n| n.position).collect() };
+            |mass: &Mass| -> Vec<Vec2> { mass.outline().iter().map(|n| n.position).collect() };
         let shared = whiting_building::clip::shared_area(
             &plan_of(&skeleton.masses[0]),
             &plan_of(&skeleton.masses[1]),
@@ -1577,7 +1582,7 @@ fn plans_the_clipper_cannot_compare() {
             Vec::new(),
         );
         let plan_of =
-            |mass: &Mass| -> Vec<Vec2> { mass.outline.iter().map(|n| n.position).collect() };
+            |mass: &Mass| -> Vec<Vec2> { mass.outline().iter().map(|n| n.position).collect() };
         let shared = whiting_building::clip::shared_area(
             &plan_of(&skeleton.masses[0]),
             &plan_of(&skeleton.masses[1]),

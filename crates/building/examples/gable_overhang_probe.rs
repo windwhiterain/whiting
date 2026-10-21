@@ -36,8 +36,8 @@ fn main() {
     let host = whiting_building::MassId(0);
 
     // The mass's own extents, which every claim below is measured against.
-    let xs: Vec<f32> = mass.outline.iter().map(|node| node.position[0]).collect();
-    let zs: Vec<f32> = mass.outline.iter().map(|node| node.position[1]).collect();
+    let xs: Vec<f32> = mass.outline().iter().map(|node| node.position[0]).collect();
+    let zs: Vec<f32> = mass.outline().iter().map(|node| node.position[1]).collect();
     let (low_x, high_x) = (
         xs.iter().copied().fold(f32::INFINITY, f32::min),
         xs.iter().copied().fold(f32::NEG_INFINITY, f32::max),
@@ -186,7 +186,7 @@ fn main() {
         "the old entry point is the new one with one number twice"
     );
     println!("  gable_roof(x, y) and gable_roof_by(x, y, y) are the same roof, field for field");
-    let _ = Roof::new(host, mass.outline.clone(), 0.22);
+    let _ = Roof::new(host, mass.outline().to_vec(), 0.22);
 }
 
 /// Returns nothing; left for the shape of the file.\nfn flush_ends_placeholder() {}\n\n/// Returns the plan extents of a loop: `(low_x, high_x, low_z, high_z)`.

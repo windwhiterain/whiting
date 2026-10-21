@@ -121,7 +121,9 @@ fn document(crowns: &[f32; 4]) -> Building {
     );
     mass.wall = 0.4;
     mass.slab = 0.3;
-    mass.crowns = crowns.to_vec();
+    for (node, crown) in mass.crown_mut().outline.iter_mut().zip(crowns) {
+        node.elevation = *crown;
+    }
     mass.voids.push(
         vec![
             [COURT[0], COURT[1]],

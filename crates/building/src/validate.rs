@@ -1254,7 +1254,7 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     let readings: Vec<OutlineReading> = skeleton
         .masses
         .iter()
-        .map(|mass| OutlineReading::of(&plan_of(&mass.outline)))
+        .map(|mass| OutlineReading::of(&plan_of(&mass.outline())))
         .collect();
     for (index, mass) in skeleton.masses.iter().enumerate() {
         let id = MassId(index);
@@ -1262,10 +1262,10 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
         // `plan_area` answers 0.0 for it, which would be reported as a winding fault when it says
         // nothing about the winding at all. A zero area from three or more nodes is a different
         // fault and is reported below.
-        if mass.outline.len() < 3 {
+        if mass.outline().len() < 3 {
             violations.push(Violation::OutlineTooShort {
                 mass: id,
-                nodes: mass.outline.len(),
+                nodes: mass.outline().len(),
             });
         } else {
             let area = mass.plan_area();
@@ -1292,7 +1292,7 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
         // Staged the same way: `highest` of an empty outline is not an elevation, it is a fold
         // over nothing that answers negative infinity. A crowned mass is measured by its **highest**
         // top, because a gable that rises to its roof is a wall and not a zero-height one.
-        if !mass.outline.is_empty() {
+        if !mass.outline().is_empty() {
             let highest = mass.highest();
             let top = mass.highest_top();
             if top <= highest {
@@ -1306,23 +1306,18 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
         // **A crown is one elevation per node, and the two counts are the statement.** A crown that is
         // neither empty nor the outline's length cannot be read node by node, so it is reported rather
         // than indexed past the end of.
-        if !mass.crowns.is_empty() && mass.crowns.len() != mass.outline.len() {
-            violations.push(Violation::CrownCountMismatch {
-                mass: id,
-                crowns: mass.crowns.len(),
-                nodes: mass.outline.len(),
-            });
-        }
-        // Every crown stands above the wall's own foot, or it is a wall that has been cut into its base.
-        for (node, top) in mass.crowns.iter().enumerate() {
-            let Some(node_at) = mass.outline.get(node) else {
+        // **A crown cannot disagree with the outline any more**: the top section carries one elevation per node by
+        // construction, so `CrownCountMismatch` has nothing to report. What is still a statement is that every wall
+        // top stands above the foot it rises from, or the wall has been cut into its own base.
+        for (node, top) in mass.crown().outline.iter().enumerate() {
+            let Some(node_at) = mass.outline().get(node) else {
                 break;
             };
-            if *top <= node_at.elevation {
+            if top.elevation <= node_at.elevation {
                 violations.push(Violation::CrownBelowBase {
                     mass: id,
                     node,
-                    top: *top,
+                    top: top.elevation,
                     base: node_at.elevation,
                 });
             }
@@ -1339,19 +1334,19 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                 // inside the host's -- are exactly what is read here.
                 Some(host) if attachment.join == Join::Storey => {
                     let base = mass.lowest();
-                    if (base - host.top).abs() > TOUCH_TOLERANCE {
+                    if (base - host.lowest_top()).abs() > TOUCH_TOLERANCE {
                         violations.push(Violation::StoreyNotOnTop {
                             mass: id,
                             host: attachment.host,
                             base,
-                            top: host.top,
+                            top: host.lowest_top(),
                         });
                     }
-                    if let Some(area) = signed_plan_area(&mass.outline) {
+                    if let Some(area) = signed_plan_area(&mass.outline()) {
                         let one: Vec<Vec2> =
-                            mass.outline.iter().map(|node| node.position).collect();
+                            mass.outline().iter().map(|node| node.position).collect();
                         let other: Vec<Vec2> =
-                            host.outline.iter().map(|node| node.position).collect();
+                            host.outline().iter().map(|node| node.position).collect();
                         if let Some(shared) = crate::clip::shared_area(&one, &other) {
                             // **The tolerance is a length here, not an area**: the question is whether the storey
                             // reaches past its host by a millimetre of wall, and a millimetre of wall on a
@@ -1467,7 +1462,7 @@ impl OutlineReading {
 fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     for (index, mass) in skeleton.masses.iter().enumerate() {
         let id = MassId(index);
-        let outline: Vec<Vec2> = mass.outline.iter().map(|node| node.position).collect();
+        let outline: Vec<Vec2> = mass.outline().iter().map(|node| node.position).collect();
         let voids: Vec<Vec<Vec2>> = mass
             .voids
             .iter()
@@ -1697,7 +1692,7 @@ fn check_void_walls(id: MassId, mass: &Mass, violations: &mut Vec<Violation>) {
     }
     let mut problems = Vec::new();
     let Some(inside) = crate::expand::offset_loop(
-        &mass.outline,
+        &mass.outline(),
         crate::mass::AuthoredLoop::Outline { mass: id },
         mass.wall,
         mass.plan_area(),
@@ -1809,8 +1804,8 @@ fn check_overlap(
                 continue;
             }
             match plans_share_area(
-                &skeleton.masses[first].outline,
-                &skeleton.masses[second].outline,
+                &skeleton.masses[first].outline(),
+                &skeleton.masses[second].outline(),
             ) {
                 Some(true) => violations.push(Violation::UnattachedOverlap {
                     mass: MassId(first),
@@ -2342,7 +2337,7 @@ fn on_eave_loop(point: Vec3, roof: &Roof) -> bool {
 fn edge_crowns(skeleton: &BuildingSkeleton, face: crate::grid::FaceRef) -> Option<(f32, f32)> {
     let mass = skeleton.mass(face.mass)?;
     let loop_: &[crate::mass::PlanNode] = match face.void {
-        None => &mass.outline,
+        None => &mass.outline(),
         Some(void) => mass.voids.get(void)?,
     };
     let count = loop_.len();
@@ -2352,17 +2347,17 @@ fn edge_crowns(skeleton: &BuildingSkeleton, face: crate::grid::FaceRef) -> Optio
     let at = |index: usize| loop_[index % count];
     let (first, second) = (at(face.edge), at(face.edge + 1));
     let (low, high) = match face.void {
-        None if mass.crowns.len() == count => {
-            (mass.crowns[face.edge], mass.crowns[(face.edge + 1) % count])
-        }
-        None => (mass.top, mass.top),
+        None => (
+            mass.crown().outline[face.edge].elevation,
+            mass.crown().outline[(face.edge + 1) % count].elevation,
+        ),
         // A court's ring is crowned by the mass's own crown surface read at the court's nodes, which is
         // the same array `courtyard::ring` builds from.
         Some(void) => {
             let crowns = crate::courtyard::court_crowns(mass, void);
             match crowns.len() {
                 length if length == count => (crowns[face.edge], crowns[(face.edge + 1) % count]),
-                _ => (mass.top, mass.top),
+                _ => (mass.crown().lowest(), mass.crown().lowest()),
             }
         }
     };
@@ -2512,7 +2507,7 @@ fn reaches_the_wall_edge(skeleton: &BuildingSkeleton, face: FaceRef, extents: &E
     let floor = ground_at(line, length, extents.from).max(ground_at(line, length, extents.to));
     !(extents.from > GRID_TOLERANCE
         && extents.to < length - GRID_TOLERANCE
-        && extents.high < mass.top - GRID_TOLERANCE
+        && extents.high < mass.highest_top() - GRID_TOLERANCE
         && extents.low > floor + GRID_TOLERANCE)
 }
 
@@ -2830,7 +2825,7 @@ fn check_plate_coverage(
     let Some(mass) = skeleton.mass(host) else {
         return;
     };
-    if mass.outline.len() < 3 {
+    if mass.outline().len() < 3 {
         return;
     }
     // **A role selects the plate, and a role is authored.** A floor and a flat roof are hosted slabs
@@ -2878,7 +2873,7 @@ fn check_plate_coverage(
 fn outline_length(mass: &Mass) -> f32 {
     plan_length(
         &mass
-            .outline
+            .outline()
             .iter()
             .map(|node| node.position)
             .collect::<Vec<_>>(),

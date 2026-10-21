@@ -151,7 +151,7 @@ pub fn stack_mass(skeleton: &mut BuildingSkeleton, base: MassId, mut mass: Mass)
 /// `O(n)` in the loop's nodes — one walk to find the edge, one insert — which is the cost of
 /// answering "where is this station" over a loop with no index to search.
 pub fn split_outline(mass: &mut Mass, station: f32) -> Option<usize> {
-    let nodes = &mass.outline;
+    let nodes = &mass.outline();
     let count = nodes.len();
     if count < 2 {
         return None;
@@ -178,17 +178,21 @@ pub fn split_outline(mass: &mut Mass, station: f32) -> Option<usize> {
         from.elevation + (to.elevation - from.elevation) * within,
     );
     let at = index + 1;
-    // **A crown vector moves with the loop or it stops being a crown vector.** The two are one array per
-    // node by definition (`CrownCountMismatch` holds them to it), so the new node takes the crown the wall
-    // top has at its own station — the same interpolation the elevation gets — and a mass that had no
-    // crowns keeps having none.
-    if mass.crowns.len() == count {
-        let before = mass.crowns[index];
-        let after = mass.crowns[(index + 1) % count];
-        let crown = before + (after - before) * within;
-        mass.crowns.insert(at, crown);
-    }
-    mass.outline.insert(at, mixed);
+    // **The top section moves with the loop or it stops being a section.** The two are one node per position by
+    // definition, so the new node takes the wall top the section has at its own station — the same interpolation
+    // the foot's elevation gets — and a mass with a level top stays level, because `before` and `after` are equal
+    // there.
+    let crown = {
+        let top = mass.crown();
+        let before = top.outline[index].elevation;
+        let after = top.outline[(index + 1) % count].elevation;
+        before + (after - before) * within
+    };
+    mass.crown_mut().outline.insert(
+        at,
+        PlanNode::new(lerp(from.position, to.position, within), crown),
+    );
+    mass.outline_mut().insert(at, mixed);
     Some(at)
 }
 
@@ -203,7 +207,7 @@ pub fn split_outline(mass: &mut Mass, station: f32) -> Option<usize> {
 /// The `Option` is the verb list's uniformity rather than a refusal: the argument is already a
 /// resolved `&mut Mass`, so there is no index that could dangle and nothing to report.
 pub fn set_top(mass: &mut Mass, top: f32) -> Option<()> {
-    mass.top = top;
+    mass.set_top(top);
     Some(())
 }
 
@@ -501,7 +505,7 @@ pub fn translate(skeleton: &mut BuildingSkeleton, offset: Vec2) {
         node.position[1] += offset[1];
     };
     for mass in &mut skeleton.masses {
-        for node in &mut mass.outline {
+        for node in mass.outline_mut() {
             shift(node);
         }
     }

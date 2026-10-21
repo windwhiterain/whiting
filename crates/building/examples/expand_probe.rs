@@ -473,7 +473,7 @@ fn report_solid(mesh: &BuildingMesh, solid: SolidId, nodes: Option<usize>) {
 /// Prints one host that `ops::attach_mass` split, and whatever the build says about it.
 fn report_split_host(name: &str, skeleton: &BuildingSkeleton) {
     println!("{name}");
-    let nodes = skeleton.masses[0].outline.len();
+    let nodes = skeleton.masses[0].outline().len();
     let station = skeleton.masses[1]
         .attachment
         .map_or(0.0, |attachment| match attachment.join {

@@ -548,9 +548,9 @@ fn front_edge(mass: &Mass, plot: &building::frontage::Plot) -> Option<usize> {
     let same = |left: [f32; 2], right: [f32; 2]| {
         (left[0] - right[0]).abs() < 1.0e-4 && (left[1] - right[1]).abs() < 1.0e-4
     };
-    for index in 0..mass.outline.len() {
-        let from = mass.outline[index].position;
-        let to = mass.outline[(index + 1) % mass.outline.len()].position;
+    for index in 0..mass.outline().len() {
+        let from = mass.outline()[index].position;
+        let to = mass.outline()[(index + 1) % mass.outline().len()].position;
         let forward = same(from, plot.front[0]) && same(to, plot.front[1]);
         let backward = same(from, plot.front[1]) && same(to, plot.front[0]);
         if forward || backward {

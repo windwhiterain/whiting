@@ -267,7 +267,7 @@ impl BuildingSkeleton {
     /// elevations — so this answers for either side of a face's
     /// [`LoopSide`](crate::grid::LoopSide) without reading the offset. `O(1)`.
     pub fn face_extent(&self, face: FaceRef) -> Option<(f32, f32)> {
-        let top = self.mass(face.mass)?.top;
+        let top = self.mass(face.mass)?.top_at(face.edge);
         grid::loop_extent(self.face_loop(face)?, face.edge, top)
     }
 
@@ -287,7 +287,7 @@ impl BuildingSkeleton {
         let mass = self.mass(face.mass)?;
         match face.void {
             Some(void) => mass.voids.get(void).map(Vec::as_slice),
-            None => Some(mass.outline.as_slice()),
+            None => Some(mass.outline()),
         }
     }
 
@@ -322,7 +322,7 @@ impl BuildingSkeleton {
     /// rhythm it never had. [`court_faces_of`](Self::court_faces_of) is the other list.
     pub fn faces_of(&self, mass: MassId) -> Vec<FaceRef> {
         match self.mass(mass) {
-            Some(held) => (0..held.outline.len())
+            Some(held) => (0..held.outline().len())
                 .map(|edge| FaceRef::new(mass, edge))
                 .collect(),
             None => Vec::new(),
@@ -382,7 +382,7 @@ impl BuildingSkeleton {
     /// same indices, because the two loops of one ring are walked in step.
     pub fn inner_faces_of(&self, mass: MassId) -> Vec<FaceRef> {
         match self.mass(mass) {
-            Some(held) => (0..held.outline.len())
+            Some(held) => (0..held.outline().len())
                 .map(|edge| FaceRef::inner(mass, edge))
                 .collect(),
             None => Vec::new(),

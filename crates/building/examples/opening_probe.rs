@@ -26,7 +26,7 @@ fn main() {
     let mass = MassId(0);
     let wall = skeleton.masses[0].wall;
     let slab = skeleton.masses[0].slab;
-    let top = skeleton.masses[0].top;
+    let top = skeleton.masses[0].highest_top();
 
     println!(
         "# the house: {:.1} x {:.1}, wall top {top:.4}, wall {wall:.4} thick, slab {slab:.4}",

@@ -68,7 +68,9 @@ fn main() {
     );
     println!(
         "  its underside is at {:.4}, which is the wall top {:.4} less the sink {:.4}",
-        slab.bottom, skeleton.masses[0].top, STARTER.sink
+        slab.bottom,
+        skeleton.masses[0].highest_top(),
+        STARTER.sink
     );
 
     let built = building.build().expect("the flat-roofed building expands");

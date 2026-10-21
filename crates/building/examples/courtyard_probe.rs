@@ -1184,13 +1184,13 @@ fn the_degenerate_edge_is_the_crates_own() {
     print_loop("    the host's own outline", &plan_nodes_of(&host));
     println!(
         "    the edge it leaves runs ({:.4}, {:.4}) to ({:.4}, {:.4}), which is {} long",
-        host.outline[at - 1].position[0],
-        host.outline[at - 1].position[1],
-        host.outline[at].position[0],
-        host.outline[at].position[1],
+        host.outline()[at - 1].position[0],
+        host.outline()[at - 1].position[1],
+        host.outline()[at].position[0],
+        host.outline()[at].position[1],
         length(difference(
-            host.outline[at].position,
-            host.outline[at - 1].position
+            host.outline()[at].position,
+            host.outline()[at - 1].position
         ))
     );
     let skeleton = BuildingSkeleton::new(vec![host], Vec::new());
@@ -1308,7 +1308,7 @@ fn with_degenerate_edge(corners: &[[f32; 2]], at: Option<usize>) -> Vec<[f32; 2]
 /// Returns a mass's own plan positions in node order, which is what every loop reading in this probe
 /// takes.
 fn plan_nodes_of(mass: &Mass) -> Vec<Vec2> {
-    mass.outline.iter().map(|node| node.position).collect()
+    mass.outline().iter().map(|node| node.position).collect()
 }
 
 /// Returns the loop walked east until its own east side stands `over` metres outside an outline whose

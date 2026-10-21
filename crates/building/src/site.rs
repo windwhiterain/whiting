@@ -129,7 +129,7 @@ pub fn seat(
 ) -> SeatReport {
     let mut report = SeatReport::default();
     for index in 0..skeleton.masses.len() {
-        let samples = samples_of(&skeleton.masses[index].outline);
+        let samples = samples_of(&skeleton.masses[index].outline());
         let mut lowest = f32::INFINITY;
         let mut highest = f32::NEG_INFINITY;
         let mut complete = true;
@@ -147,18 +147,14 @@ pub fn seat(
         }
         let level = highest + offset;
         let reference = skeleton.masses[index]
-            .outline
+            .outline()
             .iter()
             .map(|node| node.elevation)
             .fold(f32::INFINITY, f32::min);
         let delta = level - reference;
-        for node in &mut skeleton.masses[index].outline {
-            node.elevation += delta;
-        }
-        skeleton.masses[index].top += delta;
-        for top in &mut skeleton.masses[index].crowns {
-            *top += delta;
-        }
+        // **The seat moves the whole shell**: every section, foot included, by the same `delta`, which is what a
+        // stack of sections means and what two separate field writes could not say once a mass had more than two.
+        skeleton.masses[index].shift(delta);
         let host = MassId(index);
         // **A rhythm is authored against a face, and a face that moves takes its rhythm with it.** A grid's
         // `levels` are the face's own elevations, so a mass that the seat moves keeps its bays and its storeys
@@ -356,7 +352,7 @@ pub fn posts(
         let mut placed = 0usize;
         let mut highest = f32::NEG_INFINITY;
         let mut lowest = f32::INFINITY;
-        for at in post_positions(&mass.outline, spacing) {
+        for at in post_positions(&mass.outline(), spacing) {
             // **A post is a member now, and a member's foot is one point.** The wall it used to be was
             // a run of its own section across the ground, so its foot tilted with the hill it stood on;
             // a real post stands on a stone, and the stone is level. The head is the same point it
@@ -556,7 +552,7 @@ pub fn report(skeleton: &BuildingSkeleton) -> SiteReport {
     let mut highest = f32::NEG_INFINITY;
     for (index, mass) in skeleton.masses.iter().enumerate() {
         let id = MassId(index);
-        for node in &mass.outline {
+        for node in mass.outline() {
             lowest = lowest.min(node.elevation);
             highest = highest.max(node.elevation);
         }
@@ -575,7 +571,7 @@ pub fn report(skeleton: &BuildingSkeleton) -> SiteReport {
             mass: id,
             name: mass.name.clone(),
             footprint: mass.plan_area().abs(),
-            top: mass.top,
+            top: mass.highest_top(),
             lowest: mass.lowest(),
             roofs,
             openings,
@@ -627,7 +623,7 @@ impl Bounds2 {
 
     fn of(mass: &crate::mass::Mass) -> Self {
         let mut bounds = Self::empty();
-        for node in &mass.outline {
+        for node in mass.outline() {
             bounds.grow(node.position);
         }
         bounds

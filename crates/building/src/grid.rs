@@ -487,7 +487,7 @@ pub fn increasing(stops: &[f32]) -> bool {
 ///
 /// `O(1)` in the mass's node count: it reads the two nodes the edge joins.
 pub fn face_length(mass: &Mass, edge: usize) -> Option<f32> {
-    loop_length(&mass.outline, edge)
+    loop_length(&mass.outline(), edge)
 }
 
 /// Returns the vertical extent of one face: the lowest ground it stands on, and the wall top.
@@ -496,7 +496,7 @@ pub fn face_length(mass: &Mass, edge: usize) -> Option<f32> {
 /// level and it is the shorter side of a trapezoidal face that decides what a storey can be. `None`
 /// when there is no such edge.
 pub fn face_extent(mass: &Mass, edge: usize) -> Option<(f32, f32)> {
-    loop_extent(&mass.outline, edge, mass.top)
+    loop_extent(&mass.outline(), edge, mass.top_at(edge))
 }
 
 /// Returns the plan length of one edge of any authored loop, or `None` when the edge is not there.

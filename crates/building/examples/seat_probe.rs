@@ -52,7 +52,7 @@ fn main() {
     println!(
         "  every node stands at the level: {}",
         skeleton.masses[0]
-            .outline
+            .outline()
             .iter()
             .all(|node| (node.elevation - seated.level).abs() < 1.0e-6)
     );
@@ -101,7 +101,7 @@ fn main() {
     let mut pair = skeleton.clone();
     let mut second = pair.masses[0].clone();
     let shift = [12.0_f32, 0.0];
-    for node in &mut second.outline {
+    for node in second.outline_mut() {
         node.position[0] += shift[0];
         node.position[1] += shift[1];
     }
@@ -154,7 +154,7 @@ fn main() {
         partly.len(),
         unsure.masses.len(),
         unsure.masses[0]
-            .outline
+            .outline()
             .iter()
             .all(|node| node.elevation == 0.0)
     );
@@ -164,7 +164,7 @@ fn main() {
         "  a ground that answers nothing seated {} masses, and the document is untouched: {}",
         nothing.len(),
         unknown.masses[0]
-            .outline
+            .outline()
             .iter()
             .all(|node| node.elevation == 0.0)
     );

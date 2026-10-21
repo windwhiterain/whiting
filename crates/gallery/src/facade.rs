@@ -50,11 +50,11 @@ impl Front {
 /// edge wins: a split loop has several short edges at a corner, and the wall a court opens onto is the long
 /// one. An index would not survive the split that crowns a gable end.
 pub fn edge_on(mass: &building::Mass, line: f32, on_z: bool) -> Option<usize> {
-    let count = mass.outline.len();
+    let count = mass.outline().len();
     let mut best: Option<(usize, f32)> = None;
     for edge in 0..count {
-        let from = mass.outline[edge].position;
-        let to = mass.outline[(edge + 1) % count].position;
+        let from = mass.outline()[edge].position;
+        let to = mass.outline()[(edge + 1) % count].position;
         let along = if on_z { 1 } else { 0 };
         if (from[along] - line).abs() < 1.0e-3 && (to[along] - line).abs() < 1.0e-3 {
             let length = (to[1 - along] - from[1 - along]).abs();
@@ -340,8 +340,8 @@ pub fn rail_across(
 /// Returns the face edge's own plan direction, normalized, or `None` when the edge has no length.
 fn face_direction(skeleton: &BuildingSkeleton, face: FaceRef) -> Option<[f32; 2]> {
     let mass = skeleton.masses.get(face.mass.0)?;
-    let from = mass.outline.get(face.edge)?;
-    let to = mass.outline.get((face.edge + 1) % mass.outline.len())?;
+    let from = mass.outline().get(face.edge)?;
+    let to = mass.outline().get((face.edge + 1) % mass.outline().len())?;
     let along = [
         to.position[0] - from.position[0],
         to.position[1] - from.position[1],

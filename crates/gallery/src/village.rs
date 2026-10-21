@@ -548,7 +548,7 @@ fn pad_plinth(part: &mut BuildingSkeleton, ground: &impl Fn(Vec2) -> f32) {
     let under = part
         .masses
         .iter()
-        .flat_map(|mass| mass.outline.iter().map(|node| node.position))
+        .flat_map(|mass| mass.outline().iter().map(|node| node.position))
         .map(ground)
         .fold(f32::INFINITY, f32::min);
     let plans: Vec<(Vec<[f32; 2]>, f32)> = part
@@ -556,7 +556,7 @@ fn pad_plinth(part: &mut BuildingSkeleton, ground: &impl Fn(Vec2) -> f32) {
         .iter()
         .map(|mass| {
             let sill = mass.lowest();
-            let mut plan: Vec<[f32; 2]> = mass.outline.iter().map(|node| node.position).collect();
+            let mut plan: Vec<[f32; 2]> = mass.outline().iter().map(|node| node.position).collect();
             let middle = {
                 let sum = plan.iter().fold([0.0_f32, 0.0_f32], |sum, at| {
                     [sum[0] + at[0], sum[1] + at[1]]

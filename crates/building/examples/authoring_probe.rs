@@ -36,7 +36,7 @@ fn main() {
     let mass = &building.skeleton.masses[0];
     println!(
         "outline nodes {}, plan area {:.3} — {}",
-        mass.outline.len(),
+        mass.outline().len(),
         mass.plan_area(),
         if mass.plan_area() > 0.0 {
             "positive, so the solid is on the walker's right and `up × along` is the outer face"
@@ -46,7 +46,10 @@ fn main() {
     );
     println!(
         "top {:.2}, wall {:.2}, slab {:.2}, host of roof 0: {:?}",
-        mass.top, mass.wall, mass.slab, building.skeleton.roofs[0].host.0
+        mass.highest_top(),
+        mass.wall,
+        mass.slab,
+        building.skeleton.roofs[0].host.0
     );
 
     println!();
@@ -113,7 +116,7 @@ fn report_roof(label: &str, roof: Option<&Roof>, mass: &Mass, starter: &Starter)
         overhang_measured(mass, roof, starter.overhang)
     );
 
-    let eave_elevation = mass.top - starter.sink;
+    let eave_elevation = mass.highest_top() - starter.sink;
     println!(
         "{label}: {} crest points at {} against the wanted {:.3}",
         roof.crest.len(),
@@ -291,11 +294,11 @@ fn extent(roof: &Roof) -> [f32; 2] {
 /// derivation could not hide behind an assumed correspondence.
 fn overhang_measured(mass: &Mass, roof: &Roof, wanted: f32) -> String {
     let mut values = Vec::new();
-    for index in 0..mass.outline.len() {
-        let next = (index + 1) % mass.outline.len();
+    for index in 0..mass.outline().len() {
+        let next = (index + 1) % mass.outline().len();
         let middle = [
-            0.5 * (mass.outline[index].position[0] + mass.outline[next].position[0]),
-            0.5 * (mass.outline[index].position[1] + mass.outline[next].position[1]),
+            0.5 * (mass.outline()[index].position[0] + mass.outline()[next].position[0]),
+            0.5 * (mass.outline()[index].position[1] + mass.outline()[next].position[1]),
         ];
         let mut closest = f32::INFINITY;
         for eave in 0..roof.eaves.len() {
@@ -463,13 +466,13 @@ fn verbs() {
     let starter = Starter::default();
     let building = derive::starter(&starter);
     let mut host = building.skeleton.masses[0].clone();
-    let before_nodes = host.outline.len();
+    let before_nodes = host.outline().len();
     let before_length = perimeter(&host);
     let at = ops::split_outline(&mut host, 0.3).expect("four nodes is a loop with an edge");
-    let added = &host.outline[at];
+    let added = &host.outline()[at];
     println!(
         "split_outline at 0.3: index {at}, nodes {before_nodes} -> {}, at ({:.3}, {:.3}) at elevation {:.3}",
-        host.outline.len(),
+        host.outline().len(),
         added.position[0],
         added.position[1],
         added.elevation,
@@ -482,7 +485,7 @@ fn verbs() {
     println!(
         "split_outline at 0.5, which lands on the node the outline already had: index {}, nodes {}",
         ops::split_outline(&mut host, 0.5).expect("a loop with an edge"),
-        host.outline.len()
+        host.outline().len()
     );
     println!(
         "split_outline on a one-node outline: {}",
@@ -500,7 +503,7 @@ fn verbs() {
 
     let body = building.skeleton.masses[0].clone();
     let mut skeleton = building.skeleton.clone();
-    let nodes_before = skeleton.masses[0].outline.len();
+    let nodes_before = skeleton.masses[0].outline().len();
     let wing = Mass::new(
         vec![
             PlanNode::new([0.0, -0.5], 0.0),
@@ -515,15 +518,15 @@ fn verbs() {
     // names has to be a node the host now carries, which is the whole of the op's argument.
     let mut alone = body.clone();
     let at = ops::split_outline(&mut alone, 0.25).expect("four nodes");
-    let joint = alone.outline[at];
+    let joint = alone.outline()[at];
     let carried = skeleton.masses[0]
-        .outline
+        .outline()
         .iter()
         .any(|node| node.position == joint.position && node.elevation == joint.elevation);
     println!(
         "attach_mass at 0.25: mass {}, host nodes {nodes_before} -> {}, attachment {:?}",
         id.0,
-        skeleton.masses[0].outline.len(),
+        skeleton.masses[0].outline().len(),
         skeleton.masses[id.0]
             .attachment
             .map(|attachment| match attachment.join {
@@ -555,7 +558,7 @@ fn verbs() {
 
 /// Returns the closed loop's total plan length.
 fn perimeter(mass: &Mass) -> f32 {
-    let nodes = &mass.outline;
+    let nodes = &mass.outline();
     (0..nodes.len())
         .map(|index| {
             whiting_building::math::distance(

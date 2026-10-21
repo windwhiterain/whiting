@@ -500,7 +500,7 @@ pub fn document() -> Building {
         let Some(mass) = skeleton.masses.get(index) else {
             continue;
         };
-        let mut plan: Vec<[f32; 2]> = mass.outline.iter().map(|node| node.position).collect();
+        let mut plan: Vec<[f32; 2]> = mass.outline().iter().map(|node| node.position).collect();
         let middle = {
             let sum = plan.iter().fold([0.0_f32, 0.0_f32], |sum, at| {
                 [sum[0] + at[0], sum[1] + at[1]]
@@ -530,9 +530,9 @@ pub fn document() -> Building {
             continue;
         };
         let mut best: Option<([f32; 2], [f32; 2], f32)> = None;
-        for edge in 0..mass.outline.len() {
-            let here = mass.outline[edge].position;
-            let there = mass.outline[(edge + 1) % mass.outline.len()].position;
+        for edge in 0..mass.outline().len() {
+            let here = mass.outline()[edge].position;
+            let there = mass.outline()[(edge + 1) % mass.outline().len()].position;
             let middle = [(here[0] + there[0]) * 0.5, (here[1] + there[1]) * 0.5];
             let distance = middle[0] * middle[0] + middle[1] * middle[1];
             let axis = [there[0] - here[0], there[1] - here[1]];
@@ -694,10 +694,10 @@ fn porch(skeleton: &mut BuildingSkeleton) {
 /// that survives a split: an index into the outline changes when a gable end is split, and a scene that
 /// remembered one would name a different wall the moment a crown moved.
 fn court_edge(mass: &building::Mass, z: f32) -> Option<(usize, f32, f32)> {
-    let count = mass.outline.len();
+    let count = mass.outline().len();
     for edge in 0..count {
-        let from = mass.outline[edge].position;
-        let to = mass.outline[(edge + 1) % count].position;
+        let from = mass.outline()[edge].position;
+        let to = mass.outline()[(edge + 1) % count].position;
         if (from[1] - z).abs() < 1.0e-3 && (to[1] - z).abs() < 1.0e-3 {
             let length = (to[0] - from[0]).abs();
             if length > 1.0 {
@@ -741,7 +741,13 @@ fn range(skeleton: &mut BuildingSkeleton, corners: [[f32; 2]; 4], height: f32, c
     // node takes is the roof's own apex. The vector is authored before any split, so ops::split_outline
     // keeps it in step with the loop.
     if crowned {
-        mass.crowns = vec![height; mass.outline.len()];
+        {
+            let count = mass.outline().len();
+            for node in &mut mass.crown_mut().outline {
+                node.elevation = height;
+            }
+            let _ = count;
+        }
     }
     let mass_id = MassId(skeleton.masses.len());
     skeleton.masses.push(mass);
@@ -807,8 +813,8 @@ fn crown_gables(mass: &mut Mass, roof: &building::roof::Roof) {
     };
     for station in stations {
         if let Some(index) = ops::split_outline(mass, station) {
-            if let Some(crown) = mass.crowns.get_mut(index) {
-                *crown = apex;
+            if let Some(crown) = mass.crown_mut().outline.get_mut(index) {
+                crown.elevation = apex;
             }
         }
         // The split rewrites the crown vector with the loop, so a node that is not crowned yet keeps the
@@ -824,14 +830,14 @@ fn crown_gables(mass: &mut Mass, roof: &building::roof::Roof) {
 /// edges, so the ends are the other pair. Each answers its own middle station as a fraction of the
 /// **closed** loop before either insertion, which is why they are sorted descending.
 fn gable_stations(mass: &Mass) -> Option<Vec<f32>> {
-    let count = mass.outline.len();
+    let count = mass.outline().len();
     if count != 4 {
         return None;
     }
     let spans: Vec<f32> = (0..count)
         .map(|edge| {
-            let from = mass.outline[edge].position;
-            let to = mass.outline[(edge + 1) % count].position;
+            let from = mass.outline()[edge].position;
+            let to = mass.outline()[(edge + 1) % count].position;
             ((to[0] - from[0]).powi(2) + (to[1] - from[1]).powi(2)).sqrt()
         })
         .collect();

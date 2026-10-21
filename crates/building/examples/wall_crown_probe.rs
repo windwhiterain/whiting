@@ -40,7 +40,7 @@ fn main() {
         "# a {:.0} x {:.0} gable whose wall top is {:.4}, under a roof whose ridge is at {:.4}",
         STARTER.width,
         STARTER.depth,
-        building.skeleton.masses[0].top,
+        building.skeleton.masses[0].highest_top(),
         apex + STARTER.roof_thickness
     );
     println!(
@@ -54,22 +54,24 @@ fn main() {
     let stations = gable_stations(&building.skeleton.masses[0], STARTER.width * 0.5);
     println!(
         "  the gable ends are at stations {stations:?} of the closed loop, which has {} node(s)",
-        building.skeleton.masses[0].outline.len()
+        building.skeleton.masses[0].outline().len()
     );
     for station in stations.iter().copied() {
         ops::split_outline(&mut building.skeleton.masses[0], station)
             .expect("the gable edge splits at its middle");
     }
-    let nodes = building.skeleton.masses[0].outline.len();
-    let mut crowns = vec![building.skeleton.masses[0].top; nodes];
+    let nodes = building.skeleton.masses[0].outline().len();
+    let mut crowns = vec![building.skeleton.masses[0].highest_top(); nodes];
     for (node, crown) in crowns.iter_mut().enumerate() {
-        let at = building.skeleton.masses[0].outline[node].position;
+        let at = building.skeleton.masses[0].outline()[node].position;
         // The middle of each gable end is the one plan point under the ridge.
         if at[1].abs() < 1.0e-4 && (at[0].abs() - STARTER.width * 0.5).abs() < 1.0e-4 {
             *crown = apex;
         }
     }
-    building.skeleton.masses[0].crowns = crowns.clone();
+    building.skeleton.masses[0] = building.skeleton.masses[0]
+        .clone()
+        .with_crowns(crowns.clone());
     println!(
         "  {nodes} nodes, crowns {:?}",
         crowns
@@ -187,7 +189,7 @@ fn main() {
         ("a crown under its base", vec![-9.0; 5], "CrownBelowBase"),
     ] {
         let mut broken = starter(&STARTER);
-        broken.skeleton.masses[0].crowns = crowns;
+        broken.skeleton.masses[0] = broken.skeleton.masses[0].clone().with_crowns(crowns);
         let found: Vec<String> = Building::new(broken.skeleton.clone())
             .validate()
             .iter()
@@ -206,7 +208,9 @@ fn main() {
 
     // A ritual on the crowned edge is a bay model that has no rectangle to divide.
     let mut gridded = starter(&STARTER);
-    gridded.skeleton.masses[0].crowns = vec![STARTER.height; 4];
+    gridded.skeleton.masses[0] = gridded.skeleton.masses[0]
+        .clone()
+        .with_crowns(vec![STARTER.height; 4]);
     let face = whiting_building::grid::FaceRef::new(mass, 0);
     let _ = ops::split_face(
         &mut gridded.skeleton,
@@ -247,11 +251,11 @@ fn apex_of(skeleton: &BuildingSkeleton) -> f32 {
 /// A gable end is an edge whose two ends share an `x` of magnitude `half_width` — the walls a pitched
 /// roof's rake stands over. Its middle is where the ridge meets it, which is the node the crown needs.
 fn gable_stations(mass: &whiting_building::Mass, half_width: f32) -> Vec<f32> {
-    let count = mass.outline.len();
+    let count = mass.outline().len();
     let lengths: Vec<f32> = (0..count)
         .map(|edge| {
-            let from = mass.outline[edge].position;
-            let to = mass.outline[(edge + 1) % count].position;
+            let from = mass.outline()[edge].position;
+            let to = mass.outline()[(edge + 1) % count].position;
             ((to[0] - from[0]).powi(2) + (to[1] - from[1]).powi(2)).sqrt()
         })
         .collect();
@@ -259,8 +263,8 @@ fn gable_stations(mass: &whiting_building::Mass, half_width: f32) -> Vec<f32> {
     let mut stations = Vec::new();
     let mut walked = 0.0_f32;
     for (edge, length) in lengths.iter().enumerate() {
-        let from = mass.outline[edge].position;
-        let to = mass.outline[(edge + 1) % count].position;
+        let from = mass.outline()[edge].position;
+        let to = mass.outline()[(edge + 1) % count].position;
         let gable = (from[0] - to[0]).abs() < 1.0e-4 && (from[0].abs() - half_width).abs() < 1.0e-4;
         if gable {
             stations.push((walked + length * 0.5) / perimeter);

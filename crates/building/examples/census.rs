@@ -34,7 +34,7 @@ fn main() {
             "   mass plan area {:.4}, highest outline {:.4}, wall top {:.4}, eave area {:.4}",
             building.skeleton.masses[0].plan_area(),
             building.skeleton.masses[0].highest(),
-            building.skeleton.masses[0].top,
+            building.skeleton.masses[0].highest_top(),
             building.skeleton.roofs[0].plan_area(),
         );
 

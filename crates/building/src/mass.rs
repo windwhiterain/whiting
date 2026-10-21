@@ -11,6 +11,88 @@ use crate::math::Vec2;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MassId(pub usize);
 
+/// One horizontal section of a mass: the wall's outer face at one elevation of the shell.
+///
+/// # Invariants
+///
+/// **Every node carries its own elevation, and that is the section's height at that node** — so a mass may
+/// stand on a slope (its foot section's nodes differ) and its top may be a gable (its last section's nodes
+/// differ) with the same arithmetic. The elevations of one section need not be equal; what the level's own
+/// [`Level::lowest`] and [`Level::highest`] answer is their range.
+///
+/// **The outline is wound so its plan area is positive**, exactly as [`Mass::plan_area`] states for the whole
+/// mass: it is the face a viewer sees and the wall is built inward from it, so the winding is what makes every
+/// expanded face point outward.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Level {
+    /// The outer face of the wall at this level, stored open (the last-to-first edge is implied).
+    pub outline: Vec<PlanNode>,
+}
+
+impl Level {
+    /// Builds a level from an outline. The nodes carry their own elevations.
+    pub fn new(outline: Vec<PlanNode>) -> Self {
+        Self { outline }
+    }
+
+    /// Builds a level as the same loop every node of which stands at one elevation.
+    pub fn flat(outline: &[PlanNode], elevation: f32) -> Self {
+        Self {
+            outline: outline
+                .iter()
+                .map(|node| PlanNode::new(node.position, elevation))
+                .collect(),
+        }
+    }
+
+    /// Returns the lowest elevation this section stands at.
+    pub fn lowest(&self) -> f32 {
+        self.outline
+            .iter()
+            .map(|node| node.elevation)
+            .fold(f32::INFINITY, f32::min)
+    }
+
+    /// Returns the highest elevation this section stands at.
+    pub fn highest(&self) -> f32 {
+        self.outline
+            .iter()
+            .map(|node| node.elevation)
+            .fold(f32::NEG_INFINITY, f32::max)
+    }
+
+    /// Returns the signed plan area the section encloses.
+    pub fn plan_area(&self) -> f32 {
+        let count = self.outline.len();
+        if count < 3 {
+            return 0.0;
+        }
+        let mut total = 0.0;
+        let mut previous = self.outline[count - 1].position;
+        for node in &self.outline {
+            total += crate::math::cross(previous, node.position);
+            previous = node.position;
+        }
+        total * 0.5
+    }
+
+    /// Returns this section's nodes moved by a plan offset, elevations untouched.
+    pub fn translated(&self, offset: Vec2) -> Self {
+        Self {
+            outline: self
+                .outline
+                .iter()
+                .map(|node| {
+                    PlanNode::new(
+                        [node.position[0] + offset[0], node.position[1] + offset[1]],
+                        node.elevation,
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
 /// One node of a mass's outline.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlanNode {
@@ -150,32 +232,23 @@ pub struct Attachment {
 ///   the plate is a [`Slab`](crate::slab::Slab) of its own, and the floor is its top.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mass {
-    /// The outer face of the wall, wound so [`Mass::plan_area`] is positive, stored open.
-    pub outline: Vec<PlanNode>,
-    /// The elevation of the wall top, when the wall top is level.
-    pub top: f32,
-    /// One elevation per outline node, when it is not: a gable that rises to the roof, a parapet, a
-    /// stepped wall.
+    /// The shell's horizontal sections, **bottom first, at least two**: the first is the mass's foot and the
+    /// last is its top.
     ///
     /// # Invariants
     ///
-    /// **Empty is the level case and it is exact.** A mass whose wall top is level carries no crown,
-    /// so every reading of it is `top` itself and not a row of copies that could drift from it; a
-    /// crowned mass carries exactly **one elevation per outline node**, and then
-    /// [`Mass::top_at`] is the only reading — `top` is what the crown replaced and is still what
-    /// [`Mass::highest_top`] falls back on when the crown is shorter than the outline, which
-    /// [`validate`](crate::validate) reports rather than repairs.
+    /// **A mass is a stack of sections and not a prism with a crown.** The wall between two consecutive sections
+    /// is the band between their loops, so:
     ///
-    /// **The strip of wall top over each edge stays planar**, and that is arithmetic rather than
-    /// luck: the strip's four corners are the edge's two outer nodes at their own tops and the two
-    /// inner, offset nodes at the same tops, and all four lie on the plane spanned by the edge's
-    /// direction and the wall's thickness, tilted by the difference between the two tops. Nothing
-    /// needs triangulating and no tolerance is spent.
+    /// - sections of equal plan give a vertical wall, which is every plain mass;
+    /// - an upper section **inside** the one below gives a wall that leans in — 收分, the battered earth wall;
+    /// - an upper section **outside** the one below gives a wall that leans out **and a soffit**, the horizontal
+    ///   face under the projecting floor — 挑出, the cantilevered gallery.
     ///
-    /// **A crowned edge is not a rectangle, so it carries no grid.** A rhythm divides a rectangle into
-    /// bays and a crowned face is a trapezoid; [`validate`](crate::validate) reports a grid on one
-    /// (`GridOnACrownedFace`) rather than cutting bays a sill cannot be placed in.
-    pub crowns: Vec<f32>,
+    /// The top section's own nodes carry the wall's top elevations, so a gable that rises to its roof, a parapet
+    /// and a stepped wall are all one section whose nodes differ — there is no separate crown list and no way for
+    /// the two to drift.
+    pub levels: Vec<Level>,
     /// Wall thickness, measured inward from the outline.
     pub wall: f32,
     /// Floor slab thickness, measured down from the outline's elevations.
@@ -214,12 +287,15 @@ pub struct Mass {
 }
 
 impl Mass {
-    /// Builds a mass with walls and a floor slab, standing on its outline.
+    /// Builds a mass with walls and a floor slab, standing on its outline and rising to `top`.
+    ///
+    /// **Two sections**: the foot, whose nodes carry the ground the mass stands on, and the top, every node of
+    /// which is at `top`. A mass with more sections — a battered wall, a projecting floor — is authored by
+    /// [inserting them](Mass::with_level) between the two.
     pub fn new(outline: Vec<PlanNode>, top: f32) -> Self {
+        let top_level = Level::flat(&outline, top);
         Self {
-            outline,
-            top,
-            crowns: Vec::new(),
+            levels: vec![Level::new(outline), top_level],
             wall: 0.3,
             slab: 0.4,
             attachment: None,
@@ -228,28 +304,123 @@ impl Mass {
         }
     }
 
-    /// Raises the wall top over chosen nodes: one elevation per outline node.
+    /// Sets the wall top over chosen nodes: one elevation per outline node.
     ///
-    /// A crown of the wrong length is reported by [`validate`](crate::validate) as
-    /// `CrownCountMismatch` rather than indexed past.
+    /// A crown shorter than the outline leaves the remaining nodes at the level top, which is what the accessor
+    /// it replaces did; a crown longer than the outline is **cut** rather than indexed, because the top section's
+    /// nodes are the only ones a wall top can belong to.
     pub fn with_crowns(mut self, crowns: Vec<f32>) -> Self {
-        self.crowns = crowns;
+        if let Some(top) = self.levels.last_mut() {
+            for (node, crown) in top.outline.iter_mut().zip(crowns) {
+                node.elevation = crown;
+            }
+        }
         self
     }
 
-    /// Returns the wall top over one node of the outline: the crown's own elevation, or the level top.
-    pub fn top_at(&self, node: usize) -> f32 {
-        self.crowns.get(node).copied().unwrap_or(self.top)
+    /// Inserts a section **between the ones it belongs between**, by its own elevation.
+    ///
+    /// A section above every other becomes the new top and a section below every other becomes the new foot, so
+    /// the stack cannot be authored out of order and the two ends stay the ends.
+    pub fn with_level(mut self, level: Level) -> Self {
+        let at = self
+            .levels
+            .iter()
+            .position(|existing| level.lowest() < existing.lowest())
+            .unwrap_or(self.levels.len());
+        self.levels.insert(at, level);
+        self
     }
 
-    /// Returns the highest wall top the mass has, which is the level top or the crown's maximum.
+    /// Returns the mass's foot: the section it stands on.
+    pub fn foot(&self) -> &Level {
+        &self.levels[0]
+    }
+
+    /// Returns the mass's top: the section its wall ends at.
+    pub fn crown(&self) -> &Level {
+        self.levels
+            .last()
+            .expect("a mass always has a foot and a top")
+    }
+
+    /// Returns the mass's outline: its foot section's loop, which is the loop in plan.
+    pub fn outline(&self) -> &[PlanNode] {
+        &self.foot().outline
+    }
+
+    /// Returns the mass's outline for writing.
+    pub fn outline_mut(&mut self) -> &mut Vec<PlanNode> {
+        &mut self.levels[0].outline
+    }
+
+    /// Returns the wall top over one node of the top section.
+    pub fn top_at(&self, node: usize) -> f32 {
+        self.crown()
+            .outline
+            .get(node)
+            .map_or_else(|| self.highest_top(), |at| at.elevation)
+    }
+
+    /// Returns the highest wall top the mass has, which is the highest node of its top section.
     pub fn highest_top(&self) -> f32 {
-        self.crowns.iter().copied().fold(self.top, f32::max)
+        self.crown().highest()
     }
 
     /// Returns the lowest wall top the mass has, which is what a floor must stay under.
     pub fn lowest_top(&self) -> f32 {
-        self.crowns.iter().copied().fold(self.top, f32::min)
+        self.crown().lowest()
+    }
+
+    /// Returns whether the mass's top is level: every node of the top section at one elevation.
+    ///
+    /// A crowned edge is not a rectangle and therefore carries no grid, and this is the one reading of that.
+    pub fn top_is_level(&self) -> bool {
+        let top = self.crown();
+        top.highest() - top.lowest() <= f32::EPSILON * 8.0
+    }
+
+    /// Returns the top section's lowest elevation, which is the level a wall top is written against.
+    pub fn crown_top(&self) -> f32 {
+        self.crown().lowest()
+    }
+
+    /// Returns one elevation per outline node for the top section: the crown the expander reads.
+    pub fn crown_elevations(&self) -> Vec<f32> {
+        self.crown()
+            .outline
+            .iter()
+            .map(|node| node.elevation)
+            .collect()
+    }
+
+    /// Returns the mass's top section for writing: the wall top's own elevations.
+    pub fn crown_mut(&mut self) -> &mut Level {
+        self.levels
+            .last_mut()
+            .expect("a mass always has a foot and a top")
+    }
+
+    /// Sets the wall top: **every node of the top section** at `top`, leaving the lower sections alone.
+    ///
+    /// That is what "set the top" means once a mass is a stack — a building whose wall rose to `top` still rises
+    /// to it, and the sections under it are not the wall's top.
+    pub fn set_top(&mut self, top: f32) {
+        for node in &mut self.crown_mut().outline {
+            node.elevation = top;
+        }
+    }
+
+    /// Moves every section up or down by `delta`: the whole shell, foot included.
+    ///
+    /// This is what a seat does, and doing it per section rather than per field is why a stack cannot be left
+    /// half-moved.
+    pub fn shift(&mut self, delta: f32) {
+        for level in &mut self.levels {
+            for node in &mut level.outline {
+                node.elevation += delta;
+            }
+        }
     }
 
     /// Authors a courtyard: a loop inside the outline that the mass has a hole into.
@@ -297,17 +468,7 @@ impl Mass {
     ///
     /// `O(n)` in the outline's nodes, which is what the area of a closed loop costs.
     pub fn plan_area(&self) -> f32 {
-        let count = self.outline.len();
-        if count < 3 {
-            return 0.0;
-        }
-        let mut total = 0.0;
-        let mut previous = self.outline[count - 1].position;
-        for node in &self.outline {
-            total += crate::math::cross(previous, node.position);
-            previous = node.position;
-        }
-        total * 0.5
+        self.foot().plan_area()
     }
 
     /// Returns the lowest elevation the outline stands at: **the mass's own ground line**.
@@ -334,22 +495,16 @@ impl Mass {
     ///
     /// `O(nodes)` in the outline, one walk of nodes the mass already holds.
     pub fn lowest(&self) -> f32 {
-        self.outline
-            .iter()
-            .map(|node| node.elevation)
-            .fold(f32::INFINITY, f32::min)
+        self.foot().lowest()
     }
 
     /// Returns the highest elevation the outline stands at.
     pub fn highest(&self) -> f32 {
-        self.outline
-            .iter()
-            .map(|node| node.elevation)
-            .fold(f32::NEG_INFINITY, f32::max)
+        self.foot().highest()
     }
 
     /// Returns how many edges the closed outline has.
     pub fn edge_count(&self) -> usize {
-        self.outline.len()
+        self.foot().outline.len()
     }
 }

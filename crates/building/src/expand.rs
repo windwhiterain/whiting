@@ -113,6 +113,15 @@ pub enum Problem {
         /// How many nodes it has.
         nodes: usize,
     },
+    /// A mass carries more sections than the expander builds: the multi-section wall -- a battered foot, a
+    /// projecting floor -- is authored in the document and **not yet expanded**, so it is refused by name
+    /// rather than drawn as one band from its foot to its top with its middle sections silently dropped.
+    SectionsNotExpanded {
+        /// The mass.
+        mass: MassId,
+        /// How many sections it carries.
+        levels: usize,
+    },
     /// A roof plane has fewer than two rows, so it spans nothing.
     PlaneTooShort {
         /// The roof.
@@ -915,7 +924,12 @@ pub fn part_frame(
                 };
             };
             let wall = loops
-                .ring(loop_of, mass.wall, mass.top, &mass.crowns)
+                .ring(
+                    loop_of,
+                    mass.wall,
+                    mass.crown_top(),
+                    &mass.crown_elevations(),
+                )
                 .face(face.edge, face.loop_side);
             let origin = lift(
                 wall.outer_at(bay.from + placed.at.along),
@@ -1223,7 +1237,7 @@ fn expand_mass(
     id: MassId,
     mass: &Mass,
 ) -> Result<(), Vec<Problem>> {
-    let count = mass.outline.len();
+    let count = mass.outline().len();
     if count < 3 {
         return Err(vec![Problem::OutlineTooShort {
             mass: id,
@@ -1237,6 +1251,15 @@ fn expand_mass(
             slab: mass.slab,
         }]);
     }
+    // **A multi-section wall is authored and not yet expanded.** The sections between the foot and the top are the
+    // geometry the levels exist for, and until the expander builds them a document that carries one is refused by
+    // name rather than drawn as a single band with its middle sections dropped.
+    if mass.levels.len() > 2 {
+        return Err(vec![Problem::SectionsNotExpanded {
+            mass: id,
+            levels: mass.levels.len(),
+        }]);
+    }
     let mut problems = Vec::new();
     let outline_of = AuthoredLoop::Outline { mass: id };
     let Some(loops) = loops_of(skeleton, outline_of, mass.wall, &mut problems) else {
@@ -1248,7 +1271,12 @@ fn expand_mass(
     // the group is keyed by the exact face, which is what keeps a courtyard's hole out of the mass's
     // own wall.
     let grouped = skeleton.openings.by_face();
-    let ring = loops.ring(outline_of, mass.wall, mass.top, &mass.crowns);
+    let ring = loops.ring(
+        outline_of,
+        mass.wall,
+        mass.crown_top(),
+        &mass.crown_elevations(),
+    );
     let mut solid = Solid::default();
     ring_walk(&mut solid, &ring, skeleton, &grouped, &mut problems);
     // **A courtyard is built before anything is spliced, and refused with the mass.** The ring is
@@ -1263,7 +1291,7 @@ fn expand_mass(
             id,
             void,
             mass.wall,
-            mass.top,
+            mass.crown_top(),
             &mut problems,
         ) {
             Ok(expanded) => courtyards.push(expanded),
@@ -1487,7 +1515,12 @@ pub(crate) fn face_length(skeleton: &BuildingSkeleton, face: FaceRef) -> Option<
     let mass = skeleton.mass(face.mass)?;
     let mut problems = Vec::new();
     let loops = loops_of(skeleton, face.loop_of(), mass.wall, &mut problems)?;
-    let ring = loops.ring(face.loop_of(), mass.wall, mass.top, &mass.crowns);
+    let ring = loops.ring(
+        face.loop_of(),
+        mass.wall,
+        mass.crown_top(),
+        &mass.crown_elevations(),
+    );
     Some(ring.face(face.edge, LoopSide::Offset).length)
 }
 
@@ -1528,7 +1561,7 @@ pub(crate) fn loops_of<'a>(
 ) -> Option<FaceLoops<'a>> {
     let (walked, side) = match loop_of {
         AuthoredLoop::Outline { mass } => (
-            Cow::Borrowed(skeleton.mass(mass)?.outline.as_slice()),
+            Cow::Borrowed(skeleton.mass(mass)?.outline()),
             OffsetSide::Inward,
         ),
         AuthoredLoop::Void { mass, void } => (skeleton.void_loop(mass, void)?, OffsetSide::Outward),
@@ -2005,12 +2038,12 @@ fn on_face(
         return None;
     }
     let mass = skeleton.mass(face.mass)?;
-    let count = mass.outline.len();
+    let count = mass.outline().len();
     if count < 2 || face.edge >= count || !along.is_finite() || !up.is_finite() {
         return None;
     }
-    let from = mass.outline[face.edge];
-    let to = mass.outline[(face.edge + 1) % count];
+    let from = mass.outline()[face.edge];
+    let to = mass.outline()[(face.edge + 1) % count];
     let step = [
         to.position[0] - from.position[0],
         to.position[1] - from.position[1],
@@ -2021,7 +2054,7 @@ fn on_face(
     }
     let share = (along / length).clamp(0.0, 1.0);
     let base = from.elevation + (to.elevation - from.elevation) * share;
-    if up < -1.0e-3 || base + up > mass.top + 1.0e-3 {
+    if up < -1.0e-3 || base + up > mass.highest_top() + 1.0e-3 {
         return None;
     }
     Some([

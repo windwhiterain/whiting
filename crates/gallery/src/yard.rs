@@ -277,7 +277,7 @@ fn site() -> BuildingSkeleton {
     // together, because a roof that named the wrong mass would stand on the first building's walls, and a
     // plate left at the origin would lie under the shed instead of under the store it belongs to.
     for mass in &mut store.masses {
-        for point in &mut mass.outline {
+        for point in mass.outline_mut() {
             point.position[0] += STORE_OFFSET;
         }
     }

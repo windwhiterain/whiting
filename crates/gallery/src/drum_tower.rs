@@ -411,7 +411,7 @@ pub fn document() -> Building {
     // faces can be given a rhythm, and the relation between them says nothing about their walls.
     for storey in 0..STOREYS {
         let id = MassId(storey);
-        let edges = skeleton.masses[id.0].outline.len();
+        let edges = skeleton.masses[id.0].outline().len();
         for edge in 0..edges {
             let face = building::grid::FaceRef::new(id, edge);
             if ops::split_face(

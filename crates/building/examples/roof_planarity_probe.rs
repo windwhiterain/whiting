@@ -95,7 +95,7 @@ fn measure(starter: &Starter) {
             .iter()
             .map(|point| point.elevation)
             .collect::<Vec<_>>(),
-        mass.top - starter.sink + starter.rise,
+        mass.highest_top() - starter.sink + starter.rise,
         if rows_sound(roof) {
             "every crest index in range, every station in [0, 1)"
         } else {
