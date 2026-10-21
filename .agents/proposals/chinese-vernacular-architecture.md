@@ -4263,3 +4263,18 @@ Round 233 built the arch and left it standing in a field. **Two villages were tr
 
 **And the axis was the first thing to get wrong**: the street runs along `x` and was addressed as if it ran along `z`, so the arch's first position put it
 **behind the camera**. A scene's own axis is written in its own plate, and the plate is the cheapest place to read it.
+## Round 235: the 戏台, the twenty-sixth type
+
+A 戏台 is the one building here that **exists for one hour of one day**: the village raises it for the god's birthday or the market's opening, and for the rest of
+the year it is a roofed platform with nothing on it. Its form is **a stage and a roof**, and its function is **to be seen from in front** — which is why it is a
+plinth with three open sides and one deep eave, and why its back wall is the one solid face it has.
+
+**Three refusals, and the first two are one rule learned twice** (round 137's — `UnattachedOverlap`):
+1. the back wall stood **inside the plinth's plan** — so the plinth's plan now **begins at the wall's front face**, and the wall and the dressing room stand
+   behind it on the ground;
+2. the dressing room then **touched** the wall, and **touching is overlapping** as far as the checker is concerned — `0.03 m` of clearance was enough;
+3. and the roof's span was computed from the wrong end, which the plate showed as an eave that stopped short of the stage's front.
+
+**Identity: 70 scenes, 244 227 rows**; `opera_stage` **93** — a plinth, a floor, a wall, a room, six posts and a roof.
+
+**And the instrument reports itself again**: `83 names, 70 buildings, 70 listed, unmeasured [], unknown []`, `70 asked, 70 printed`.

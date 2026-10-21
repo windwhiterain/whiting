@@ -425,6 +425,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "longhouse" => crate::longhouse::document(),
         "miao_stilts" | "miao_village" => crate::miao_village::document(),
         "mushroom_house" => crate::mushroom_house::document(),
+        "opera_stage" => crate::opera_stage::document(),
         "paifang" => crate::paifang::document(),
         "naxi_court" => crate::naxi_court::document(),
         "plateau_village" => crate::plateau::document(),

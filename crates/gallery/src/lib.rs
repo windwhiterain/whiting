@@ -63,6 +63,7 @@ pub mod instancing;
 pub mod land;
 /// The content's own naming: what a scene's ids mean, and what they name.
 pub mod naming;
+pub mod opera_stage;
 pub mod paifang;
 pub mod patchmesh;
 pub mod ridges;
@@ -273,6 +274,7 @@ impl Gallery {
             "miao_stilts",
             "miao_village",
             "mushroom_house",
+            "opera_stage",
             "paifang",
             "naxi_court",
             "plateau_village",
@@ -428,6 +430,7 @@ impl Gallery {
             "miao_stilts" => miao_village::miao_stilts(),
             "miao_village" => miao_village::miao_village(),
             "mushroom_house" => mushroom_house::mushroom_house(),
+            "opera_stage" => opera_stage::opera_stage(),
             "paifang" => paifang::paifang(),
             "naxi_court" => naxi_court::naxi_court(),
             "plateau_village" => plateau::plateau_village(),
