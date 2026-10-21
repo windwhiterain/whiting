@@ -41,6 +41,18 @@ const RETAIN: f32 = 0.55;
 const RETAIN_HIGH: f32 = 2.20;
 /// The flights: how wide, how many treads.
 const FLIGHT_HALF: f32 = 1.45;
+
+/// The 芦笙场: its half width and how deep it runs out from the lowest terrace, the 花杆's section and height, how many cross-arms it carries and
+/// how far each drops down the pole, an arm's reach, and the streamers' length and width.
+const GROUND_HALF: f32 = 10.0;
+const GROUND_DEEP: f32 = 13.0;
+const POLE: f32 = 0.17;
+const POLE_HIGH: f32 = 8.60;
+const POLE_ARMS: usize = 2;
+const POLE_ARM_DROP: f32 = 1.30;
+const POLE_ARM: f32 = 1.15;
+const STREAMER: f32 = 0.72;
+const STREAMER_WIDE: f32 = 0.14;
 const TREADS: usize = 5;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
@@ -129,6 +141,60 @@ pub fn document() -> Building {
                 ]),
                 rise,
                 rise + PAVING,
+            ));
+        }
+    }
+
+    // **The 芦笙场: the dancing ground.** A 苗寨's one public work is the **paved court in front of the lowest terrace**, with the **花杆** standing in
+    // its middle — a stripped fir pole with streamers and cross-arms, round which the 芦笙 dancers turn at the year's festivals. The court is the
+    // village's only flat ground that is not a shelf, and it is why a 苗寨 is built as a stair: the dance needs a level and the houses need a slope.
+    skeleton.slabs.push(building::Slab::paving(
+        ops::wound(vec![
+            [-GROUND_HALF, 0.0],
+            [GROUND_HALF, 0.0],
+            [GROUND_HALF, GROUND_DEEP],
+            [-GROUND_HALF, GROUND_DEEP],
+        ]),
+        0.0,
+        PAVING,
+    ));
+    // **The 花杆**, with its cross-arms and the streamers hanging from them.
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [0.0, PAVING, GROUND_DEEP * 0.5],
+        },
+        building::Anchor::Free {
+            at: [0.0, PAVING + POLE_HIGH, GROUND_DEEP * 0.5],
+        },
+        [1.0, 0.0],
+        POLE,
+        POLE,
+    ));
+    for arm in 0..POLE_ARMS {
+        let up = PAVING + POLE_HIGH - POLE_ARM_DROP * (arm as f32 + 1.0);
+        for side in [-1.0_f32, 1.0] {
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [0.0, up, GROUND_DEEP * 0.5],
+                },
+                building::Anchor::Free {
+                    at: [side * POLE_ARM, up, GROUND_DEEP * 0.5],
+                },
+                [0.0, 1.0],
+                POLE * 0.55,
+                POLE * 0.6,
+            ));
+            // **A streamer hangs from each arm's end**, which is what a 花杆 is for and what makes it read as a festival pole rather than a mast.
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [side * POLE_ARM, up, GROUND_DEEP * 0.5],
+                },
+                building::Anchor::Free {
+                    at: [side * POLE_ARM, up - STREAMER, GROUND_DEEP * 0.5],
+                },
+                [1.0, 0.0],
+                STREAMER_WIDE,
+                STREAMER_WIDE,
             ));
         }
     }

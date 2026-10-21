@@ -3708,3 +3708,14 @@ why the flight down the front of every house is there without the village asking
 detailed single type here (2 167 rows each) and this village has six of them.
 
 **Identity: 56 scenes, 200 545 rows** — the gallery passes **two hundred thousand rows**. The document is 11.03 MB, also the largest here.
+## Round 199: the 芦笙场
+
+A 苗寨's one public work is the **paved court in front of the lowest terrace**, with the **花杆** standing in its middle — a stripped fir pole with
+cross-arms and streamers, round which the 芦笙 dancers turn at the year's festivals. And the court explains the village: **the dance needs a level and
+the houses need a slope**, which is why a 苗寨 is built as a stair.
+
+**It also gives the plate its one vertical.** Rounds 174–198 produced four villages whose every object is a roof at the same pitch; a
+`8.60 m` pole with two cross-arms is the only thing in this scene taller than the houses, and it locates the village's public ground in the frame
+without a caption.
+
+**Identity: 56 scenes, 200 605 rows**; `miao_village` 13 119 → **13 179** — a court, a pole, two arms and two streamers. The document is 11.05 MB.
