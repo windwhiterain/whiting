@@ -499,6 +499,46 @@ fn rebase_face(face: crate::grid::FaceRef, mass_offset: usize) -> crate::grid::F
 ///
 /// A member anchored on another member, on a wall face or on nothing but a fraction of a neighbour carries no
 /// plan of its own: its two ends are derived from what they name, and that is moved for it.
+/// Moves every part of a skeleton up or down by `delta`.
+///
+/// # Why it exists
+///
+/// A **village on a slope** is composed of houses that were built at the origin: each is a document of its own, and the settlement needs them
+/// on terraces at different levels. Translating in plan was already possible; raising was not, so a stepped settlement could only be drawn by
+/// rebuilding each house at its own elevation — which is the same house written five times.
+///
+/// # What it moves, and what it leaves
+///
+/// Masses through [`Mass::shift`](crate::mass::Mass::shift), slabs' two elevations, the **free** ends of members, and a roof's eave and crest
+/// elevations. It does **not** touch an anchor that is attached to a mass — that anchor is already carried by the mass it names, and moving it
+/// twice is the one way a raise could break a joint.
+pub fn raise(skeleton: &mut BuildingSkeleton, delta: f32) {
+    for mass in &mut skeleton.masses {
+        // **Every mass, attached or not.** An attached mass carries its base as its own first level, so leaving it behind answers
+        // `StoreyNotOnTop { base: 2.8, top: 2.87 }` — measured on the gallery`s own house at a raise of `0.07`.
+        mass.shift(delta);
+    }
+    for slab in &mut skeleton.slabs {
+        slab.bottom += delta;
+        slab.top += delta;
+    }
+    for member in &mut skeleton.members {
+        for anchor in [&mut member.from, &mut member.to] {
+            if let crate::member::Anchor::Free { at } = anchor {
+                at[2] += delta;
+            }
+        }
+    }
+    skeleton.grids.shift(delta);
+    for roof in &mut skeleton.roofs {
+        for node in &mut roof.eaves {
+            node.elevation += delta;
+        }
+        for point in &mut roof.crest {
+            point.elevation += delta;
+        }
+    }
+}
 pub fn translate(skeleton: &mut BuildingSkeleton, offset: Vec2) {
     let shift = |node: &mut PlanNode| {
         node.position[0] += offset[0];

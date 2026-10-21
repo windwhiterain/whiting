@@ -3342,3 +3342,26 @@ towers to the houses. A yard with no lane is a yard with no way through it, and 
 runs between the tower and the houses, which is where a lane in a yard that has a tower in the middle actually goes.
 
 **Identity: 42 scenes, 152 199 rows**; `qiang_tower` 2 131 → **2 191** — ten flags' tops and edges. The document is 7.87 MB.
+## Round 169: the 土掌房聚落, the ninth settlement — and `ops::raise`
+
+**A 土掌房 village is the one西南 form where the roofs are the streets**: the houses step up a hillside and each flat roof is the yard of the one
+above. The gallery had the house (`earthen_house`, round 96's) and no village; it has one now — five houses on **three terraces**, each terrace a
+paved shelf with a retaining face, and flights of flags up the risers.
+
+**It needed a capability the crate did not have.** A settlement's houses are each a document built at the origin, and translating in plan was
+possible while raising was not — so a stepped village could only be drawn by writing the same house five times at five elevations. `ops::raise`
+now moves masses (`Mass::shift`), slabs' two elevations, members' **free** ends, a roof's eaves and crest, **and the grids** — and the last one
+was the whole difficulty.
+
+**Two failures, both measured, both now written into the code as rules**:
+
+1. `OpeningOutsideWall { past: 0.07 }` on every opening of a house raised by `0.07` — a `FaceGrid` stores its face's levels **as elevations**
+   captured when the face was split, so moving the mass and not the grid leaves the bays behind and the opening overflows by **exactly the
+   raise**. `Grids::shift` exists now for that reason alone.
+2. `StoreyNotOnTop { base: 2.8, top: 2.87 }` when the raise was taught to skip attached masses — an attached mass carries its base as **its own
+   first level**, so skipping it leaves it behind by the same `0.07`. Every mass moves, attached or not.
+
+A probe states the four cases the village uses: `raise +0.00 / +0.07 / +1.65 / +3.30: clean`.
+
+**Identity: 43 scenes, 153 490 rows**; `tuzhang_village` **1 291** — five houses, three terraces, three retaining faces and the flights between
+them. The document is 7.50 MB.

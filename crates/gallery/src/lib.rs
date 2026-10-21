@@ -146,6 +146,7 @@ mod tidewater;
 mod tiles;
 pub mod tunpu;
 pub mod tunpu_village;
+pub mod tuzhang_village;
 /// Standing a leaf's rigid frame as the scene instance that draws it.
 pub mod vegetation_instancing;
 /// The law demos: four scenes that draw one plant twice, without the law and with it.
@@ -237,6 +238,7 @@ impl Gallery {
             "bamboo_house",
             "log_house",
             "village_west",
+            "tuzhang_village",
             "village_square",
             "hillside_village",
             "mushroom_house",
@@ -365,6 +367,7 @@ impl Gallery {
             "bamboo_house" => bamboo_house::bamboo_house(),
             "log_house" => log_house::log_house(),
             "village_west" => village::village_west(),
+            "tuzhang_village" => tuzhang_village::tuzhang_village(),
             "village_square" => village::village_square(),
             "hillside_village" => village::hillside_village(),
             "mushroom_house" => mushroom_house::mushroom_house(),

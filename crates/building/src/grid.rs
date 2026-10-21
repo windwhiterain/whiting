@@ -580,6 +580,20 @@ impl Grids {
         self.faces.get(&face)
     }
 
+    /// Moves every face's bays up or down by `delta`, which is what a raised building needs.
+    ///
+    /// # Why it is here and not in the author's hands
+    ///
+    /// A grid stores its face's `low` and `high` **as elevations**, captured when the face was split. Moving the mass and not the grid leaves
+    /// the bays where they were, and the opening cut into them then overflows by exactly the distance the building moved — measured as
+    /// `OpeningOutsideWall { past: 0.07 }` on a house raised by `0.07`.
+    pub fn shift(&mut self, delta: f32) {
+        for grid in self.faces.values_mut() {
+            for level in &mut grid.levels {
+                *level += delta;
+            }
+        }
+    }
     /// Returns whether a face has a rhythm.
     pub fn holds(&self, face: FaceRef) -> bool {
         self.faces.contains_key(&face)
