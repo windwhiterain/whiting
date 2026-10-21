@@ -42,6 +42,11 @@ const POST: f32 = 0.19;
 /// The walls and the plate: a screen wall, thick enough to be stone and brick in alternate courses.
 const WALL: f32 = 0.42;
 const PLATE: f32 = 0.30;
+/// The 佛坛 at the halls far end: its plan, its height, and how many posts stand down the nave and their section.
+const ALTAR: [f32; 2] = [4.60, 1.70];
+const ALTAR_HIGH: f32 = 0.90;
+const NAVE_POSTS: usize = 3;
+const NAVE_POST: f32 = 0.22;
 
 /// The roof: the steepest in the gallery, with deep eaves on every side.
 const OVERHANG: f32 = 1.45;
@@ -167,6 +172,35 @@ pub fn document() -> Building {
     hall.slab = PLATE;
     let id = MassId(skeleton.masses.len());
     skeleton.masses.push(hall);
+
+    // **The inside of the hall: the 佛坛 and the rank of posts down its spine.** A wat's hall is not an empty shell — the image
+    // stands on a **dais** at the far end and the roof is carried by a row of posts that the nave is walked between. The dais is a
+    // floor slab and not a mass: a plinth is what a dais is, and a mass inside the hall's own plan is a mass that has to name a
+    // host it does not have.
+    skeleton.slabs.push(building::Slab::floor(
+        ops::wound(vec![
+            [-ALTAR[0] * 0.5, -deep + WALL + 0.20],
+            [ALTAR[0] * 0.5, -deep + WALL + 0.20],
+            [ALTAR[0] * 0.5, -deep + WALL + 0.20 + ALTAR[1]],
+            [-ALTAR[0] * 0.5, -deep + WALL + 0.20 + ALTAR[1]],
+        ]),
+        PLINTH,
+        PLINTH + ALTAR_HIGH,
+    ));
+    for index in 0..NAVE_POSTS {
+        let x = -half + WIDTH * (index + 1) as f32 / (NAVE_POSTS + 1) as f32;
+        for z in [-deep + 1.10, deep - 1.10] {
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x, PLINTH, z] },
+                building::Anchor::Free {
+                    at: [x, PLINTH + HEIGHT - PLATE, z],
+                },
+                [1.0, 0.0],
+                NAVE_POST,
+                NAVE_POST,
+            ));
+        }
+    }
 
     // **The porch's posts**, standing on the platform at the front edge, with a beam across their heads.
     for index in 0..POSTS {

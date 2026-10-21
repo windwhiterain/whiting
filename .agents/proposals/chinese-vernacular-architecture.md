@@ -2744,3 +2744,20 @@ wall on either side, the same answer the 石板街's kerb gave at the other scal
 
 **Identity: 38 scenes, 133 995 rows**; `dai_temple` 2 428 → **2 458** — five caps' tops and four edges each. The document is
 31.4 MB.
+## Round 121: the hall's inside, and a plate that cannot show it
+
+A wat's hall is not an empty shell: the image stands on a **佛坛** at its far end, and the roof is carried by a rank of **nave posts**
+the room is walked between. Both are there now — a dais `4.60 × 1.70 m` a step high at WALL + 0.20 off the back wall, and three pairs
+of `0.22 m` posts down the spine.
+
+**The dais is a floor slab and not a mass**, because a mass inside the hall's own plan is a mass that must name a host it does not
+have — a plinth is what a dais is, and this crate draws a plinth as a slab.
+
+**And the inside cannot be plated.** A camera inside the hall drew a **black frame** (measured, then measured again from the porch:
+a dark doorway with one post against it), because this catalogue has **no interior light** — one directional sun and a roof over the
+nave is a room in shadow, and the scene registered for it was withdrawn rather than shipped as a black picture. What the round
+leaves is the geometry and a recorded limitation: **an interior needs a light this catalogue does not have**, the same class of
+finding as the 腰檐's warp in round 93.
+
+**Identity: 38 scenes, 134 079 rows**; `dai_temple` 2 458 → **2 500** — the dais's top and four edges, and twelve nave posts with
+their sections. The document is 31.4 MB.
