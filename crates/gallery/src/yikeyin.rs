@@ -103,6 +103,11 @@ const GATE_BOARDS: facade::Bar = facade::Bar {
 const WALL: f32 = 0.45;
 const PLATE: f32 = 0.35;
 /// The 照壁 in front of the gate: its width, its depth, its height, its own wall, and the gap it stands off the range.'n///'n/// **The depth is five tenths and the wall is one and eight tenths of a tenth of that**, so the inner loop cannot fold.'nconst SCREEN_HALF: f32 = 2.60;'nconst SCREEN_THICK: f32 = 0.50;'nconst SCREEN_HIGH: f32 = 3.10;'nconst SCREEN_WALL: f32 = 0.18;'nconst SCREEN_GAP: f32 = 1.70;'nconst SCREEN_EAVE: f32 = 0.28;'nconst SCREEN_RISE: f32 = 0.45;
+/// The 照壁`s framed panel: how far the moulding stands proud, its own square section, and the margin it keeps off the wall`s
+/// own edges.
+const PANEL_PROUD: f32 = 0.035;
+const PANEL_BAR: f32 = 0.055;
+const PANEL_MARGIN: f32 = 0.42;
 
 /// The 照壁 in front of the gate: its width, its depth, its height, its own wall, and the gap it stands off the range.
 ///
@@ -114,6 +119,8 @@ const SCREEN_WALL: f32 = 0.18;
 const SCREEN_GAP: f32 = 1.70;
 const SCREEN_EAVE: f32 = 0.28;
 const SCREEN_RISE: f32 = 0.45;
+/// The 照壁`s framed panel: how far the moulding stands proud, its own square section, and the margin it keeps off the wall`s
+/// own edges.
 
 const OVERHANG: f32 = 0.65;
 const GABLE: f32 = 0.0;
@@ -669,6 +676,35 @@ pub fn document() -> Building {
         0.12,
     ) {
         skeleton.roofs.push(coping.with_covering(COVERING));
+    }
+
+    // **The 照壁's panel: a frame of four thin mouldings on its face towards the gate.** A white screen wall is not blank — it
+    // carries a **framed panel** where the four characters of the household's motto are written, and the frame is what makes the
+    // wall a page instead of a surface. Four members `PANEL_PROUD` proud of the plaster, `PANEL_BAR` square, set in from the
+    // wall's ends by `PANEL_MARGIN` and from its foot by the same.
+    // **The panel faces the lane and not the gate**, because this screen stands *outside* the gate: it is a 外照壁, and what a
+    // 外照壁 is for is the street`s own view. Its face is the `+z` one, which is the one the plate is taken from.
+    let face = screen_z + SCREEN_THICK * 0.5 + PANEL_PROUD;
+    let half = SCREEN_HALF - PANEL_MARGIN;
+    let foot = PANEL_MARGIN;
+    let head = SCREEN_HIGH - PANEL_MARGIN;
+    for (from, to) in [
+        ([-half, foot], [half, foot]),
+        ([-half, head], [half, head]),
+        ([-half, foot], [-half, head]),
+        ([half, foot], [half, head]),
+    ] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [from[0], from[1], face],
+            },
+            building::Anchor::Free {
+                at: [to[0], to[1], face],
+            },
+            [0.0, 1.0],
+            PANEL_BAR,
+            PANEL_BAR,
+        ));
     }
 
     Building::new(skeleton)

@@ -2431,3 +2431,16 @@ Battering only its top course would inset a wall 0.5 m above the openings and re
 its vertical wall and this record says why, instead of carrying the item for a sixth round.
 
 **Identity: 36 scenes, 126 516 rows**; `bai_lane` 5 689 → **5 713** — two posts, a beam and a drum. The document is 20.39 MB.
+## Round 97: the 照壁's framed panel
+
+A white screen wall is not blank: it carries a **framed panel** where the household's motto is written, and the frame is what
+makes the wall a page rather than a surface. Four members `PANEL_PROUD` proud of the plaster, `PANEL_BAR` square, a margin off
+the wall's own edges — and **on the lane face**, because this screen stands *outside* the gate (a 外照壁), so the face it is
+for is the street's.
+
+The first attempt panelled the gate side, which is the reading a 内照壁 gets, and the plate showed a blank wall: the camera
+stands in the lane. Turning it round is the whole round's small lesson — **which face a panel belongs on is decided by which side
+of the gate the wall stands.**
+
+**Identity: 36 scenes, 126 564 rows**; `yikeyin` 6 841 → **6 865** — four mouldings with their sections and their ends. The
+document is 6.30 MB.
