@@ -3003,3 +3003,14 @@ the old men sit and watch who comes in. The gate house took **three refusals** a
 
 **Identity: 40 scenes, 145 783 rows**; `dong_village` 7 864 → **8 005** — two wings, a lintel, a roof and the bench. The document is
 9.79 MB.
+## Round 142: the 水塘
+
+A drum tower's village has water beside its lane — a pond with fish in it and the village's fire water — and it is a **mass whose wall is
+a rim**, the same answer the wat's 放生池 and the two lanes' wells gave: the top of the rim is the water's level.
+
+**It took three placements.** In the square's north-east quarter it was behind the tower; in the south-west it was lost in the paving —
+a rim half a metre high is paving at this distance. Beside the lane, against open ground, the plate finds it at last, and the rim reads
+as the thing a village draws water from.
+
+**Identity: 40 scenes, 145 796 rows**; `dong_village` 8 005 → **8 018** — a rim's four faces, its top and its inner loop. The document is
+9.80 MB.

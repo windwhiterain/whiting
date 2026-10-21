@@ -76,6 +76,12 @@ const TILES: Covering = Covering {
     height: 0.045,
 };
 
+/// The 水塘: where it lies in the square, its plan, the rims thickness and its height.
+const POND_AT: [f32; 2] = [-15.80, -22.40];
+const POND: [f32; 2] = [3.60, 2.60];
+const POND_WALL: f32 = 0.30;
+const POND_HIGH: f32 = 0.48;
+
 const SUN: [f64; 3] = [-26.0, 30.0, 20.0];
 const SUN_IRRADIANCE: f64 = 3.3;
 const SHADOW_EXTENT: f64 = 52.0;
@@ -239,6 +245,27 @@ pub fn document() -> Building {
         0.32,
         0.07,
     ));
+
+    // **The 水塘: the village pond, beside the lane where it leaves the square.** It stood in the square first and the plate could
+    // not find it: a rim half a metre high is paving at this distance unless it is set against open ground, which is where it is. A drum tower's square has water in it — a pond with fish in
+    // it, and the village's fire water — and it is a **mass whose wall is a rim**, the same answer the wat's 放生池 and the two lanes'
+    // wells gave: the top of the rim is the water's level.
+    let pond = POND_AT;
+    let mut basin = Mass::new(
+        ops::wound(vec![
+            [pond[0] - POND[0] * 0.5, pond[1] - POND[1] * 0.5],
+            [pond[0] + POND[0] * 0.5, pond[1] - POND[1] * 0.5],
+            [pond[0] + POND[0] * 0.5, pond[1] + POND[1] * 0.5],
+            [pond[0] - POND[0] * 0.5, pond[1] + POND[1] * 0.5],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, 0.0))
+        .collect(),
+        POND_HIGH,
+    );
+    basin.wall = POND_WALL;
+    basin.slab = 0.18;
+    skeleton.masses.push(basin);
 
     // **The 禾晾: the rice-drying racks at the square's east edge.** This module said they wait "because a frame with nothing on it
     // reads as scaffolding" — so they are drawn **loaded**: two posts and a head beam, and four bundles of rice hanging from the beam,
