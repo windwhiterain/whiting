@@ -249,3 +249,25 @@ identity row — 12 rows short, and the picture unchanged. The rows were the ins
 Nothing in the crate. A 骑楼's projecting upper floor is **one mass of four sections** — the shopfront's plan, a
 horizontal soffit band at the floor's level, then the projecting plan up to the eaves — with the windows authored as
 `FaceRef::in_band(2)` on the strip that projects. That is a scene's work and it is the next round.
+## The 骑楼's conversion: what it taught, and where it stands
+
+Converting the street's five plots into four-section masses — the plot's plan, the plot again at the floor, the
+projecting plan at the floor's own level plus the soffit, and the projecting plan up to the eaves — got as far as
+**the shopfront and the upper window being cut in different bands of one mass**, which is the thing three rounds were
+for. It did not close the solid, and the two causes are named here so the next round starts where this one stopped.
+
+**Landed, inert, and verified** (all twenty-four scenes unchanged at 85 489 rows):
+
+| change | why it is needed |
+| --- | --- |
+| **a corner two sections name at the same plan position is one vertex** | a 骑楼 moves its front two corners and leaves the party walls: those walls are the *same* corner written twice, and making a second vertex there opens the solid |
+| **a band side whose ends coincide is a triangle** | the same fact from the other side: two of the quad's four corners are one point, and a zero-area face is worse than a triangle |
+| **`resolve_holes` matches the band** | without it every strip of a banded mass cuts every hole in that edge — the bug that put the upper window in the shopfront's strip |
+| **`face_loop` and `face_extent` read the band's own section** | a hole in the strip above a projecting floor must be measured between *that strip's* ground line and top, not the mass's |
+
+**Not landed, and why**: with the bands cut, the masses came back `SolidOpen { loops: 2 }`, whose open edges sit at the
+mass's **base** (`y` at the foot) and are owned by band `0`'s walls and by `WallTop { edge: 1, band: 0 }` faces whose
+three corners are all at the *base* elevation — which says the crown vector handed to band `0`'s ring carried the
+**section below's** elevations where the section above's were meant. That is the next thing to read, and it is one
+instrumented run away: print the `crown` vector and the level elevations for a four-section mass after `site::seat`,
+which is the one step between authoring and expansion that this scene applies and the bridge's abutments do not.

@@ -1740,6 +1740,22 @@ pub(crate) fn splice_expansion(
 /// **Every refusal lands in `problems` rather than in a return value**, so a ring with two bad holes
 /// reports both and the caller decides what to do with the list; the whole-list-or-nothing rule is
 /// the caller's, because it is the one that knows whether this ring is the only thing a mass has.
+/// Emits one side of a band: a quad, or a triangle when the two sections agree about a corner and the quad would have
+/// two of its four corners at one point.
+fn emit_band_side(solid: &mut Solid, corners: [u32; 4], element: Element) {
+    let mut distinct: Vec<u32> = Vec::with_capacity(4);
+    for corner in corners {
+        if !distinct.contains(&corner) {
+            distinct.push(corner);
+        }
+    }
+    match distinct.as_slice() {
+        [a, b, c] => solid.triangle([*a, *b, *c], element),
+        [a, b, c, d] => solid.quad([*a, *b, *c, *d], element),
+        _ => {}
+    }
+}
+
 /// Walks a mass of more than two sections into **one strip of wall per pair of sections**.
 ///
 /// # Invariants
@@ -1815,7 +1831,12 @@ fn banded_mass(
         };
         offsets.push(offset);
     }
-    // **One set of vertices per section**, shared by both bands that touch it.
+    // **One set of vertices per section, and a corner two sections name twice is one corner.** A section that moves
+    // only some of its nodes — a 骑楼's upper floor projecting its front and leaving the party walls where they were —
+    // writes the unmoved nodes at the same plan position in both sections, and those are the *same authored corner*
+    // read twice rather than two corners a hair apart. Reusing the index is what keeps the solid closed there;
+    // welding by coordinate is what this module forbids for corners that are not the same one, and this is the case
+    // where they are.
     let mut outer: Vec<Vec<u32>> = Vec::with_capacity(levels.len());
     let mut inner: Vec<Vec<u32>> = Vec::with_capacity(levels.len());
     for (index, level) in levels.iter().enumerate() {
@@ -1823,8 +1844,15 @@ fn banded_mass(
         let mut in_loop = Vec::with_capacity(count);
         for node in 0..count {
             let at = level.outline[node];
-            out_loop.push(solid.point(lift(at.position, at.elevation)));
-            in_loop.push(solid.point(lift(offsets[index][node], at.elevation)));
+            let shared = index > 0 && levels[index - 1].outline[node].position == at.position;
+            out_loop.push(match shared {
+                true => outer[index - 1][node],
+                false => solid.point(lift(at.position, at.elevation)),
+            });
+            in_loop.push(match shared {
+                true => inner[index - 1][node],
+                false => solid.point(lift(offsets[index][node], at.elevation)),
+            });
         }
         outer.push(out_loop);
         inner.push(in_loop);
@@ -1843,6 +1871,9 @@ fn banded_mass(
     for band in 0..levels.len() - 1 {
         let ends = RingEnds {
             base: band == 0,
+            // **Every band closes its own crown, and only the foot closes a base.** The band above never draws a base,
+            // so a crown strip is not a duplicate of one: it is the only face that closes the wall over the top edge a
+            // cut subdivided, which is exactly the edge that stayed open (`SolidOpen { loops: 1 }`).
             crown: band + 1 == levels.len() - 1,
         };
         if vertical(band) {
@@ -1873,14 +1904,14 @@ fn banded_mass(
             }
             continue;
         }
-        // A hole on a band that leans has no strip to be cut in.
-        for indices in grouped.values() {
-            let _ = indices;
-        }
         for edge in 0..count {
             let next = (edge + 1) % count;
             let surfaces = RingSurfaces::of(loop_of, edge, band);
-            solid.quad(
+            // **A side of a band that moves one end and leaves the other is a triangle**, and drawing it as a quad
+            // would put a zero-area face in the solid: the two sections name one corner there, so two of the four
+            // corners are one point.
+            emit_band_side(
+                solid,
                 [
                     outer[band + 1][edge],
                     outer[band + 1][next],
@@ -1889,7 +1920,8 @@ fn banded_mass(
                 ],
                 Element::Mass(id, surfaces.authored),
             );
-            solid.quad(
+            emit_band_side(
+                solid,
                 [
                     inner[band + 1][next],
                     inner[band + 1][edge],
@@ -2766,7 +2798,10 @@ fn resolve_holes(
     // seen here instead of being missed by every edge's lookup — which is the difference between a
     // named refusal and a hole that was quietly never cut.
     for (face, indices) in grouped {
-        if face.mass != ring.loop_of.mass() || face.void != ring.loop_of.void() {
+        if face.mass != ring.loop_of.mass()
+            || face.void != ring.loop_of.void()
+            || face.band != ring.band
+        {
             continue;
         }
         // **A hole is cut through both of the ring's faces from the loop the walk reads**, so one

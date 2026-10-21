@@ -267,8 +267,21 @@ impl BuildingSkeleton {
     /// elevations — so this answers for either side of a face's
     /// [`LoopSide`](crate::grid::LoopSide) without reading the offset. `O(1)`.
     pub fn face_extent(&self, face: FaceRef) -> Option<(f32, f32)> {
-        let top = self.mass(face.mass)?.top_at(face.edge);
-        grid::loop_extent(self.face_loop(face)?, face.edge, top)
+        let mass = self.mass(face.mass)?;
+        // **A banded face's extent is the band's own**, and not the mass's: a hole in the strip above a projecting
+        // floor is measured between that strip's ground line and its top, and reading the whole mass would place its
+        // head in the storey above. A two-section mass keeps the old reading, where the top is the wall's own crown at
+        // that edge and may differ from its neighbour's.
+        let (loop_of, top) = if face.void.is_none() && mass.levels.len() > 2 {
+            let level = mass.levels.get(face.band)?;
+            (
+                level.outline.as_slice(),
+                mass.levels.get(face.band + 1)?.lowest(),
+            )
+        } else {
+            (self.face_loop(face)?, mass.top_at(face.edge))
+        };
+        grid::loop_extent(loop_of, face.edge, top)
     }
 
     /// Returns the authored loop a face is read off: a mass's own outline, or one of its courtyards.
@@ -287,7 +300,12 @@ impl BuildingSkeleton {
         let mass = self.mass(face.mass)?;
         match face.void {
             Some(void) => mass.voids.get(void).map(Vec::as_slice),
-            None => Some(mass.outline()),
+            // **A band's face is read off that band's own section**, because the strip above a projecting floor is a
+            // different plan from the foot's: the window in it is measured along the edge that projects.
+            None => Some(match mass.levels.get(face.band) {
+                Some(level) if face.band > 0 => level.outline.as_slice(),
+                _ => mass.outline(),
+            }),
         }
     }
 
