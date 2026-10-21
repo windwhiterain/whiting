@@ -69,6 +69,7 @@ pub mod ridges;
 pub mod bai_court;
 pub mod bai_lane;
 pub mod bamboo_house;
+pub mod benzu_miao;
 /// The shell phase's proof scene: one authored building, derived and expanded, standing in a frame.
 ///
 /// Public so a session iterating on the phase's acceptance picture can call it directly, and
@@ -222,6 +223,7 @@ impl Gallery {
             "earthen_house",
             "bai_court",
             "bai_lane",
+            "benzu_miao",
             "bamboo_house",
             "log_house",
             "village_west",
@@ -342,6 +344,7 @@ impl Gallery {
             "earthen_house" => earthen::earthen_house(),
             "bai_court" => bai_court::bai_court(),
             "bai_lane" => bai_lane::bai_lane(),
+            "benzu_miao" => benzu_miao::benzu_miao(),
             "bamboo_house" => bamboo_house::bamboo_house(),
             "log_house" => log_house::log_house(),
             "village_west" => village::village_west(),

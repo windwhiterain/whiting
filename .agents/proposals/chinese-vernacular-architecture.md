@@ -2118,3 +2118,26 @@ a **巷**: a lane, and the courts turn their one formal face onto it.
 20.34 MB.
 
 The lane's other end and the village's 本主庙 are not drawn, and the type says so: three plots are this scene's frame.
+## Round 79: the 白族本主庙, the gallery's fourteenth type
+
+**The village's own temple, and the first public building in the gallery.** A 本主庙 has two buildings because the village has
+two duties: the **大殿** where its 本主 is, and the **戏台** where the god is *entertained*. The pair facing each other across a
+court is the whole type, and it is what this scene draws:
+
+- **the 大殿 stands on a plinth** a half-metre above the court, ten metres across with a two-metre roof rise —
+- **the 戏台 stands on a higher plinth**, seven metres across, with a **mouth** the width of the stage on the face that looks at
+  the 大殿, because it is a stage and not a room;
+- **the court between them is paved** and closed by two side walls, so the two buildings are one temple and not two houses;
+- **the 大殿's front is a colonnade**: three bays, each cut to the plinth so the piers between them are what the village stands
+  behind.
+
+Two things the frame taught:
+
+- **the plinth is a floor slab and not a mass**, so nothing stands inside anything: `Slab::floor` from `0.0` to the plinth's
+  height is exactly a stepped floor, and the two buildings sit on their own.
+- **the 戏台's mouth faces the 大殿**, so a camera from the court's south sees the stage's back. The shot is high and
+  three-quarters now, over the stage's roof into the court and down onto the colonnade — the type's axis is only legible from
+  above.
+
+**Identity: 35 scenes, 122 240 rows**; `benzu_miao` **1 112** — two masses, two plinths, two roofs, a paved court, two side
+walls and four openings' reveals. The document is 7.39 MB.

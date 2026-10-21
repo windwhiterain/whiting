@@ -402,6 +402,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "earthen_house" => crate::earthen::document(),
         "bai_court" => crate::bai_court::document(),
         "bai_lane" => crate::bai_lane::document(),
+        "benzu_miao" => crate::benzu_miao::document(),
         "bamboo_house" => crate::bamboo_house::document(),
         "log_house" => crate::log_house::document(),
         "village_west" => crate::village::document(),
