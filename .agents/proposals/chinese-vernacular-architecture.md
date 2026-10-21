@@ -3564,3 +3564,18 @@ sheaves**, the **fence**, a log house's **gable end** and the **step between the
 plate, and the pair now covers both halves of the street.
 
 **Identity: 48 scenes, 161 745 rows**; `lisu_steps` **1 129** — the same document as `lisu_village`, by design. The document is 7.48 MB.
+## Round 187: the 牲畜栏 and the 柴棚
+
+A 木楞房 household keeps its animals in a **rail pen** beside the house and its split wood under a **small shed**, and both are posts and rails
+rather than walls — the 侗寨's 猪栏 in another country, and neither one is a building.
+
+**The pen is four runs of three rails on four corner posts**, and its rails are the crate's oldest member rule read for the thirteenth time: a
+rail's `across` is the run turned a quarter. **The shed is four posts and a slab roof**, open on every side, which is what makes it a woodshed and
+not a room.
+
+**Neither plate shows them, and both tables do**: the pen and the shed stand at the lane's **west end** — the wide plate crops that end off and the
+close plate looks east down the lane. **A third plate is what this village now owes**, and the round records the debt instead of moving objects
+into a camera's way to pay it.
+
+**Identity: 48 scenes, 161 997 rows**; `lisu_village` and `lisu_steps` 1 129 → **1 255** each — the pen's twelve rails and four posts, the shed's
+four posts and its roof. The document is 7.52 MB.

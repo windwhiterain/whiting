@@ -36,6 +36,21 @@ const FLIGHT_FROM: f32 = -21.00;
 const FLIGHT_GAP: f32 = 37.60;
 const FLIGHT_HALF: f32 = 1.35;
 const TREADS: usize = 4;
+
+/// The 牲畜栏 beside the lower houses: where it stands, its plan, how many rails, the rail's section and height, a post's section and the gate's
+/// half width.
+const PEN_AT: [f32; 2] = [-20.40, -7.60];
+const PEN: [f32; 2] = [3.80, 3.10];
+const PEN_RAILS: usize = 3;
+const PEN_RAIL: f32 = 0.11;
+const PEN_HIGH: f32 = 1.05;
+const PEN_POST: f32 = 0.15;
+const PEN_GATE: f32 = 0.80;
+/// The 柴棚 beside it: where it stands, its plan, the posts' height and how far its roof stands out.
+const SHED_AT: [f32; 2] = [-20.40, -10.90];
+const SHED: [f32; 2] = [2.70, 2.10];
+const SHED_HIGH: f32 = 1.95;
+const SHED_EAVE: f32 = 0.28;
 /// The lane: its half width, which is the gap the two rows of houses face each other across.
 const LANE_HALF: f32 = 3.60;
 /// The five houses: where each stands and which way it is turned. The two rows face across the lane.
@@ -262,6 +277,101 @@ pub fn document() -> Building {
             ));
         }
     }
+
+    // **The 牲畜栏 and the 柴棚.** A 木楞房 household keeps its animals in a rail pen beside the house and its split wood under a small shed, and
+    // both are **posts and rails** rather than walls: this is the 侗寨's 猪栏 in another country, and neither one is a building.
+    let [pen_x, pen_z] = PEN_AT;
+    for (x0, x1, z0, z1) in [
+        (
+            pen_x - PEN[0] * 0.5,
+            pen_x - PEN[0] * 0.5 + PEN_RAIL,
+            pen_z - PEN[1] * 0.5,
+            pen_z + PEN[1] * 0.5,
+        ),
+        (
+            pen_x + PEN[0] * 0.5 - PEN_RAIL,
+            pen_x + PEN[0] * 0.5,
+            pen_z - PEN[1] * 0.5,
+            pen_z + PEN[1] * 0.5,
+        ),
+        (
+            pen_x - PEN[0] * 0.5,
+            pen_x - PEN_GATE,
+            pen_z + PEN[1] * 0.5 - PEN_RAIL,
+            pen_z + PEN[1] * 0.5,
+        ),
+        (
+            pen_x + PEN_GATE,
+            pen_x + PEN[0] * 0.5,
+            pen_z + PEN[1] * 0.5 - PEN_RAIL,
+            pen_z + PEN[1] * 0.5,
+        ),
+    ] {
+        // **A rail is a member with both ends at the pen's own height**, so its `across` is the run turned a quarter (rounds 134, 141, 144).
+        let along_x = (z1 - z0).abs() < 1.1e-3;
+        for rail in 0..PEN_RAILS {
+            let up = PAVING + PEN_HIGH * (rail as f32 + 1.0) / (PEN_RAILS + 1) as f32;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x0, up, z0] },
+                building::Anchor::Free { at: [x1, up, z1] },
+                if along_x { [0.0, 1.0] } else { [1.0, 0.0] },
+                PEN_RAIL,
+                PEN_RAIL,
+            ));
+        }
+    }
+    // **The posts at the pen's corners**, which is what makes the rails a fence and not four floating lines.
+    for x in [pen_x - PEN[0] * 0.5, pen_x + PEN[0] * 0.5] {
+        for z in [pen_z - PEN[1] * 0.5, pen_z + PEN[1] * 0.5] {
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x, PAVING, z] },
+                building::Anchor::Free {
+                    at: [x, PAVING + PEN_HIGH + PEN_RAIL, z],
+                },
+                [1.0, 0.0],
+                PEN_POST,
+                PEN_POST,
+            ));
+        }
+    }
+
+    // **The 柴棚: four posts, a head frame and a slab roof**, open on every side — a shed for wood and not a room for people.
+    let [shed_x, shed_z] = SHED_AT;
+    for x in [shed_x - SHED[0] * 0.5, shed_x + SHED[0] * 0.5] {
+        for z in [shed_z - SHED[1] * 0.5, shed_z + SHED[1] * 0.5] {
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x, PAVING, z] },
+                building::Anchor::Free {
+                    at: [x, PAVING + SHED_HIGH, z],
+                },
+                [1.0, 0.0],
+                PEN_POST,
+                PEN_POST,
+            ));
+        }
+    }
+    skeleton.slabs.push(building::Slab::roof(
+        ops::wound(vec![
+            [
+                shed_x - SHED[0] * 0.5 - SHED_EAVE,
+                shed_z - SHED[1] * 0.5 - SHED_EAVE,
+            ],
+            [
+                shed_x + SHED[0] * 0.5 + SHED_EAVE,
+                shed_z - SHED[1] * 0.5 - SHED_EAVE,
+            ],
+            [
+                shed_x + SHED[0] * 0.5 + SHED_EAVE,
+                shed_z + SHED[1] * 0.5 + SHED_EAVE,
+            ],
+            [
+                shed_x - SHED[0] * 0.5 - SHED_EAVE,
+                shed_z + SHED[1] * 0.5 + SHED_EAVE,
+            ],
+        ]),
+        PAVING + SHED_HIGH,
+        PAVING + SHED_HIGH + 0.13,
+    ));
 
     Building::new(skeleton)
 }
