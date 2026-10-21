@@ -57,25 +57,6 @@ pub fn slate_court() -> Value {
     )
 }
 
-/// Returns `plan` wound positively, which is the only order the offsetting will take.
-///
-/// # Invariants
-///
-/// The signed area is `sum(x_i * y_{i+1} - x_{i+1} * y_i) / 2`; a loop that winds the other way is reversed. Reversing keeps
-/// the first node where it is, so a wall`s own start stays the corner its neighbours were measured from.
-fn wound(mut plan: Vec<[f32; 2]>) -> Vec<[f32; 2]> {
-    let mut twice = 0.0;
-    for index in 0..plan.len() {
-        let a = plan[index];
-        let b = plan[(index + 1) % plan.len()];
-        twice += a[0] * b[1] - b[0] * a[1];
-    }
-    if twice < 0.0 {
-        plan.reverse();
-    }
-    plan
-}
-
 /// Returns the document: the house, three lengths of wall and the gate.
 pub fn document() -> Building {
     let mut skeleton = crate::tunpu::document().skeleton;
@@ -117,12 +98,12 @@ pub fn document() -> Building {
                 [to[0], to[1] - normal[1]],
             ]
         };
-        // **A plan is wound positively, and which way that is depends on the run`s own direction**: the same four corners
+        // **A plan is wound positively, and which way that is depends on the run's own direction**: the same four corners
         // listed for a wall running east and one running west wind opposite ways, and the crate answers `OffsetInverted`
-        // with the plan`s area (`-15.81` for the west length, `-7.82` for the short one). `wound` is the one place that is
-        // decided.
+        // with the plan's area (`-15.81` for the west length, `-7.82` for the short one). `ops::wound` decides it, and that
+        // rule lives in the crate now instead of in this scene.
         let mut wall = Mass::new(
-            wound(plan)
+            building::ops::wound(plan)
                 .into_iter()
                 .map(|at| PlanNode::new(at, 0.0))
                 .collect(),

@@ -26,6 +26,16 @@ pub struct MassId(pub usize);
 #[derive(Debug, Clone, PartialEq)]
 pub struct Level {
     /// The outer face of the wall at this level, stored open (the last-to-first edge is implied).
+    ///
+    /// # Invariants
+    ///
+    /// **The plan winds positively** — counter-clockwise seen from above — which is what makes every expanded face point
+    /// outward. The winding depends on the direction the outline is *walked*, so the same four corners listed for a wall
+    /// running east and one running west wind opposite ways: round 72 measured [`Problem::OffsetInverted`] with areas
+    /// `-15.81` and `-7.82` for exactly that pair. The answer is to list the run once and let one helper decide the order, not
+    /// to remember which way each run goes.
+    ///
+    /// [`Problem::OffsetInverted`]: crate::expand::Problem::OffsetInverted
     pub outline: Vec<PlanNode>,
 }
 
@@ -262,6 +272,17 @@ pub struct Mass {
     /// the two to drift.
     pub levels: Vec<Level>,
     /// Wall thickness, measured inward from the outline.
+    ///
+    /// # Invariants
+    ///
+    /// **It must be less than half the plan's narrowest extent**, because the inner loop *is* the outline offset inward by
+    /// this amount and two such offsets meet in the middle: a mass 0.9 m deep with a 0.55 m wall folds its inner loop
+    /// through itself, and the expansion answers [`Problem::OffsetEdgeFolded`] and then [`Problem::OffsetInverted`]. Round
+    /// 70 lost a settlement to exactly that, and round 72 to a pier that was as thick as it was wide. A wall that *is* the
+    /// mass's thickness has no inside at all, which is a projection and not a wall.
+    ///
+    /// [`Problem::OffsetEdgeFolded`]: crate::expand::Problem::OffsetEdgeFolded
+    /// [`Problem::OffsetInverted`]: crate::expand::Problem::OffsetInverted
     pub wall: f32,
     /// Floor slab thickness, measured down from the outline's elevations.
     pub slab: f32,

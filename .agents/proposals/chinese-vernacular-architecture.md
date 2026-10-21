@@ -2010,3 +2010,24 @@ The wall pieces were where every refusal came from, and each names something abo
 
 **Identity: 32 scenes, 113 750 rows**; `slate_court` **344** — the house's 260, three walls' tops and faces, two piers and
 the gate's roof. The document is 7.18 MB.
+## Round 73: three invariants that had only ever been read in an error
+
+Rounds 66, 69, 70 and 72 each lost time to a rule the crate enforces but never wrote down. They are in the documentation now,
+each with the round that measured it and the refusal it produces:
+
+- **`Mass::wall`** — the wall's thickness must be **less than half the plan's narrowest extent**, because the inner loop *is*
+  the outline offset inward by it and two such offsets meet in the middle (`OffsetEdgeFolded`, then `OffsetInverted`). Round
+  70's compound wall and round 72's pier were both as thick as they were wide.
+- **`Level::outline`** — **a plan winds positively**, and which way that is depends on the direction the run is walked, so the
+  same four corners wind opposite ways for a wall running east and one running west (round 72: `OffsetInverted` at areas
+  `-15.81` and `-7.82`).
+- **`Inset`** — an opening stands **at least one wall's thickness clear of the face's own ends**, because the loop an opening
+  is cut into is mitred: a hole 0.22 m from a corner of a 0.55 m wall is 0.33 m past the inner corner, reported as
+  `past: 0.331` (round 69).
+- **`Opening::new`** — **the row comes before the column**, and both are `usize`, so transposing them compiles and asks for a
+  bay the grid does not have (round 68, which read one transposition as three different faults).
+
+The winding rule is also **code now and not a habit**: `ops::wound(plan)` is the one place the order is decided, and
+`slate_court` uses it instead of the private copy it grew in round 72. A refactor owes a measurement as much as an addition
+does, and this one has the strongest kind: **the frame is byte-identical** to round 72's (`38c99288…`) and the identity is
+unchanged at **32 scenes / 113 750 rows**.

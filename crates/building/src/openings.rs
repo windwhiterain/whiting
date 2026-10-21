@@ -53,7 +53,15 @@ impl RevealSide {
 /// is not a different opening, it is a fault ([`Violation::OpeningExceedsBay`]), and the arithmetic
 /// is arranged so that it cannot be read as a smaller one.
 ///
+/// **An opening also stands at least one wall's thickness clear of the face's own ends.** The loop an
+/// opening is cut into is the author's outline offset inward by the wall's thickness, so its ends are
+/// mitred: a hole 0.22 m from a corner of a 0.55 m wall is 0.33 m *past* the inner corner, and
+/// [`Violation::OpeningOutsideWall`] reports that margin as `past`. Round 69 spent two rounds on
+/// refusals that read like three different mistakes and were this one invariant, measured as
+/// `past: 0.331`.
+///
 /// [`Violation::OpeningExceedsBay`]: crate::validate::Violation::OpeningExceedsBay
+/// [`Violation::OpeningOutsideWall`]: crate::validate::Violation::OpeningOutsideWall
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Inset {
     /// From the bay's start along the edge.
@@ -151,6 +159,13 @@ pub struct Opening {
 
 impl Opening {
     /// Builds an opening in a bay.
+    ///
+    /// # Invariants
+    ///
+    /// **The row comes before the column.** Both are plain `usize`s, so transposing them compiles and asks the grid for a
+    /// bay it does not have: round 68's two attempts at a house window passed `(column, 0)` and were answered three
+    /// different ways before the pair was read — `None` from a face not yet split, `OpeningOutsideWall` with a `past` the
+    /// caller could not explain, and a window that was simply not cut. Name both at every call site, or read them here.
     pub fn new(face: FaceRef, row: usize, column: usize, inset: Inset) -> Self {
         Self {
             face,

@@ -612,3 +612,28 @@ pub fn rotate(skeleton: &mut BuildingSkeleton, about: Vec2, radians: f32) {
         shift(&mut wall.to);
     }
 }
+/// Returns `plan` wound positively, which is the order every outline in this crate is read in.
+///
+/// # Invariants
+///
+/// The signed area is `sum(x_i * y_{i+1} - x_{i+1} * y_i) / 2`, and a loop that winds the other way is reversed. **The first
+/// node stays where it is**, so a run keeps the corner its neighbours were measured from — reversing in place is not the
+/// same as rotating.
+///
+/// # Why it is a helper and not a habit
+///
+/// Which way a list of corners winds depends on the direction the run is *walked*, so the same four corners written for a
+/// wall running east and one running west wind opposite ways. Round 72 wrote both by hand and the crate answered
+/// `OffsetInverted` with areas `-15.81` and `-7.82`; the rule belongs in one place, next to the offsetting that reads it.
+pub fn wound(mut plan: Vec<[f32; 2]>) -> Vec<[f32; 2]> {
+    let mut twice = 0.0;
+    for index in 0..plan.len() {
+        let a = plan[index];
+        let b = plan[(index + 1) % plan.len()];
+        twice += a[0] * b[1] - b[0] * a[1];
+    }
+    if twice < 0.0 {
+        plan.reverse();
+    }
+    plan
+}
