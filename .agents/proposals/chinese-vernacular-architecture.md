@@ -3091,3 +3091,24 @@ shows nothing new. **The round's evidence is the table**, and the honest record 
 twelve rounds that a small object has gone in where the composition is larger than it.
 
 **Identity: 40 scenes, 146 425 rows**; `slate_street` 2 106 → **2 158** — two gates' four stones. The document is 7.76 MB.
+## Round 150: the 羌族碉楼, the gallery's seventeenth type
+
+**The first type from the region's northwest.** 羌区 is the upper 岷江 valley, where the houses are stone and the towers are what the
+country is known by. Every other type here is timber or earth; this one is **coursed stone with a batter**, and the batter is the whole
+form.
+
+**It is one call into an existing derivation.** `derive::stepped_courses` lays a stack of masses that share an edge with the one below
+and no volume — which is exactly what a battered tower is: each course a square `BATTER` smaller than the one under it, carried through
+`Join::Storey`. Eight courses, `2.55 m` each, from a `6.20 m` base to a `1.6 m` crown, is `20.4 m` of tower; the 塔 in round 116 proved
+the derivation and this round proves it is a *tower* derivation and not a stupa's.
+
+**The door is in the air**, cut in the second course with its sill `4.10 m` above the ground: a 碉楼 is entered by a plank that is pulled
+up behind you, which is the reason the type exists at all. It is cut on `edge 1` — the side the camera stands on, the mistake rounds 97
+and 136 both measured.
+
+**What the type still owes**: the **battlements**. A 碉楼's crown is a wall with gaps in it, and `crown_gables` is a *roof's* own edge;
+the crown here is the top course's plain wall. That is the next round's work, and it is the one part of the type a plate would notice at
+once.
+
+**Identity: 41 scenes, 146 539 rows**; `qiang_tower` **114** — eight courses, their faces and tops, and one door's reveals. The document
+is 7.10 MB.
