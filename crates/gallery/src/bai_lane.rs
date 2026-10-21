@@ -44,6 +44,9 @@ const WELL_AT: [f32; 2] = [0.0, -13.0];
 const WELL_HALF: f32 = 0.72;
 const WELL_WALL: f32 = 0.24;
 const WELL_HIGH: f32 = 0.85;
+/// The 井台 the curb stands on: its height, and how deep the step in front of it is.
+const WELL_PLINTH: f32 = 0.24;
+const WELL_STEP: f32 = 0.34;
 /// The 辘轳 over the well: how high its posts stand above the curb, and the section of a post.
 const WINDLASS_HIGH: f32 = 1.55;
 const WINDLASS: f32 = 0.11;
@@ -137,6 +140,31 @@ pub fn document() -> building::Building {
     // yards, and the lane's well is where the lane meets. It is a mass whose wall is thick enough to be a ring — `0.24 m` in a
     // `1.44 m` plan, so the inner loop cannot fold (round 73) — which is the same answer the Dai hamlet's well-head gave.
     let well = WELL_AT;
+    // **The 井台: the platform the curb stands on.** Round 130 gave the street's well one; this is the same answer in the same
+    // vocabulary — a floor slab a hand's height up, a step in front of it, and the curb and the windlass standing on its top. Two
+    // wells in two scenes and **one way of standing a well on the ground**: what a plate reads as the same thing is the same thing.
+    let apron = [
+        [well[0] - WELL_HALF - 0.55, well[1] - WELL_HALF - 0.55],
+        [well[0] + WELL_HALF + 0.55, well[1] - WELL_HALF - 0.55],
+        [well[0] + WELL_HALF + 0.55, well[1] + WELL_HALF + 0.55],
+        [well[0] - WELL_HALF - 0.55, well[1] + WELL_HALF + 0.55],
+    ];
+    skeleton.slabs.push(building::Slab::floor(
+        building::ops::wound(apron.to_vec()),
+        0.0,
+        WELL_PLINTH,
+    ));
+    // **One step in front of it**, on the side the lane comes from.
+    skeleton.slabs.push(building::Slab::floor(
+        building::ops::wound(vec![
+            [apron[0][0], apron[0][1] - WELL_STEP],
+            [apron[1][0], apron[1][1] - WELL_STEP],
+            [apron[1][0], apron[1][1]],
+            [apron[0][0], apron[0][1]],
+        ]),
+        0.0,
+        WELL_PLINTH * 0.5,
+    ));
     let mut ring = building::Mass::new(
         building::ops::wound(vec![
             [well[0] - WELL_HALF, well[1] - WELL_HALF],
@@ -145,9 +173,9 @@ pub fn document() -> building::Building {
             [well[0] - WELL_HALF, well[1] + WELL_HALF],
         ])
         .into_iter()
-        .map(|at| building::PlanNode::new(at, 0.0))
+        .map(|at| building::PlanNode::new(at, WELL_PLINTH))
         .collect(),
-        WELL_HIGH,
+        WELL_PLINTH + WELL_HIGH,
     );
     ring.wall = WELL_WALL;
     ring.slab = 0.18;

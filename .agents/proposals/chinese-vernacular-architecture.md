@@ -2874,3 +2874,11 @@ court has daylight on it, so the plate is legible, and the rail reads against th
 
 **Identity: 39 scenes, 137 088 rows**; `benzu_miao` 1 603 → **1 657** — eight members' sections and ends — and the new
 `benzu_miao_court` **1 603**, the same document under a second camera. The document is 7.55 MB.
+## Round 132: the 白族巷's 井台
+
+Round 130 gave the street's well a platform; this is the same answer in the same vocabulary — a floor slab `WELL_PLINTH` up, **a step
+in front of it** on the side the lane comes from, and the curb and the windlass standing on its top. Two wells in two scenes and **one
+way of standing a well on the ground**: what a plate reads as the same thing is the same thing, and the two scenes now agree about it.
+
+**Identity: 39 scenes, 137 100 rows**; `bai_lane` 5 732 → **5 744** — the platform's top and edges and the step's. The document is
+20.4 MB.
