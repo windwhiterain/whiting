@@ -80,3 +80,33 @@ which of them was the geometry and which was the cut:
 So the tiered 土掌房 waits on the cut, and the record now says which wall is the wall: **the band walk is not the
 obstacle — the cut is.** That is a narrower question than the one this round opened with, and the probe answers it in one
 run in three modes.
+## Round 56: the 土掌房 in two tiers, and why a banded mass cannot be cut
+
+**The refusal is necessary, and this round measured it twice.** A hole placed *entirely inside* one band of a four-section
+mass — sill `0.35`, head `2.6`, clear of both section lines — still came back with **sixteen holes, eight on each section
+line**. The reason is now unambiguous: **the stations a cut adds are horizontal.** A cut splits the band's loop at the
+jamb, whatever height the hole is, so a hole that touches no line still breaks the loop the band above starts from. There
+is no "inside" case to relax to, and `BandedMassCut` stays.
+
+### What the type gets instead
+
+A 土掌房 is **two masses and a terrace**, and every piece of that is machinery the crate already has:
+
+- **the lower wall** rises to the first floor's roof and carries the door, the windows and the 厦子 — one band, so its
+  openings are cut the ordinary way;
+- **the lower roof is the 晒场**: an earthen slab on the lower wall's top, left open round the upper room;
+- **the upper room stands back by `0.55 m`** on that roof, is carried by the wall below through `Join::Storey`, and takes
+  its own openings in its own band.
+
+That is the same two-mass answer the 骑楼 got in round 44 (round 49's refusal had blocked the one-mass version), and it
+is the type's real construction: **the step in a 土掌房 is a joint and a slab, not a leaning band.**
+
+| scene | before | after |
+| --- | --- | --- |
+| `earthen_house` | 208 | **182** |
+| `village_square` / `village_west` | 18 415 | **18 567** |
+| `hillside_village` | 5 985 | **6 137** |
+
+**The house is smaller in rows and larger in building**: the single 5.6 m wall became a 2.8 m wall, a slab and a 2.8 m room,
+and the parapet, the stair and the porch all still stand where the type puts them. **26 scenes, 107 700 rows**, the other
+22 unchanged.

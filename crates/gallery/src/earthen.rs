@@ -46,6 +46,9 @@ use crate::ground;
 const WIDTH: f32 = 9.0;
 const DEPTH: f32 = 6.5;
 const STOREY: f32 = 2.8;
+
+/// How far the upper room stands back from the terrace's edge, which is what makes the lower roof a 晒场.
+const SETBACK: f32 = 0.55;
 const STOREYS: usize = 2;
 const WALL: f32 = 0.55;
 const PLATE: f32 = 0.40;
@@ -309,7 +312,13 @@ pub fn document() -> Building {
     let half = WIDTH * 0.5;
     let deep = DEPTH * 0.5;
     let top = STOREYS as f32 * STOREY;
-    let mut mass = Mass::new(
+    // **Two masses and a terrace between them.** A 土掌房 is built in two steps and the step is the type: the lower wall
+    // rises to the first floor's roof, that roof is a **晒场** left open round the room above, and the room above stands
+    // back from the edge by `SETBACK` and is carried by the wall below. Each is a two-section mass, so **each takes its
+    // own openings**: a mass drawn in several bands refuses a cut by name (`BandedMassCut`), and the scene that only
+    // needed one band per storey never meets that refusal.
+    let terrace = top - STOREY;
+    let mut lower = Mass::new(
         [
             PlanNode::new([-half, -deep], 0.0),
             PlanNode::new([half, -deep], 0.0),
@@ -317,22 +326,55 @@ pub fn document() -> Building {
             PlanNode::new([-half, deep], 0.0),
         ]
         .to_vec(),
+        terrace,
+    );
+    lower.wall = WALL;
+    lower.slab = PLATE;
+    let id = MassId(skeleton.masses.len());
+    skeleton.masses.push(lower);
+    let mut upper = Mass::new(
+        [
+            PlanNode::new([-half + SETBACK, -deep + SETBACK], terrace),
+            PlanNode::new([half - SETBACK, -deep + SETBACK], terrace),
+            PlanNode::new([half - SETBACK, deep - SETBACK], terrace),
+            PlanNode::new([-half + SETBACK, deep - SETBACK], terrace),
+        ]
+        .to_vec(),
         top,
     );
-    mass.wall = WALL;
-    mass.slab = PLATE;
-    let id = MassId(skeleton.masses.len());
-    skeleton.masses.push(mass);
+    upper.wall = WALL;
+    upper.slab = PLATE;
+    upper.attachment = Some(building::Attachment {
+        host: id,
+        join: building::Join::Storey,
+    });
+    let upper_id = MassId(skeleton.masses.len());
+    skeleton.masses.push(upper);
 
-    // **The roof is a floor.** An earth slab on the mass's own top, hosting the mass, so the family's 晒场 is
-    // drawn as the plate it is rather than as a pitched roof that the type does not have.
+    // **The lower roof is the terrace**, and the upper room stands on it: an earthen slab like the top one.
     skeleton.slabs.push(
         building::Slab::roof(
             vec![[-half, -deep], [half, -deep], [half, deep], [-half, deep]],
+            terrace - ROOF_THICK,
+            terrace,
+        )
+        .with_host(id),
+    );
+
+    // **The roof is a floor.** An earth slab on the upper mass's own top, hosting it, so the family's 晒场 is
+    // drawn as the plate it is rather than as a pitched roof that the type does not have.
+    skeleton.slabs.push(
+        building::Slab::roof(
+            vec![
+                [-half + SETBACK, -deep + SETBACK],
+                [half - SETBACK, -deep + SETBACK],
+                [half - SETBACK, deep - SETBACK],
+                [-half + SETBACK, deep - SETBACK],
+            ],
             top - ROOF_THICK,
             top,
         )
-        .with_host(id),
+        .with_host(upper_id),
     );
 
     // **The parapet: four low members standing on the slab's own edge**, one to a side. They are members and
@@ -371,7 +413,10 @@ pub fn document() -> Building {
     // — 1.1 m out from the wall — and each one steps along the wall's own face. The first version ran every
     // tread through the whole depth of the house and climbed in `x`, which drew a fan of fins rather than a
     // stair, and the frame said so before any validator could.
-    let rise = (top - ROOF_THICK) / STEPS as f32;
+    // **The stair climbs to the terrace and not to the roof**, because the terrace is the first floor: a 土掌房`s
+    // stair reaches the 晒场 and goes on to the room above by a second flight this document does not draw.
+    let terrace_level = top - STOREY;
+    let rise = (terrace_level - ROOF_THICK) / STEPS as f32;
     let stair_width = stair_width();
     for step in 0..STEPS {
         let y = rise * (step + 1) as f32;
@@ -441,7 +486,20 @@ pub fn document() -> Building {
     }
     // **A door and two small windows in the front**, which for a wall this thick are holes a metre deep: the
     // reveal is the wall, and that is what the type's windows look like from outside.
+    // **The lower floor is opened onto its porch and the upper room onto its terrace**, each in its own mass: a
+    // 竹楼 opens onto its veranda, a 土掌房 onto its 厦子 and its 晒场, and the two storeys are two masses here.
     let _ = facade::open_court_face(&mut skeleton, id, deep, true, Front::RANGE);
+    let _ = facade::open_court_face(
+        &mut skeleton,
+        upper_id,
+        deep - SETBACK,
+        true,
+        Front {
+            storeys: 1,
+            bays: 3,
+            door: true,
+        },
+    );
     let _ = Bar::NONE;
     Building::new(skeleton)
 }
