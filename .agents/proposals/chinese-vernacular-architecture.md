@@ -3542,3 +3542,14 @@ upper row one rise higher on its own paved shelf, with a retaining face between 
 arrive with it, because `ops::raise` moved every part and round 181's porch came along unchanged.
 
 **Identity: 47 scenes, 160 568 rows**; `lisu_village` 1 062 → **1 081** — a second bench and its retaining face. The document is 7.48 MB.
+## Round 185: the steps between the benches
+
+Round 184 raised the upper bench by `RISE` and left **no way onto it** — the same gap round 175 found on the longhouse, one round after the level
+was made. Two flights of four treads now climb the retaining face.
+
+**The plate cannot show them, and says so**: four treads on a `1.40 m` rise are a few pixels from a camera composed for the whole village, and the
+two placements tried — the lane's middle and the bench's exposed ends — both came back without them. **The evidence is the table**, and the honest
+note is that this village is now the second scene here that owes a **close plate** of its own (round 172 gave the 土掌房 village one; a 傈僳
+close plate of the two benches and their steps is the same move).
+
+**Identity: 47 scenes, 160 616 rows**; `lisu_village` 1 081 → **1 129** — two flights of four treads. The document is 7.48 MB.

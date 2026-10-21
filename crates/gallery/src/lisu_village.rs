@@ -29,6 +29,13 @@ const PAVING: f32 = 0.05;
 const UPPER_EDGE: f32 = 1.80;
 const RISE: f32 = 1.40;
 const RETAIN: f32 = 0.50;
+
+/// The steps between the benches: how many flights, where they start and how far apart, how wide each is, and how many treads a flight has.
+const FLIGHTS: usize = 2;
+const FLIGHT_FROM: f32 = -21.00;
+const FLIGHT_GAP: f32 = 37.60;
+const FLIGHT_HALF: f32 = 1.35;
+const TREADS: usize = 4;
 /// The lane: its half width, which is the gap the two rows of houses face each other across.
 const LANE_HALF: f32 = 3.60;
 /// The five houses: where each stands and which way it is turned. The two rows face across the lane.
@@ -213,6 +220,27 @@ pub fn document() -> Building {
                 [1.0, 0.0],
                 SHEAF_WIDE,
                 SHEAF_WIDE,
+            ));
+        }
+    }
+
+    // **The steps up the retaining face.** Round 184 raised the upper bench by `RISE` and left no way onto it, which is the same gap round 175
+    // found on the longhouse: a level with no route is a level nobody uses. Two flights of four treads each, one at either end of the lane.
+    for flight in 0..FLIGHTS {
+        let x = FLIGHT_FROM + FLIGHT_GAP * flight as f32;
+        for tread in 0..TREADS {
+            let along = tread as f32 / TREADS as f32;
+            let z = UPPER_EDGE + RETAIN * along;
+            let rise = RISE * along;
+            skeleton.slabs.push(building::Slab::paving(
+                ops::wound(vec![
+                    [x - FLIGHT_HALF, z],
+                    [x + FLIGHT_HALF, z],
+                    [x + FLIGHT_HALF, z + RETAIN / TREADS as f32],
+                    [x - FLIGHT_HALF, z + RETAIN / TREADS as f32],
+                ]),
+                rise,
+                rise + PAVING,
             ));
         }
     }
