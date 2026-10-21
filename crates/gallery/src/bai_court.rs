@@ -60,6 +60,15 @@ const GATE_EAVE: f32 = 0.55;
 const GATE_RISE: f32 = 0.40;
 const GATE_DEEP: f32 = 1.10;
 
+/// The well in the court: a stone ring a metre and a bit across, its wall a quarter of that so the hole is a bucket`s.
+const WELL_AT: [f32; 2] = [3.10, 3.10];
+const WELL_HALF: f32 = 0.62;
+const WELL_WALL: f32 = 0.22;
+const WELL_HIGH: f32 = 0.80;
+
+/// Where the court plants: the corners the wings leave, and the foot of the 照壁.
+const PLANTS: [[f32; 2]; 3] = [[-3.30, 3.10], [-3.20, -3.20], [3.20, -3.10]];
+
 const TILES: Covering = Covering {
     period: 0.19,
     fill: 0.72,
@@ -78,14 +87,21 @@ const GROUND_EXTENT: f64 = 55.0;
 
 /// Builds the court: from the 照壁's own corner, so the wall is in the foreground and the 正房 behind the court.
 pub fn bai_court() -> Value {
+    // **The court's planting**: bamboo at the corners the wings leave and at the foot of the 照壁, from the same bridge the
+    // settlements use. A 白族 court grows its flowers against the screen wall, and a court with a well and nothing growing in
+    // it is a yard.
+    let plants = crate::settlement_plants::bamboo_clumps(&PLANTS, &|_: [f32; 2]| 0.0);
     crate::village::scene_of(
         &document(),
-        &crate::settlement_plants::Extra::none(),
+        &plants,
         &|_, _| 0.0,
         // **Along the 照壁 to the gate**: the approach view that showed the wall as a screen now stands off its east end, so
         // the 门楼's own frame — threshold, jambs, lintel and 门罩 — is the foreground and the 正房 rises behind it.
-        [14.0, 4.4, -11.0],
-        [2.6, 1.9, -1.8],
+        // **Inside the court, from its south-west corner**: what this scene is a picture of is the *court* — the well, the
+        // planting, the 照壁's inner face and the 正房 across the paving — and every shot from beyond the gate showed only the
+        // wall that closes it.
+        [-3.6, 3.0, -3.2],
+        [2.2, 1.8, 4.4],
         FIELD_OF_VIEW,
         "bai_court",
     )
@@ -345,6 +361,26 @@ pub fn document() -> Building {
     {
         skeleton.roofs.push(hood.with_covering(TILES));
     }
+
+    // **The well: a stone ring in the court's paved south-east.** It is a mass whose wall is thick enough to be a ring — the
+    // same answer the Dai hamlet's well-head gave — so what the expansion draws is a curb with a hole in plan, which is what a
+    // well looks like from beside it. Its wall is `0.22 m` in a `1.24 m` plan, so the inner loop cannot fold (round 73).
+    let [across, along] = WELL_AT;
+    let mut well = Mass::new(
+        ops::wound(vec![
+            [across - WELL_HALF, along - WELL_HALF],
+            [across + WELL_HALF, along - WELL_HALF],
+            [across + WELL_HALF, along + WELL_HALF],
+            [across - WELL_HALF, along + WELL_HALF],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, 0.0))
+        .collect(),
+        WELL_HIGH,
+    );
+    well.wall = WELL_WALL;
+    well.slab = 0.18;
+    skeleton.masses.push(well);
 
     Building::new(skeleton)
 }

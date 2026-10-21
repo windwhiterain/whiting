@@ -2085,3 +2085,20 @@ wall to the gate, so the frame is the foreground and the 正房 rises behind —
 detail added where no shot can see it is a detail no one will check**.
 
 **Identity: 33 scenes, 115 580 rows**; `bai_court` 1 800 → **1 830** — six members, thirty rows. The document is 7.62 MB.
+## Round 77: the court's well and its planting
+
+A courtyard with four walls and a paved floor is a yard. A 白族 court has its **井** and its flowers against the 照壁, so the
+court has both now:
+
+- **the well is a mass whose wall is thick enough to be a ring** — `0.22 m` in a `1.24 m` plan, so what the expansion draws is
+  a curb with a hole in plan. It is the same answer the Dai hamlet's well-head gave, and it satisfies round 73's invariant
+  without being told to: the inner loop cannot fold in a plan four times the wall;
+- **three clumps at the corners the wings leave**, from the bridge the settlements use, and the court's own paving under them.
+
+The camera moved **inside** the court, and that is the round's real measurement. Every shot from beyond the gate — rounds 74,
+75 and 76 — showed the wall that closes it and nothing of what it closes: the well and the plants were invisible for two
+rounds of work. The court is 8.4 m across, so the inside shot has to be a corner's diagonal with a wide field of view, and the
+well was moved to the corner that shot can see.
+
+**Identity: 33 scenes, 115 593 rows**; `bai_court` 1 830 → **1 843** — the well's curb, its top and its hole, thirteen rows.
+The document is **13.91 MB** against 7.62, which is the planting's price and is the same trade the settlements made.
