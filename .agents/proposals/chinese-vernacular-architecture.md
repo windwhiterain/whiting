@@ -2168,3 +2168,26 @@ a house with no seated mass floats — instead of a count that has to be rewritt
 
 **Identity: 35 scenes, 123 172 rows**; `tibetan_house` 284 → **288**, `plateau_village` 1 437 → **2 365** (four towers, each with
 a battered wall). The tower's document is 4.30 MB, unchanged to the hundredth.
+## Round 81: `derive::stepped_courses`, and the course count a door decides
+
+Round 80 laid the 碉房's batter out inline. It is **`derive::stepped_courses` now** — one place that lays a plan in courses,
+attaches each to the one below through `Join::Storey` and returns the ids — and the type calls it with three numbers instead of
+a loop of twenty lines.
+
+Getting there cost four refusals, and every one was the same mistake in a different dress: **the ground course must be a whole
+storey.**
+
+| what the code did | what the crate answered |
+| --- | --- |
+| four equal courses, a door in the ground one | `OpeningUnresolved` — a door is 2 m and the course is 1.3 |
+| a hand-cut door and windows, insets sized for a 5.2 m face | `OpeningUnresolved`, twice |
+| the ground course wears `Front::RANGE` | `OpeningsOverlap { left: 0, right: 5 }` — a row per storey on a 2.6 m face |
+| `Front { storeys: 1, bays: 3, door: true }` **and** the hand-cut pair | `OpeningsOverlap` again — the same face cut twice |
+
+So the ground course is `BASE_HIGH` (3.45 m, the height at which a three-bay façade resolves), the two courses above it split
+what is left, and the openings are the façade's alone. **A batter starts above a door**, which is what a stone wall does and
+what the crate's own cut rules insist on.
+
+**Identity: 35 scenes, 123 107 rows**; `tibetan_house` 288 → **323** (the third course and the façade's small high windows),
+`plateau_village` 2 365 → **2 265** (four towers, each laid differently). The lean is `0.15 m` a course — steeper than a real
+碉房's 3–5 %, and the module says so rather than pretending the number is surveyed.

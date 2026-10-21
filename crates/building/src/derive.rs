@@ -1257,3 +1257,77 @@ pub const HALL: Style = Style {
     bay: 3.0,
     window: (0.52, 1.15, 0.55),
 };
+/// Lays a plan in **courses stepped one on the next** — the batter a stone or rammed-earth wall has — and returns the mass
+/// each course was given, ground first.
+///
+/// # Invariants
+///
+/// **The ground course is a storey and only the courses above it are stepped.** A door is two metres and a wall of four equal
+/// courses is 1.3 m a course, so a door fits none of them: round 80 measured `OpeningUnresolved` on the ground face of exactly
+/// that. `storey` is the ground course's height; `courses - 1` courses share what is left to `top`.
+///
+/// **Every course is a one-band mass**, which is cuttable: a mass drawn in several bands refuses an opening by name
+/// ([`Problem::BandedMassCut`]). That is why a batter is laid in courses at all and not in one leaning wall.
+///
+/// **Each course is carried by the one below through [`Join::Storey`] and shares an edge with it and no volume** — round 6's
+/// verdict, *model the relationship, not the overlap*. The relation is what the validator reads when two nested plans overlap:
+/// it follows the chain, so a mass that names the bottom of a stack leaves every intermediate pair unrelated (round 80).
+///
+/// [`Problem::BandedMassCut`]: crate::expand::Problem::BandedMassCut
+pub fn stepped_courses(
+    skeleton: &mut BuildingSkeleton,
+    plan: [[f32; 2]; 4],
+    storey: f32,
+    top: f32,
+    courses: usize,
+    batter: f32,
+    wall: f32,
+    slab: f32,
+) -> Vec<MassId> {
+    let mut laid = Vec::with_capacity(courses);
+    if courses == 0 || top <= storey {
+        return laid;
+    }
+    let centre = [
+        (plan[0][0] + plan[2][0]) * 0.5,
+        (plan[0][1] + plan[2][1]) * 0.5,
+    ];
+    let mut host: Option<MassId> = None;
+    for course in 0..courses {
+        let inset = batter * course as f32;
+        let base = if course == 0 {
+            0.0
+        } else {
+            storey + (top - storey) * (course - 1) as f32 / (courses - 1) as f32
+        };
+        let ceiling = if course == 0 {
+            storey
+        } else {
+            storey + (top - storey) * course as f32 / (courses - 1) as f32
+        };
+        let outline = plan
+            .iter()
+            .map(|corner| {
+                let towards = [
+                    (corner[0] - centre[0]).signum() * inset,
+                    (corner[1] - centre[1]).signum() * inset,
+                ];
+                PlanNode::new([corner[0] - towards[0], corner[1] - towards[1]], base)
+            })
+            .collect::<Vec<_>>();
+        let mut mass = Mass::new(outline, ceiling);
+        mass.wall = wall;
+        mass.slab = slab;
+        if let Some(under) = host {
+            mass.attachment = Some(crate::mass::Attachment {
+                host: under,
+                join: crate::mass::Join::Storey,
+            });
+        }
+        let id = MassId(skeleton.masses.len());
+        skeleton.masses.push(mass);
+        host = Some(id);
+        laid.push(id);
+    }
+    laid
+}
