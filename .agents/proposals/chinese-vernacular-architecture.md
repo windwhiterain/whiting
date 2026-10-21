@@ -3365,3 +3365,15 @@ A probe states the four cases the village uses: `raise +0.00 / +0.07 / +1.65 / +
 
 **Identity: 43 scenes, 153 490 rows**; `tuzhang_village` **1 291** — five houses, three terraces, three retaining faces and the flights between
 them. The document is 7.50 MB.
+## Round 170: the 院墙
+
+Five 土掌房 stood in a field. A household's yard is a **low earth wall in front of the house with a gap for the gate**, and now every house has
+one: two side lengths and a front split by the gap.
+
+**Two placement rules paid for it in one round**:
+- the yard's first depth (`3.60 m`) reached **past the terrace's own front edge**, so the walls stood on the retaining face of the terrace below
+  (`UnattachedOverlap { 0, 13 }` …) — a terrace is only as deep as its house plus its porch, and the yard had to be `1.55 m` to stay on it;
+- the front lengths **shared their corners** with the side lengths (`{ 13, 15 }`), which is round 113's rule read for the eleventh time: a
+  length starts at the inner face of the one it meets.
+
+**Identity: 43 scenes, 153 750 rows**; `tuzhang_village` 1 291 → **1 551** — twenty lengths' faces and tops. The document is 7.60 MB.

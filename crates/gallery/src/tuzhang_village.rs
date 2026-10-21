@@ -37,6 +37,14 @@ const HOUSES: [(usize, f32, f32); 5] = [
     (2, 9.0, 0.0),
 ];
 /// The flights of flags up the terraces: how wide, how many, and the joint between them.
+/// The 院墙 in front of each house: its half width, how deep the yard runs, the walls depth and height, and the gap left for the gate.
+const YARD_HALF: f32 = 5.20;
+const YARD_DEEP: f32 = 1.55;
+const YARD_THICK: f32 = 0.38;
+const YARD_HIGH: f32 = 1.95;
+const YARD_GATE: f32 = 1.30;
+/// Where the houses own front edge stands from its centre, which is what the yard starts from.
+const HOUSE_FRONT: f32 = 5.15;
 const STAIR_HALF: f32 = 1.60;
 const STAIR_FLAGS: usize = 7;
 const JOINT: f32 = 0.06;
@@ -111,6 +119,53 @@ pub fn document() -> Building {
             ops::merge(&mut skeleton, part),
             "a house of the village places no parts, so the merge always happens"
         );
+    }
+
+    // **The 院墙: every house's own yard.** A 土掌房 household's yard is a low earth wall in front of the house with a gap for the gate, and
+    // without it five houses stand in a field. Each yard is two side lengths and a front split by the gap; they stop short of the flights of
+    // flags and of the retaining face they stand on.
+    for (step, across, _) in HOUSES {
+        let level = STEP_RISE * step as f32 + PAVING;
+        let front = -STEP_DEPTH * step as f32 - STEP_SETBACK * step as f32;
+        let house_front = front - STEP_DEPTH * 0.5 + HOUSE_FRONT;
+        for (x0, x1, z0, z1) in [
+            (
+                across - YARD_HALF,
+                across - YARD_HALF + YARD_THICK,
+                house_front,
+                house_front + YARD_DEEP,
+            ),
+            (
+                across + YARD_HALF - YARD_THICK,
+                across + YARD_HALF,
+                house_front,
+                house_front + YARD_DEEP,
+            ),
+            (
+                across - YARD_HALF + YARD_THICK,
+                across - YARD_GATE,
+                house_front + YARD_DEEP - YARD_THICK,
+                house_front + YARD_DEEP,
+            ),
+            (
+                across + YARD_GATE,
+                across + YARD_HALF - YARD_THICK,
+                house_front + YARD_DEEP - YARD_THICK,
+                house_front + YARD_DEEP,
+            ),
+        ] {
+            let mut wall = building::Mass::new(
+                ops::wound(vec![[x0, z0], [x1, z0], [x1, z1], [x0, z1]])
+                    .into_iter()
+                    .map(|at| building::PlanNode::new(at, level))
+                    .collect(),
+                level + YARD_HIGH,
+            );
+            // **The ring's offset stays under half the wall's depth** (round 144).
+            wall.wall = YARD_THICK * 0.34;
+            wall.slab = 0.14;
+            skeleton.masses.push(wall);
+        }
     }
 
     // **The flights of flags** between the terraces, at the village's own crossing point: seven flags to a flight, up the retaining face.
