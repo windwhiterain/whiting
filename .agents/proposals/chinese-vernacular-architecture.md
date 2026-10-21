@@ -2621,3 +2621,22 @@ read by — the flags between them, the channel down the middle, the yards beyon
 
 **Identity: 37 scenes, 129 074 rows**; `slate_street` 1 980 → **1 992** — two kerbs' tops and their four edges each. The document
 is 7.69 MB.
+## Round 112: the 傣族缅寺, the gallery's sixteenth type
+
+**The second public building, and the first temple of the south-west's wet tropics.** Where a 白族本主庙 is axial and walled, a
+缅寺 is **one great roof**: the hall is a single volume, the roof takes two thirds of its height, and the walls under it are a
+screen and not a structure.
+
+- **the roof is the steepest in the gallery** — `RISE` 4.6 m on a 4.1 m wall — because the rain of the tropics is the building's
+  first problem and a steep pitch is a fast drain;
+- **the hall stands on a platform** a metre up, with three treads at the porch's middle, because every approach to a 缅寺 is up;
+- **the porch is four slender posts and a beam**: the front of the hall is open and the roof comes down over it — `2.3 m` of
+  eaves past the posts.
+
+**The proportion is a structural fact and not a taste.** The hall is **wider than it is deep**, so the ridge runs along the long
+pair of edges and the gable ends stand at `±x`; the face the village enters by — the one at `+z` — is then a long side. Built the
+other way round, the porch stood against a gable and the crate answered `GridOnACrownedFace { edge: 3 }`: a crowned gable cannot
+take an opening grid, because a grid is cut into a plane and a crown has already bent it.
+
+**Identity: 38 scenes, 130 566 rows**; `dai_temple` **1 492** — a platform, a hall, its crowned roof, four posts, a beam, three
+openings' reveals and two treads. The document is 7.51 MB.

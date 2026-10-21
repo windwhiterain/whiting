@@ -399,6 +399,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         // **Two cameras, one document**: the court view is the same expansion.
         "compound_court" => crate::compound::document(),
         "stilt" => crate::stilt::document(),
+        "dai_temple" => crate::dai_temple::document(),
         "drum_tower" => crate::drum_tower::document(),
         "earthen_house" => crate::earthen::document(),
         "bai_court" => crate::bai_court::document(),

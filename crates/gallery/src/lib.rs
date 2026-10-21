@@ -78,6 +78,7 @@ pub mod benzu_miao;
 /// The compound scene: three ranges round a court, and the screen wall across its fourth side.
 pub mod chuandou;
 pub mod compound;
+pub mod dai_temple;
 /// The dawn over the rice terraces, held as numbers so a tracer can be handed it as a world.
 mod dawn;
 pub mod drum_tower;
@@ -222,6 +223,7 @@ impl Gallery {
             "monoliths",
             "shed",
             "stilt",
+            "dai_temple",
             "drum_tower",
             "earthen_house",
             "bai_court",
@@ -345,6 +347,7 @@ impl Gallery {
             "street" => street::street(),
             "street_arcade" => street::street_arcade(),
             "stilt" => stilt::stilt(),
+            "dai_temple" => dai_temple::dai_temple(),
             "drum_tower" => drum_tower::drum_tower(),
             "earthen_house" => earthen::earthen_house(),
             "bai_court" => bai_court::bai_court(),
