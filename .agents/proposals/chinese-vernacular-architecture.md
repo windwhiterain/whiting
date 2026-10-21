@@ -2031,3 +2031,28 @@ The winding rule is also **code now and not a habit**: `ops::wound(plan)` is the
 `slate_court` uses it instead of the private copy it grew in round 72. A refactor owes a measurement as much as an addition
 does, and this one has the strongest kind: **the frame is byte-identical** to round 72's (`38c99288…`) and the identity is
 unchanged at **32 scenes / 113 750 rows**.
+## Round 74: the 白族三坊一照壁, the gallery's thirteenth type
+
+**A courtyard with three ranges and one screen wall.** The 一颗印 is a Yunnan courtyard that is a *box*; this one is a court
+with a **照壁** closing its approach — the wall that gives the type its name, white plastered and wearing a **tiled coping**,
+which is the type's whole silhouette.
+
+- **the 正房** is two storeys at the head of the court, carried through `Join::Storey` so each storey takes its own cuts, and
+  its front is three bays with a door in the middle;
+- **the 厢房** are one storey each, flanking the court, one door apiece facing across it;
+- **the 照壁** is a mass `0.5 m` thick with a `0.18 m` wall in it and a gable roof for its coping — a wall with a little roof
+  on it is exactly what a screen wall is, and it is the same `gable_roof` call as the 正房's at a different span;
+- **the court is paved**, which is what makes four walls a court.
+
+Two things the frame taught, both about which face is which:
+
+- **the front face is named by the plan's winding**, not by its position in space: the 正房's door was cut on `edge 2`, which is
+  the `+z` side, so the house faced *away* up the hill and the first frame showed a blank wall to the court. The face that
+  looks into the court is `edge 0`;
+- **a 照壁 3.1 m high hides the court from its own approach**, which is right — the view the type was built for is the wall's
+  coping in the foreground and the 正房's upper storey behind it.
+
+**Identity: 33 scenes, 115 488 rows**; `bai_court` **1 738** — two storeys, two wings, the screen wall, four roofs, a paved
+court and eight openings' reveals. The document is 7.59 MB.
+
+The third 坊 and the corner 门楼 are not drawn, and the type says so: the camera stands where the third range would be.
