@@ -22,7 +22,7 @@
 
 use definition::{PackedList, Value};
 use document::kit::{instance, mesh, mesh_material, surface};
-use vegetation::derive::{Species, bamboo};
+use vegetation::derive::{Species, clump};
 use vegetation::expand::{Detail, expand};
 use vegetation::plant::Placement;
 
@@ -124,14 +124,14 @@ fn standing(origin: [f32; 3], yaw: f32, scale: f32) -> Placement {
 /// difference nobody asked for.
 /// How much larger a planted clump is than the species it was grown from: a settlement`s bamboo is a clump a person
 /// walks past, and the species` own scale is a plant in a study.
-const SCALE: f32 = 1.3;
+const SCALE: f32 = 3.4;
 
 /// How much larger a blade is drawn than the species makes it, so that a clump twenty metres away still shows foliage.
-const LEAF: f32 = 3.0;
+const LEAF: f32 = 1.8;
 
 pub(crate) fn bamboo_clumps(seats: &[[f32; 2]], ground: &dyn Fn([f32; 2]) -> f32) -> Extra {
-    let species: Species = bamboo(7);
-    let expansion = expand(&species.plant, Detail::DEFAULT.scaled(2), &species.fields);
+    let species: Species = clump(7);
+    let expansion = expand(&species.plant, Detail::DEFAULT, &species.fields);
     let ids = node_ids(&species.plant);
     let mut extra = Extra::none();
 

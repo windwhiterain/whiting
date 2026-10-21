@@ -1746,3 +1746,31 @@ a pixel from the lane.
 
 **Identity: 27 scenes, 110 245 rows, unchanged** — a plant is not a building element and does not enter the building's own
 table. The hamlet's document grew from 7.75 MB to 12.57 MB, which is the wood and the leaves.
+## Round 61: a clump that reads as a clump, and the hill village's plants still to do
+
+Round 60's clumps were **bare culms with a handful of leaves at the top**, because `derive::bamboo` is a *culm*: it puts a few
+blades on the upper nodes, and a picture of bamboo is dense because it draws a grove, not because one plant is bushy. The
+gallery's **`derive::clump`** is the species the name promised — six limbs a node, dense leaves, gravity to droop them — and
+the hamlet grows that now, at `SCALE 3.4` (a clump three metres high) with blades at `1.8`.
+
+Two numbers were measured and one of them confirmed:
+
+| dial | document | the frame |
+| --- | --- | --- |
+| `Detail::DEFAULT.scaled(2)` | **57.29 MB** | no visible gain over the coarse dial |
+| `Detail::DEFAULT` | **20.63 MB** | the same clumps |
+
+So the detail dial stays at its default: a settlement's plants are seen at ten to thirty metres, and the two times finer
+dial cost thirty-seven megabytes of document to change nothing anyone can see.
+
+### The hill village got the same bridge and it did not hold
+
+`hillside_village` was given five clumps through the same call, and **they drew above the horizon** — the terrain under
+them is not the terrain in the frame, because the camera stands outside the hill's shoulder and looks along the slope, so
+the seats I wrote by hand landed on ground that is off-frame. The change is reverted, and the note is:
+
+- **a plant's seat on a terrain must be chosen in the terrain's own frame**, not by reading the pin from a frame; the fix is
+  to scatter on the same field the ground mesh is built from, and to refuse a seat whose ground is outside the frame.
+
+**Identity: 27 scenes, 110 245 rows, unchanged** — plants are not building elements. The hamlet's document is 20.63 MB,
+against 12.57 MB for the bare culms and 7.75 MB for no plants at all.
