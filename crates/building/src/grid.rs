@@ -109,6 +109,16 @@ pub struct FaceRef {
     pub mass: MassId,
     /// Index of the loop edge.
     pub edge: usize,
+    /// Which pair of the mass's sections the face is between: `0` is the foot's.
+    ///
+    /// # Invariants
+    ///
+    /// **A banded mass has one face per band over one edge, and the band is part of which face it is.** A mass of
+    /// four sections has three strips of wall, and a rhythm and a hole are placed against one of them: an opening
+    /// written against the whole face would be cut once in the shopfront's plan and once in the projecting floor's,
+    /// at whichever elevation each band happens to have. `band: 0` is every face this crate named before a mass could
+    /// have more than two sections, and it sorts where it always did.
+    pub band: usize,
     /// Which of the mass's voids this face is on, or `None` for the mass's own outline.
     pub void: Option<usize>,
     /// Which of that ring's two loops the edge is on.
@@ -121,9 +131,18 @@ impl FaceRef {
         Self {
             mass,
             edge,
+            band: 0,
             void: None,
             loop_side: LoopSide::Authored,
         }
+    }
+
+    /// Returns the same face read on another band of its own mass: one strip of wall further up.
+    ///
+    /// A banded mass's faces are otherwise identical, so this is the only way to name the second strip — and a hole or
+    /// a rhythm placed with it lands on that strip alone.
+    pub fn in_band(self, band: usize) -> Self {
+        Self { band, ..self }
     }
 
     /// Builds a reference to one edge of a courtyard's wall.
@@ -146,6 +165,7 @@ impl FaceRef {
         Self {
             mass,
             edge,
+            band: 0,
             void: Some(void),
             loop_side: LoopSide::Authored,
         }
@@ -174,6 +194,7 @@ impl FaceRef {
         Self {
             mass,
             edge,
+            band: 0,
             void: Some(void),
             loop_side: LoopSide::Offset,
         }
@@ -213,6 +234,7 @@ impl FaceRef {
         Self {
             mass,
             edge,
+            band: 0,
             void: None,
             loop_side: LoopSide::Offset,
         }

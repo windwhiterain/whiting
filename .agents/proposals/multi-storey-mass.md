@@ -218,3 +218,34 @@ from this one: it is not a walk, it is the **identity** of every face, grid and 
 stand on their own as the parts of the walk that were wrong; C waits for that identity.
 
 **What is not blocked**: everything with one band per edge — which is every type in the gallery today.
+## Stage C landed: the band is part of the face
+
+The identity change is in, and it is the enabler the last two rounds were circling:
+
+| before | after |
+| --- | --- |
+| `FaceRef { mass, edge, void, loop_side }` | `FaceRef { mass, edge, band, void, loop_side }` |
+| one face per edge | **one face per band per edge**, `band: 0` being the foot's |
+| `skeleton.openings.by_face()` keyed by edge | keyed by the strip a hole is in |
+| `Ring` built from a loop and a top | `Ring` **carries its band**, and `resolve_holes` matches on it |
+
+Three things follow, and each was needed:
+
+- **`banded_mass` walks a vertical band through `ring_walk`** with that band's own `RingPoints` and `RingEnds`, so a
+  strip of a multi-section mass takes openings and a rhythm like any other face. A band that **leans** or lies flat is
+  four quads and takes none: the cut machinery reads a face as one strip between a ground line and a top, and a leaning
+  strip has no such reading.
+- **`Ring::surfaces` names the band** on every element it emits, so two strips' faces are two planarity groups and two
+  identity rows.
+- **`FaceRef::in_band(k)`** is the one way to name a strip other than the foot's.
+
+**All twenty-four scenes unchanged to the row — 85 489 — and the 风雨桥's frame is byte-identical** to the one the
+piers were merged with (`sha256 7261c099…`). A bug in the first pass found both numbers: the leaning bands' base and
+crown faces were built with `RingSurfaces::of(loop, 0, band)`, which collapsed every edge's crown strip into one
+identity row — 12 rows short, and the picture unchanged. The rows were the instrument that caught it.
+
+### What is left for the 骑楼
+
+Nothing in the crate. A 骑楼's projecting upper floor is **one mass of four sections** — the shopfront's plan, a
+horizontal soffit band at the floor's level, then the projecting plan up to the eaves — with the windows authored as
+`FaceRef::in_band(2)` on the strip that projects. That is a scene's work and it is the next round.

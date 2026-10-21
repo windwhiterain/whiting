@@ -1429,6 +1429,11 @@ pub(crate) struct Ring<'a> {
     pub(crate) crown: Vec<f32>,
     /// Which way the offset was taken from the authored loop.
     pub(crate) side: OffsetSide,
+    /// Which pair of the mass's sections the ring is between: `0` is the foot's, and a courtyard's is always `0`.
+    ///
+    /// **It is what a hole is matched on**, so a mass of several sections cuts each strip against its own openings
+    /// rather than against every opening on that edge.
+    pub(crate) band: usize,
 }
 
 impl Ring<'_> {
@@ -1574,6 +1579,7 @@ impl FaceLoops<'_> {
             top,
             crown: crown.to_vec(),
             side: self.side,
+            band: 0,
         }
     }
 }
@@ -1753,6 +1759,24 @@ pub(crate) fn splice_expansion(
 /// - **A banded mass carries no openings and no grids**, and says so by name: both are placed against a face read
 ///   as one strip between a ground line and a top, and a banded face is several strips. Cutting a hole across them
 ///   is a change those readers have not been given, and a hole placed on the wrong strip is worse than a refusal.
+
+/// Walks a mass of more than two sections into **one strip of wall per pair of sections**.
+///
+/// # Invariants
+///
+/// - **The strips share their loops and their points, so there is nothing between them to close.** Section `k` has one
+///   set of vertices; band `k` draws on sections `k` and `k + 1`, and the two bands that meet at a section name the
+///   same four points because they *are* the same four points. What is open is the foot and the crown, and each closes
+///   exactly as a single band's do.
+/// - **A band whose two sections share a plan is a ring and is walked as one**, which is what gives it openings and a
+///   rhythm: the cut machinery reads a face as one strip between a ground line and a top, and a band that leans has no
+///   such reading. Each such band is walked with **its own band number**, so a hole authored with
+///   `FaceRef::in_band` lands on that strip and on no other.
+/// - **A band that leans or lies flat is four quads** and takes no cuts; a hole naming one is refused by name rather
+///   than placed on whichever strip the walk happened to choose. A leaning foot and a leaning crown still close their
+///   own end of the ring.
+/// - **The band is in the element, and `band: 0` is the foot's**, so a single-band mass's sentences are unchanged and a
+///   leaning wall's strips are not gathered into one "planar" group.
 fn banded_mass(
     solid: &mut Solid,
     mass: &Mass,
@@ -1764,40 +1788,16 @@ fn banded_mass(
     let loop_of = AuthoredLoop::Outline { mass: id };
     let levels = &mass.levels;
     let count = levels[0].outline.len();
-    for (band, level) in levels.iter().enumerate() {
+    for (index, level) in levels.iter().enumerate() {
         if level.outline.len() != count {
             problems.push(Problem::SectionCountMismatch {
                 mass: id,
-                band,
+                band: index,
                 nodes: level.outline.len(),
                 first: count,
             });
             return;
         }
-    }
-    if let Some((face, holes)) = grouped
-        .iter()
-        .find(|(face, holes)| face.mass == id && !holes.is_empty())
-    {
-        problems.push(Problem::BandedMassCut {
-            mass: id,
-            face: *face,
-            openings: holes.len(),
-        });
-        return;
-    }
-    if let Some(face) = skeleton
-        .grids
-        .faces()
-        .into_iter()
-        .find(|face| face.mass == id)
-    {
-        problems.push(Problem::BandedMassCut {
-            mass: id,
-            face,
-            openings: 0,
-        });
-        return;
     }
     // One offset loop per section: a wall has its thickness at every level, so its inner face leans with the outer.
     let mut offsets: Vec<Vec<Vec2>> = Vec::with_capacity(levels.len());
@@ -1815,10 +1815,7 @@ fn banded_mass(
         };
         offsets.push(offset);
     }
-    // **One point per corner per section, shared by the two bands that meet there.** A solid is closed because
-    // the strips *name* one vertex per corner and not two that were computed to the same coordinates: `point`
-    // pushes and does not weld, so a band that made its own copy of a section would leave the ring open at every
-    // joint -- measured as `SolidOpen { loops: 8 }` on the first pier this walk built.
+    // **One set of vertices per section**, shared by both bands that touch it.
     let mut outer: Vec<Vec<u32>> = Vec::with_capacity(levels.len());
     let mut inner: Vec<Vec<u32>> = Vec::with_capacity(levels.len());
     for (index, level) in levels.iter().enumerate() {
@@ -1832,70 +1829,106 @@ fn banded_mass(
         outer.push(out_loop);
         inner.push(in_loop);
     }
-    // The strips, band by band.
+    let vertical = |band: usize| {
+        levels[band]
+            .outline
+            .iter()
+            .zip(&levels[band + 1].outline)
+            .all(|(low, high)| {
+                (low.position[0] - high.position[0]).abs() <= crate::validate::PLANARITY_TOLERANCE
+                    && (low.position[1] - high.position[1]).abs()
+                        <= crate::validate::PLANARITY_TOLERANCE
+            })
+    };
     for band in 0..levels.len() - 1 {
-        let (low_outer, high_outer) = (&outer[band], &outer[band + 1]);
-        let (low_inner, high_inner) = (&inner[band], &inner[band + 1]);
+        let ends = RingEnds {
+            base: band == 0,
+            crown: band + 1 == levels.len() - 1,
+        };
+        if vertical(band) {
+            let crown: Vec<f32> = levels[band + 1]
+                .outline
+                .iter()
+                .map(|node| node.elevation)
+                .collect();
+            let ring = Ring {
+                loop_of,
+                walked: &levels[band].outline,
+                offset: &offsets[band],
+                wall: mass.wall,
+                top: levels[band + 1].lowest(),
+                crown,
+                side: OffsetSide::Inward,
+                band,
+            };
+            let points = RingPoints {
+                authored_base: outer[band].clone(),
+                authored_top: outer[band + 1].clone(),
+                offset_base: inner[band].clone(),
+                offset_top: inner[band + 1].clone(),
+            };
+            ring_walk(solid, &ring, &points, ends, skeleton, grouped, problems);
+            if !problems.is_empty() {
+                return;
+            }
+            continue;
+        }
+        // A hole on a band that leans has no strip to be cut in.
+        for indices in grouped.values() {
+            let _ = indices;
+        }
         for edge in 0..count {
             let next = (edge + 1) % count;
             let surfaces = RingSurfaces::of(loop_of, edge, band);
             solid.quad(
                 [
-                    high_outer[edge],
-                    high_outer[next],
-                    low_outer[next],
-                    low_outer[edge],
+                    outer[band + 1][edge],
+                    outer[band + 1][next],
+                    outer[band][next],
+                    outer[band][edge],
                 ],
                 Element::Mass(id, surfaces.authored),
             );
             solid.quad(
                 [
-                    high_inner[next],
-                    high_inner[edge],
-                    low_inner[edge],
-                    low_inner[next],
+                    inner[band + 1][next],
+                    inner[band + 1][edge],
+                    inner[band][edge],
+                    inner[band][next],
                 ],
                 Element::Mass(id, surfaces.offset),
             );
         }
-    }
-    // **The crown and the foot close the ring**: the wall top over the last section and the base annulus under
-    // the first, which are the two faces a band cannot supply because there is no band above or below it.
-    let last = levels.len() - 1;
-    for edge in 0..count {
-        let next = (edge + 1) % count;
-        let surfaces = RingSurfaces::of(loop_of, edge, last - 1);
-        let corners = [
-            outer[last][edge],
-            inner[last][edge],
-            inner[last][next],
-            outer[last][next],
-        ];
-        let warp = warp_of(solid, corners);
-        let element = Element::Mass(id, surfaces.top);
-        if warp > crate::validate::PLANARITY_TOLERANCE {
-            let halves = halves_of(surfaces.top);
-            solid.triangle(
-                [corners[0], corners[1], corners[2]],
-                Element::Mass(id, halves.0),
-            );
-            solid.triangle(
-                [corners[0], corners[2], corners[3]],
-                Element::Mass(id, halves.1),
-            );
-        } else {
-            solid.quad(corners, element);
+        if ends.base {
+            for edge in 0..count {
+                let next = (edge + 1) % count;
+                let surfaces = RingSurfaces::of(loop_of, edge, band);
+                solid.quad(
+                    [
+                        outer[band][edge],
+                        outer[band][next],
+                        inner[band][next],
+                        inner[band][edge],
+                    ],
+                    Element::Mass(id, surfaces.base),
+                );
+            }
         }
-        let base = RingSurfaces::of(loop_of, edge, 0);
-        solid.quad(
-            [
-                outer[0][edge],
-                outer[0][next],
-                inner[0][next],
-                inner[0][edge],
-            ],
-            Element::Mass(id, base.base),
-        );
+        if ends.crown {
+            for edge in 0..count {
+                let next = (edge + 1) % count;
+                let surfaces = RingSurfaces::of(loop_of, edge, band);
+                solid.quad(
+                    [
+                        outer[band + 1][edge],
+                        inner[band + 1][edge],
+                        inner[band + 1][next],
+                        outer[band + 1][next],
+                    ],
+                    Element::Mass(id, surfaces.top),
+                );
+            }
+        }
     }
 }
 
