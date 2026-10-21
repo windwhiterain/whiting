@@ -113,6 +113,25 @@ pub fn lisu_steps() -> Value {
     )
 }
 
+/// The **third plate**: the lane's west end, where the pen and the wood shed stand and the bench's retaining face runs past them.
+///
+/// # Why a third camera on one document
+///
+/// Round 187 put a rail pen and a wood shed at the lane's west end and **neither existing plate could show them** — the wide one crops that end and
+/// the close one looks east. A village this long needs a plate per end, and the third is the cheapest object this gallery has ever added: one
+/// camera.
+pub fn lisu_yard() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [-9.4, 4.2, 3.4],
+        [-20.6, 1.2, -9.4],
+        FIELD_OF_VIEW * 1.20,
+        "lisu_yard",
+    )
+}
+
 /// Returns the document: one bench, five log houses, the lane's fence.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());

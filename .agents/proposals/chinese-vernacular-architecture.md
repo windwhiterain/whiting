@@ -3579,3 +3579,14 @@ into a camera's way to pay it.
 
 **Identity: 48 scenes, 161 997 rows**; `lisu_village` and `lisu_steps` 1 129 → **1 255** each — the pen's twelve rails and four posts, the shed's
 four posts and its roof. The document is 7.52 MB.
+## Round 188: the third plate
+
+Round 187 put a rail pen and a wood shed at the lane's west end and recorded that **neither existing plate could show them**. The answer is the
+cheapest object this gallery has ever added: **one camera**. `lisu_yard` stands at the lane's west end and shows the pen's twelve rails, the shed's
+four posts and slab roof, the lane's fence and a log house's stacked wall behind them.
+
+**One document, three plates, and the tables agree**: `lisu_village`, `lisu_steps` and `lisu_yard` all answer **1 255 rows**. A village this long is
+not one composition, and the three cameras cover its middle, its east end and its west end — **which is what a settlement of any size requires and
+what this project has been slowest to admit**.
+
+**Identity: 49 scenes, 163 252 rows**; `lisu_yard` **1 255** (the same document). The document is 7.52 MB.
