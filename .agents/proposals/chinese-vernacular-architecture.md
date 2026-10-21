@@ -3208,3 +3208,10 @@ side the drawing is easier from.*
 
 **Identity: 41 scenes, 147 510 rows**; `qiang_tower` 1 025 → **1 085** — a deck, its edges, four posts and a rail. The document is
 7.47 MB.
+## Round 159: the 散水
+
+A stone tower's plinth throws the rain off its wall, and the band of flat stones laid round it takes the water away from the foot — the one
+piece of a 碉楼 that is **drainage and not structure**. Four strips, because the apron has a hole where the tower is, and they stand
+`APRON_HIGH` proud of the yard's floor so the band reads as its own stone.
+
+**Identity: 41 scenes, 147 534 rows**; `qiang_tower` 1 085 → **1 109** — four strips' tops and edges. The document is 7.47 MB.

@@ -68,6 +68,9 @@ const YARD_HIGH: f32 = 2.05;
 const PAVING: f32 = 0.07;
 /// The gates head: how deep it lies on the walls own head.
 const GATE_HEAD: f32 = 0.42;
+/// The 散水 round the tower's foot: how wide the band lies and how thick.
+const APRON: f32 = 0.85;
+const APRON_HIGH: f32 = 0.09;
 
 /// The 木廊 on the 碉房: how far out the deck stands in the houses own coordinates, its depth, its length, its level, its slab, its
 /// posts, a posts section and the rails height above the deck.
@@ -415,6 +418,24 @@ pub fn document() -> Building {
         0.30,
         0.16,
     ));
+
+    // **The 散水: the apron round the tower's foot.** A stone tower's plinth throws the rain off its wall, and the band of flat stones
+    // laid round it takes the water away from the foot — the one piece of a 碉楼 that is drainage and not structure. Four strips, because
+    // the apron has a hole where the tower is.
+    let apron_in = BASE * 0.5 + 0.45;
+    let apron_out = apron_in + APRON;
+    for (x0, x1, z0, z1) in [
+        (-apron_out, -apron_in, -apron_out, apron_out),
+        (apron_in, apron_out, -apron_out, apron_out),
+        (-apron_in, apron_in, -apron_out, -apron_in),
+        (-apron_in, apron_in, apron_in, apron_out),
+    ] {
+        skeleton.slabs.push(building::Slab::paving(
+            ops::wound(vec![[x0, z0], [x1, z0], [x1, z1], [x0, z1]]),
+            0.0,
+            APRON_HIGH,
+        ));
+    }
 
     // **The yard's floor.** A courtyard is a floor and not a field: the 羌 pave the yard with flat stones, and the plate reads the walls as
     // enclosing something the moment there is a surface inside them. It runs to the walls' inner faces, so no paving stands under a wall.
