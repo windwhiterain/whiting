@@ -204,6 +204,26 @@ pub fn dong_water() -> Value {
     )
 }
 
+/// The **square's own plate, seen across it**: the tower in the middle, the arch at one end and the stage at the other.
+///
+/// # Why a fourth camera
+///
+/// Round 172 established that a document can be photographed twice and the second camera is the cheaper answer; this is the eighth time it has been taken.
+/// The square's wide plate looks **down** it from a corner and the close plate looks **at the tower**, and neither of them shows the thing rounds 234 and 236
+/// built: **the square is an axis** — the arch where the lane comes in, the tower at its middle, the stage at its far end — and an axis can only be read from
+/// **the side**.
+pub fn dong_axis() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [34.0, 15.5, 14.0],
+        [-4.0, 2.4, 4.0],
+        FIELD_OF_VIEW * 1.10,
+        "dong_axis",
+    )
+}
+
 /// Returns the document: the tower, three houses, the square and the lane.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());

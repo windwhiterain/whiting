@@ -4294,3 +4294,19 @@ arch and now a stage — and a square is not a place with room in it, it is a pl
 every neighbour, and the checker is the one that answers.
 
 **Identity: 70 scenes, 244 506 rows.**
+## Round 237: the square seen across itself
+
+Round 172 established that a document can be photographed twice and the second camera is the cheaper answer; this is the **eighth** time it has been taken.
+The square's wide plate looks **down** it from a corner and the close plate looks **at the tower**, and neither shows what rounds 234 and 236 built.
+
+`dong_axis` stands **above the square's east side and across it**: the drum tower at the centre, the **牌坊** where the lane comes in at its right, the **戏台**
+and the **禾仓** row at its left, the well and the 禾晾 between them. **The square is an axis — an arch, a tower, a stage — and an axis can only be read from
+the side.**
+
+**The first camera was inside a roof**: at eight metres over the east side the plate was one house's roof filling two-thirds of the frame, which is the same
+lesson rounds 222 and 225 paid — **a camera is not above the village, it is above one building in it unless it is told otherwise.**
+
+**Identity: 71 scenes, 255 482 rows**; `dong_axis` 10 976 — the same document as `dong_village`, and the gallery's largest scene now has **four plates**.
+
+**And one honest limit**: the axis is read **approximately** in this frame — the arch sits behind the tower and the stage at the far left rather than in a line,
+because the square's three marks do not stand on one straight line and the plate does not pretend they do.
