@@ -134,6 +134,7 @@ mod terraces;
 pub mod tibetan;
 mod tidewater;
 mod tiles;
+pub mod tunpu;
 /// Standing a leaf's rigid frame as the scene instance that draws it.
 pub mod vegetation_instancing;
 /// The law demos: four scenes that draw one plant twice, without the law and with it.
@@ -227,6 +228,7 @@ impl Gallery {
             "street",
             "street_arcade",
             "terrace",
+            "slate_house",
             "tibetan_house",
             "wing",
             "workshop",
@@ -340,6 +342,7 @@ impl Gallery {
             "rain_bridge" => rain_bridge::rain_bridge(),
             "stilt_gallery" => stilt::stilt_gallery(),
             "terrace" => terrace::terrace(),
+            "slate_house" => tunpu::slate_house(),
             "tibetan_house" => tibetan::tibetan_house(),
             "wing" => wing::wing(),
             "workshop" => workshop::workshop(),

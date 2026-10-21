@@ -1902,3 +1902,26 @@ Three refusals were measured on the way, and two of them are the shared scene sh
 
 **Identity: 29 scenes, 111 966 rows**, of which `plateau_village` is **1 437** — four towers at 284 rows each, the wall, the
 trees and the clumps. The village's document is 28.91 MB.
+## Round 68: the 屯堡石板房, the gallery's twelfth type
+
+**A house that quarries its roof.** The 碉房 carries a timber gallery and an earth roof, the 土掌房 is earth, the 木楞房 is
+logs — this one is **all stone**: a wall of `0.55 m`, a yard of the same stone, and a gable roof laid in thin slates. A
+屯堡 is a Ming garrison's descendants' village, and what a Ming garrison built with was the ground under it.
+
+The type's whole subject is one number — **a `Covering` with `period` 0.42 and `fill` 0.94**, a wide flat course and not a
+roll — on a low pitch (`RISE` 1.5 over 6.4, a third of the 竹楼's), because a slate roof is heavy. The yard is a slab of
+the wall's own material in front of the door, which is what a 屯堡's 院坝 is.
+
+**Three refusals, all from the crate and all measured**:
+
+- a wall that stops at the eaves leaves the loft open — the first frame showed the roof's underside as a hole — so the
+  gable ends are split and crowned, as the 一颗印's are;
+- **a crowned face cannot be gridded**: naming the front edge by index before the crown answers
+  `GridOnACrownedFace` and then `FaceNotPlanar` at `0.303`;
+- and **an `Opening` cuts inside a bay**, so an unsplit face answers `None` and an inset asked of the wrong edge answers
+  `OpeningOutsideWall { edge: 3, past: 0.411 }`.
+
+**So the house has its door and not yet its windows**, and that is this round's honest state: the type's form — stone wall,
+crowned gable, slate courses, yard — is landed, and the two windows are the next round's work.
+
+**Identity: 30 scenes, 112 218 rows**, of which `slate_house` is **252**.
