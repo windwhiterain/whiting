@@ -440,6 +440,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "yard" => crate::yard::document(),
         "yikeyin" => crate::yikeyin::document(),
         // **Two cameras, one document**: the court view is the same expansion, so it names the same rows.
+        "yikeyin_gable" => crate::yikeyin::document(),
         "yikeyin_court" => crate::yikeyin::document(),
         "house" => crate::house::document(),
         "hall" => crate::hall::document(),

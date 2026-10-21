@@ -3810,3 +3810,13 @@ one rise each.
 it. **The table is the evidence** — `yikeyin` and `yikeyin_court` 6 925 → **6 997**, twelve treads of six faces each.
 
 **Identity: 58 scenes, 214 886 rows**.
+## Round 206: the 一颗印's gable
+
+Round 141 built this type's two signature constructs — **硬山** gable ends, so each range's roof stops at its own gable wall, and **山墙冠**, so that wall
+runs up past the roof and stops at the ridge — and the gallery had never shown either of them: the wide plate looks down from nineteen metres, where a
+gable is four lines among many, and the court plate is a **light well and therefore dark**.
+
+`yikeyin_gable` stands in the street at four and a half metres: the gable wall rises past its own roof, the neighbour ranges' gables stand behind it,
+and the eaves' own rafter ends show underneath. **The two things the type is read by, in one frame, for the first time.**
+
+**Identity: 59 scenes, 221 883 rows**; `yikeyin_gable` **6 997** (the same document as `yikeyin`). The document is 6.32 MB.

@@ -215,6 +215,23 @@ pub fn yikeyin_court() -> Value {
     )
 }
 
+/// The **corner plate**: a 硬山 gable wall and its crown from the street, where the two constructs this type is read by stand in one frame.
+///
+/// # Why a third camera and not a third document
+///
+/// The wide plate looks down from nineteen metres, where the gable walls are four lines among many, and the court plate is a light well and therefore
+/// dark. **The thing a 一颗印 is recognised by from outside is the gable end** — the wall that runs up past its own roof and stops at the ridge — and
+/// this is the plate that shows it. Rounds 190, 194, 195, 196, 200 and 203 are the same move.
+pub fn yikeyin_gable() -> Value {
+    scene(
+        [10.4, 4.6, 12.6],
+        [-2.0, 5.6, -3.0],
+        FIELD_OF_VIEW * 0.86,
+        "yikeyin_gable",
+        SUN,
+    )
+}
+
 /// Builds the scene, from outside the block.
 pub fn yikeyin() -> Value {
     scene(
