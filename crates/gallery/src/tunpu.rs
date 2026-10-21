@@ -263,77 +263,6 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
     ])
 }
 
-/// Splits the two gable ends of a range at their middles and raises those nodes to the roof's apex.
-///
-/// # Invariants
-///
-/// **The ends are the two edges the ridge does not run along**, read from the plan as the shorter pair of
-/// the loop; each is split at its own middle station, **far one first**, because an insertion moves every
-/// station after it. The apex is the roof's own highest underside, so the wall meets the roof instead of
-/// stopping below it.
-fn crown_gables(mass: &mut Mass, roof: &building::roof::Roof) {
-    let apex = roof
-        .crest
-        .iter()
-        .map(|point| point.elevation)
-        .fold(f32::NEG_INFINITY, f32::max)
-        - roof.thickness
-        - 0.01;
-    let Some(stations) = gable_stations(mass) else {
-        return;
-    };
-    for station in stations {
-        if let Some(index) = building::ops::split_outline(mass, station) {
-            if let Some(crown) = mass.crown_mut().outline.get_mut(index) {
-                crown.elevation = apex;
-            }
-        }
-        // The split rewrites the crown vector with the loop, so a node that is not crowned yet keeps the
-        // wall top it had; the vector grows by one entry per split.
-    }
-}
-
-/// Returns the two stations at which the gable ends stand, **far one first**.
-///
-/// # Invariants
-///
-/// A gable end is one of the two edges the ridge does not run along: the ridge follows the longer pair of
-/// edges, so the ends are the other pair. Each answers its own middle station as a fraction of the
-/// **closed** loop before either insertion, which is why they are sorted descending.
-fn gable_stations(mass: &Mass) -> Option<Vec<f32>> {
-    let count = mass.outline().len();
-    if count != 4 {
-        return None;
-    }
-    let spans: Vec<f32> = (0..count)
-        .map(|edge| {
-            let from = mass.outline()[edge].position;
-            let to = mass.outline()[(edge + 1) % count].position;
-            ((to[0] - from[0]).powi(2) + (to[1] - from[1]).powi(2)).sqrt()
-        })
-        .collect();
-    let total: f32 = spans.iter().sum();
-    if total <= f32::EPSILON {
-        return None;
-    }
-    // The pair of edges the ridge runs along is the longer pair: `0, 2` or `1, 3`.
-    let (first_pair, second_pair) = (spans[0] + spans[2], spans[1] + spans[3]);
-    let ends: Vec<usize> = if first_pair >= second_pair {
-        vec![1, 3]
-    } else {
-        vec![0, 2]
-    };
-    let mut stations: Vec<f32> = ends
-        .iter()
-        .map(|edge| {
-            let walked: f32 = spans[..*edge].iter().sum();
-            (walked + spans[*edge] * 0.5) / total
-        })
-        .collect();
-    stations.sort_by(|left, right| right.partial_cmp(left).unwrap_or(std::cmp::Ordering::Equal));
-    Some(stations)
-}
-
 /// Returns the document: one stone box, its slate roof and the yard in front of it.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
@@ -396,7 +325,7 @@ pub fn document() -> Building {
             .fold(f32::NEG_INFINITY, f32::max)
             - roof.thickness
             - 0.01;
-        if let Some(stations) = gable_stations(&skeleton.masses[id.0]) {
+        if let Some(stations) = building::derive::gable_stations(&skeleton.masses[id.0]) {
             for station in stations {
                 if let Some(index) =
                     building::ops::split_outline(&mut skeleton.masses[id.0], station)

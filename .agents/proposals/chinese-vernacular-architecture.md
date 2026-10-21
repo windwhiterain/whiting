@@ -2327,3 +2327,28 @@ So the round drew the gate's two missing pieces instead:
   lintel's stone.
 
 **Identity: 35 scenes, 125 257 rows**; `bai_lane` 5 593 → **5 611** — two leaves and the board. The document is 20.37 MB.
+## Round 91: the 穿斗式民居, the gallery's fifteenth type
+
+**The one structural tradition the other fourteen had left out.** The 抬梁 frame carries its roof on beams that span bay to bay;
+**穿斗** carries it on a **row of thin posts set close together**, tied by purlins pushed through them, and the boards between the
+posts are not structure. That is why a 穿斗 house's front is a colonnade: the posts *are* the wall's rhythm.
+
+- **six posts at two-metre centres** down the front, standing `1.60 m` out from the body's own wall, with one beam across their
+  heads — the purlin at this scale;
+- **deep eaves**: the roof's overhang is `1.30 m` on three sides and `1.30 + 1.60` at the front, because a board wall needs the
+  rain kept off it, and that need is what a colonnade is for;
+- **a board body** `0.22 m` thick behind the posts, with a door and two windows cut in three bays.
+
+Three refusals framed the work, and the third is the one worth keeping:
+
+- **`OpeningOutsideWall { past: 0.048 }`, three times** — an inset of `0.34 m` in a `0.22 m` wall is short of the **mitred end**;
+- **`OpeningOutsideWall { past: 3.574 }` and `{ past: 7.241 }`** — one bay each, which is what a **one-column grid** looks like:
+  the split had been made on an edge that was half a face;
+- **`GridOnACrownedFace`** — because the crown had run *after* the split. The order the crate asks for is: **crown the gables,
+  find the front edge by its midpoint's `+z`, split it, then cut.**
+
+`crown_gables` was copied in two documents; it is `derive::crown_gables` now, with the gable-station reading beside it, and both
+the 石板房 and this type call it.
+
+**Identity: 36 scenes, 126 323 rows**; `chuandou_house` **1 066** — a body, six posts, a purlin, a roof and three openings'
+reveals. The document is 7.38 MB.

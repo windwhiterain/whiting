@@ -1331,3 +1331,74 @@ pub fn stepped_courses(
     }
     laid
 }
+/// Splits the two gable ends of a range at their middles and raises those nodes to the roof's apex, so the wall meets the
+/// roof instead of stopping below it.
+///
+/// # Invariants
+///
+/// **The ends are the two edges the ridge does not run along**, read from the plan as the shorter pair of the loop; each is
+/// split at its own middle station, **far one first**, because an insertion moves every station after it. The apex is the
+/// roof's own highest underside.
+///
+/// A stone wall that stops at the eaves leaves the roof's own underside open from outside — round 68 measured it as the loft
+/// seen as a hole through the house — and the crown is the fix. It works on a **four-node plan only**: a range that has already
+/// been split has no two gable ends to find, and the function leaves it alone.
+pub fn crown_gables(mass: &mut Mass, roof: &crate::roof::Roof) {
+    let apex = roof
+        .crest
+        .iter()
+        .map(|point| point.elevation)
+        .fold(f32::NEG_INFINITY, f32::max)
+        - roof.thickness
+        - 0.01;
+    let Some(stations) = gable_stations(mass) else {
+        return;
+    };
+    for station in stations {
+        if let Some(index) = crate::ops::split_outline(mass, station) {
+            if let Some(crown) = mass.crown_mut().outline.get_mut(index) {
+                crown.elevation = apex;
+            }
+        }
+    }
+}
+
+/// Returns the two stations at which a plan's gable ends stand, **far one first**.
+///
+/// # Invariants
+///
+/// A gable end is one of the two edges the ridge does not run along: the ridge follows the longer pair of edges, so the ends
+/// are the other pair. Each answers its own middle station as a fraction of the **closed** loop before either insertion, which
+/// is why they are sorted descending.
+pub fn gable_stations(mass: &Mass) -> Option<Vec<f32>> {
+    let count = mass.outline().len();
+    if count != 4 {
+        return None;
+    }
+    let spans: Vec<f32> = (0..count)
+        .map(|edge| {
+            let from = mass.outline()[edge].position;
+            let to = mass.outline()[(edge + 1) % count].position;
+            ((to[0] - from[0]).powi(2) + (to[1] - from[1]).powi(2)).sqrt()
+        })
+        .collect();
+    let total: f32 = spans.iter().sum();
+    if total <= f32::EPSILON {
+        return None;
+    }
+    let (first_pair, second_pair) = (spans[0] + spans[2], spans[1] + spans[3]);
+    let ends: Vec<usize> = if first_pair >= second_pair {
+        vec![1, 3]
+    } else {
+        vec![0, 2]
+    };
+    let mut stations: Vec<f32> = ends
+        .iter()
+        .map(|edge| {
+            let walked: f32 = spans[..*edge].iter().sum();
+            (walked + spans[*edge] * 0.5) / total
+        })
+        .collect();
+    stations.sort_by(|left, right| right.partial_cmp(left).unwrap_or(std::cmp::Ordering::Equal));
+    Some(stations)
+}

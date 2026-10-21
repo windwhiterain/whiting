@@ -76,6 +76,7 @@ pub mod benzu_miao;
 /// listed in [`Gallery::names`] so the suite sweeps it: the two are independent, and this scene
 /// is both.
 /// The compound scene: three ranges round a court, and the screen wall across its fourth side.
+pub mod chuandou;
 pub mod compound;
 /// The dawn over the rice terraces, held as numbers so a tracer can be handed it as a world.
 mod dawn;
@@ -210,6 +211,7 @@ impl Gallery {
             "hall",
             "dai_hamlet",
             "hall_large",
+            "chuandou_house",
             "compound",
             "compound_court",
             "house",
@@ -326,6 +328,7 @@ impl Gallery {
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
             "hermite_massif" => hermite_massif::hermite_massif(),
+            "chuandou_house" => chuandou::chuandou_house(),
             "compound" => compound::compound(),
             "compound_court" => compound::compound_court(),
             "hall" => hall::hall(),
