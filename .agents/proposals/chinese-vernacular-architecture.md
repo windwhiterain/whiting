@@ -2602,3 +2602,14 @@ courtyard.
 
 **Identity: 37 scenes, 129 044 rows**; `benzu_miao` 1 174 → **1 531** — the wall's faces and top, four reveals round its door, and
 the gate's roof. The document is 7.52 MB.
+## Round 110: the 山门's leaves and threshold
+
+Round 109 closed the temple with a gate wall whose opening was drawn empty, and an empty opening in a gate wall is a hole. The
+gate has its **two leaves** and its **threshold** now: the plates stand open against the jambs, swung out into the lane so the
+plate can see them, and a foot steps over a `0.26 m` stone between them.
+
+The leaves are `derive::leaf` — round 100's helper, which is now the third document to hang its gate with it (the 白族巷, the
+屯堡's 朝门, and this), and the reason the helper exists: **both anchors at one elevation, the section's height the opening's**,
+so a leaf is a panel and not a post.
+
+**Identity: 37 scenes, 129 062 rows**; `benzu_miao` 1 531 → **1 549** — two leaves and the threshold. The document is 7.53 MB.

@@ -323,6 +323,35 @@ pub fn document() -> Building {
             building::Opening::new(gate_face, 0, 1, building::Inset::new(0.30, 0.30, 0.0, 0.90)),
         );
     }
+    // **The gate's two leaves, swung out into the lane, and its threshold.** A 山门 is a gate and not an arch: the plates stand
+    // open, one against each jamb, and a foot steps over the threshold between them. The leaves are `derive::leaf`'s panels —
+    // both anchors at one elevation, the section's height the opening's — the same call the 白族巷's gate and the 屯堡's 朝门
+    // hang their own with.
+    let clear = SHANMEN_HALF / 3.0 - 0.30;
+    for across in [-1.0_f32, 1.0] {
+        let hinge = across * clear;
+        if let Some(panel) = derive::leaf(
+            [hinge, 0.06, SHANMEN_Z - SHANMEN_THICK * 0.5 + 0.06],
+            clear,
+            SHANMEN_HIGH - 0.90 - 0.12,
+            0.07,
+            [0.0, -across.signum()],
+        ) {
+            skeleton.members.push(panel);
+        }
+    }
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [-clear, 0.0, SHANMEN_Z],
+        },
+        building::Anchor::Free {
+            at: [clear, 0.0, SHANMEN_Z],
+        },
+        [0.0, 1.0],
+        0.26,
+        0.18,
+    ));
+
     // **Its roof**: a lean-to over the wall, shedding into the court, which is what makes a wall a gate house.
     let span = SHANMEN_HALF + 0.55;
     let plan = [
