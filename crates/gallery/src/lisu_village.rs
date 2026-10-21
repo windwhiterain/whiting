@@ -41,6 +41,19 @@ const FENCE_GAP: f32 = 2.60;
 const FENCE_POST: f32 = 0.12;
 const FENCE_HIGH: f32 = 1.05;
 
+/// The 苞谷架: how many racks, where the first stands, how far apart, how long each runs, its height and its post's section, and how many
+/// sheaves hang from it and how long they are.
+const RACKS: usize = 3;
+const RACK_FROM: f32 = -15.6;
+const RACK_GAP: f32 = 12.4;
+const RACK_LONG: f32 = 3.40;
+const RACK_Z: f32 = -4.30;
+const RACK_HIGH: f32 = 2.85;
+const RACK_POST: f32 = 0.13;
+const RACK_SHEAVES: usize = 4;
+const SHEAF_LONG: f32 = 1.20;
+const SHEAF_WIDE: f32 = 0.26;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// Builds the scene: down the lane, so the two rows' crossed log ends and their low gables read as a street of houses.
@@ -119,6 +132,53 @@ pub fn document() -> Building {
         FENCE_POST * 0.7,
         FENCE_POST * 0.8,
     ));
+
+    // **The 苞谷架: the corn racks.** A 傈僳 yard's one standing object is the **rack the maize hangs on** — two posts and a head beam with the
+    // husks tied on it in bunches — and it is the 侗寨's 禾晾 in another country (round 140). Three racks along the lane's near side, inside the
+    // free band between the lane and the houses.
+    for rack in 0..RACKS {
+        let x = RACK_FROM + RACK_GAP * rack as f32;
+        for side in [-1.0_f32, 1.0] {
+            let across = x + side * RACK_LONG * 0.5;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [across, PAVING, RACK_Z],
+                },
+                building::Anchor::Free {
+                    at: [across, PAVING + RACK_HIGH, RACK_Z],
+                },
+                [1.0, 0.0],
+                RACK_POST,
+                RACK_POST,
+            ));
+        }
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x - RACK_LONG * 0.5, PAVING + RACK_HIGH, RACK_Z],
+            },
+            building::Anchor::Free {
+                at: [x + RACK_LONG * 0.5, PAVING + RACK_HIGH, RACK_Z],
+            },
+            [0.0, 1.0],
+            RACK_POST * 0.8,
+            RACK_POST * 0.9,
+        ));
+        // **The sheaves hang from the head beam**, which is what makes a rack read as a rack and not as a gateway.
+        for sheaf in 0..RACK_SHEAVES {
+            let at = x - RACK_LONG * 0.5 + RACK_LONG * (sheaf as f32 + 0.5) / RACK_SHEAVES as f32;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [at, PAVING + RACK_HIGH - 0.10, RACK_Z],
+                },
+                building::Anchor::Free {
+                    at: [at, PAVING + RACK_HIGH - SHEAF_LONG, RACK_Z],
+                },
+                [1.0, 0.0],
+                SHEAF_WIDE,
+                SHEAF_WIDE,
+            ));
+        }
+    }
 
     Building::new(skeleton)
 }

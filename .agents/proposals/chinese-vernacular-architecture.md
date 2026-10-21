@@ -3522,3 +3522,13 @@ does not need it yet; the bench is the first thing and the slope is the second. 
 round 140's 禾晾 in another country.
 
 **Identity: 47 scenes, 160 423 rows**; `lisu_village` **936**. The document is 7.43 MB.
+## Round 183: the 苞谷架
+
+A 傈僳 yard's one standing object is the **rack the maize hangs on**: two posts and a head beam with the husks tied on it in bunches. It is the
+侗寨's **禾晾 in another country** (round 140) — the same two posts, the same head beam, the same hanging sheaves — and the round adds only the
+numbers and the placement.
+
+**The sheaves had to grow to be seen**: at `0.16 m` wide and `0.85 m` long they read as a fence, which is the one thing a rack must not be
+mistaken for next to a village that has a fence. At `0.26 × 1.20` on a `2.85 m` beam they hang free of the head and read as bunches.
+
+**Identity: 47 scenes, 160 549 rows**; `lisu_village` 936 → **1 062** — three racks, their posts and twelve sheaves. The document is 7.47 MB.
