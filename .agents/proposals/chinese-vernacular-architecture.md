@@ -2268,3 +2268,18 @@ where a 一颗印's gate is always seen against a screen.
 
 **Identity: 35 scenes, 124 845 rows**; `yikeyin` 6 828 → **6 841** (the screen's faces, its top and its coping), and
 `yikeyin_court` unchanged — it is the court's interior and the screen is outside it. The document is 6.29 MB.
+## Round 87: the 土掌房's second flight
+
+Round 56's own record said the 土掌房's stair **reaches the terrace and stops**: "goes on to the room above by a second flight
+this document does not draw". The top roof has waited thirteen rounds, and its parapet has had a **gap in it since round 62** —
+a gap made for a stair that did not exist.
+
+- **the second flight climbs from the terrace to the top roof**, `SECOND_STEPS` treads for the storey above the 晒场.
+- **it is on the same flank as the first**, so the house is climbed by one straight run broken at the terrace, which is how a
+  土掌房 is climbed. Its treads run across the terrace's own walkway — exactly `SETBACK` wide — and it comes out through the
+  parapet's gap.
+- **and it is on the camera's side**, because a flight added where no shot can see it is a flight no one will check (round 77's
+  lesson, learned the hard way).
+
+**Identity: 35 scenes, 125 181 rows**; `earthen_house` 182 → **230** — eight treads, their sides and their reveals. The
+document is 4.27 MB.

@@ -68,6 +68,10 @@ const POST: f32 = 0.18;
 
 /// The outside stair: `STEPS` treads of `TREAD` going, up the gable end and onto the roof.
 const STEPS: usize = 14;
+/// The second flight, from the terrace to the room`s own roof: the storey above the 晒场 is half the first climb.
+const SECOND_STEPS: usize = 8;
+/// How far along the wall the second flight starts, so it clears the first flight`s own stringer.
+const STEP_BACK: f32 = 1.10;
 const TREAD: f32 = 0.32;
 const TREAD_THICK: f32 = 0.14;
 
@@ -433,6 +437,27 @@ pub fn document() -> Building {
             TREAD_THICK,
         ));
     }
+    // **The second flight**: from the terrace to the top roof, **on the same flank as the first** — one straight run up the
+    // Its treads run across the terrace's own walkway, which is exactly `SETBACK` wide, and it lands at the gap the top
+    // roof's parapet has always had — the gap was made for this stair and has waited for it.
+    let upper_rise = (top - terrace_level - ROOF_THICK) / SECOND_STEPS as f32;
+    let upper_width = SETBACK - 0.08;
+    for step in 0..SECOND_STEPS {
+        let y = terrace_level + upper_rise * (step + 1) as f32;
+        let z = -deep + STEP_BACK + TREAD * step as f32 + TREAD * 0.5;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [half - SETBACK + 0.04, y, z],
+            },
+            building::Anchor::Free {
+                at: [half - SETBACK + 0.04 + upper_width, y, z],
+            },
+            [0.0, 1.0],
+            TREAD,
+            TREAD_THICK,
+        ));
+    }
+
     // **The stringer**, one sloped beam under the treads' outer edge: a run of floating treads reads as steps
     // only because they are evenly spaced, and a stair that carries nothing is a ladder lying down. The beam
     // starts under the first tread and ends under the last, so its own slope *is* the stair's.
