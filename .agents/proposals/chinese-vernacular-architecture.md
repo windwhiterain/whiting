@@ -1493,3 +1493,24 @@ building:
   shadows, and the sky-well above them.
 
 **What this is not**: the court is still genuinely dark, and the picture says so — that is the type.
+## Round 47: the court's paving is its own surface
+
+A courtyard's paving was drawn as a *floor* — the same mesh and the same material as the four 台明 and the storeys — and
+it is not one. It is the one surface in a 一颗印 that rain reaches, laid in the open with the grate through it, and the
+crate now says so:
+
+- **`SlabRole::Paving`** and **`Slab::paving`**, a fourth role beside plate, floor and roof. `derive::court_paving`
+  lays a paving and no longer a plate.
+- **The two checks that ask "is this the plate a mass stands on" both read the role**, so a paving is skipped by both:
+  it neither defines a mass's floor coverage nor cuts the ground out from under a room.
+- **The court scene draws it as its own mesh with its own stone** — darker and much smoother than the platforms, which
+  is what wet stone reads as.
+
+Identity: **25 scenes, 105 876 rows, unchanged** — a role is not geometry, and the paving is the same prism it was.
+
+### What was tried and rejected, in one frame
+
+**Three-sided galleries round the court** were built first, on the reasoning that a courtyard is a gallery on three sides
+and a screen wall on the fourth. The court frame came back **black**: a 一颗印's court is 3 × 3 m, and a 0.85 m gallery on
+each side leaves a 1.3 m slot, so the posts stood in the middle of the well. The premise was the 三坊一照壁's, not the
+seal's — **a 一颗印 has one 厦子, on the 正房** — and this scene already had it. The change was reverted whole.

@@ -1087,7 +1087,7 @@ pub fn court_paving(
         [middle[0] + half, middle[1] + half],
         [middle[0] - half, middle[1] + half],
     ];
-    Some(Slab::plate(plan.to_vec(), elevation - thickness, elevation).with_void(hole.to_vec()))
+    Some(Slab::paving(plan.to_vec(), elevation - thickness, elevation).with_void(hole.to_vec()))
 }
 
 /// Returns the loop a mass's walls stand on: its outline offset inward by the wall's own thickness.

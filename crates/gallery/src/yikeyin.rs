@@ -215,6 +215,18 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
             building::Element::Roof(_, _) | building::Element::Roll(_, _)
         )
     });
+    // **The court's paving is not a floor**, and it is drawn as what it is: the four 台明 and the storeys are the
+    // `floors` mesh, and the stone the court is laid with is its own — a surface a person walks on in the open, with the
+    // grate through it, and not the underside of a room.
+    let paved: Vec<usize> = document()
+        .skeleton
+        .slabs
+        .iter()
+        .enumerate()
+        .filter(|(_, slab)| slab.role == building::slab::SlabRole::Paving)
+        .map(|(index, _)| index)
+        .collect();
+    let is_paving = |element: &building::Element| matches!(element, building::Element::Slab(id, _) if paved.contains(&id.0));
     let floors = packed_where(&built, &table, |element| {
         matches!(
             element,
@@ -222,7 +234,16 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
                 _,
                 building::slab::SlabSurface::Top | building::slab::SlabSurface::Bottom
             )
-        )
+        ) && !is_paving(element)
+    });
+    let paving = packed_where(&built, &table, |element| {
+        matches!(
+            element,
+            building::Element::Slab(
+                _,
+                building::slab::SlabSurface::Top | building::slab::SlabSurface::Bottom
+            )
+        ) && is_paving(element)
     });
 
     // **The bars of the 直棂窗**, which are members and had no mesh before: a document that carries them and a
@@ -234,6 +255,12 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
     let plaster = || surface([0.80, 0.76, 0.68], 0.0, 0.86, [0.0; 3]);
     let tiles = || surface([0.30, 0.29, 0.28], 0.0, 0.60, [0.0; 3]);
     let floor = || surface([0.33, 0.25, 0.17], 0.0, 0.80, [0.0; 3]);
+    // **Wet stone**: the court is the one surface in a 一颗印 that rain reaches, so its paving is darker and much
+    // smoother than the platforms around it.
+    let paved_stone = || surface([0.24, 0.23, 0.21], 0.0, 0.34, [0.0; 3]);
+    // **Wet stone**: the court is the one surface in a 一颗印 that rain reaches, so its paving is darker and much
+    // smoother than the platforms around it.
+    let paved_stone = || surface([0.24, 0.23, 0.21], 0.0, 0.34, [0.0; 3]);
     let earth = || surface([0.31, 0.28, 0.22], 0.0, 0.94, [0.0; 3]);
     // The bars are wood, not plaster: a dark warm brown that reads against the wall behind them.
     let timber = || surface([0.22, 0.14, 0.08], 0.0, 0.72, [0.0; 3]);
@@ -243,6 +270,7 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
         ("wall", plaster as fn() -> Value),
         ("roof", tiles as fn() -> Value),
         ("floor", floor as fn() -> Value),
+        ("paved", paved_stone as fn() -> Value),
         ("bars", timber as fn() -> Value),
     ] {
         materials.push(mesh_material(
@@ -274,6 +302,7 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
             ("walls", "wall"),
             ("roofs", "roof"),
             ("floors", "floor"),
+            ("paving", "paved"),
             ("bars", "bars"),
             ("ground", "ground"),
         ]
@@ -361,6 +390,7 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
                 mesh("walls", "Triangles", point.clone(), walls),
                 mesh("roofs", "Triangles", point.clone(), roofs),
                 mesh("floors", "Triangles", point.clone(), floors),
+                mesh("paving", "Triangles", point.clone(), paving),
                 mesh("bars", "Triangles", point.clone(), bars),
                 mesh("ground", "Triangles", plain.point_schema(), ground),
             ]),

@@ -94,6 +94,16 @@ pub enum SlabRole {
     Floor,
     /// The plate a flat roof is, seated on the wall top over the eave.
     Roof,
+    /// **A surface laid on the ground**: a courtyard's paving, a lane's stone, a terrace's floor.
+    ///
+    /// # Invariants
+    ///
+    /// **It is a plate in shape and not in meaning.** Its top is the level people walk on and its bottom is a few
+    /// centimetres down, so nothing about it is a mass's floor: the crate's two checks for "the plate a mass stands on"
+    /// (`validate`'s coverage test and the ground mesh's own cut) both read the role, and a paving must be skipped by
+    /// both — a court's paving is laid *in* a compound whose ranges have their own 台明, and cutting the site out from
+    /// under it would be cutting the site out from under a floor that is already there.
+    Paving,
 }
 
 /// A level prism over a plan polygon.
@@ -186,6 +196,17 @@ impl Slab {
     /// seating move the roof with the building rather than leaving it behind at the old level.
     pub fn roof(outline: Vec<Vec2>, bottom: f32, top: f32) -> Self {
         Self::new(outline, bottom, top, SlabRole::Roof)
+    }
+
+    /// Builds a **paving**: a surface laid on the ground, from `bottom` up to `top`.
+    ///
+    /// # Invariants
+    ///
+    /// A paving is a plate in shape and not in meaning — see [`SlabRole::Paving`] — so it is built by its own
+    /// constructor for the same reason a floor and a roof are: what a slab *is* is on the slab, and nothing downstream
+    /// has to read an elevation to find out.
+    pub fn paving(outline: Vec<Vec2>, bottom: f32, top: f32) -> Self {
+        Self::new(outline, bottom, top, SlabRole::Paving)
     }
 
     /// Builds a slab of the named role.
