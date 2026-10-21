@@ -79,6 +79,16 @@ const UPOSATHA_AT: [f32; 2] = [10.10, -2.20];
 /// The 寺门`s piers: how wide one is, in metres.
 const GATE_PIER: f32 = 0.52;
 
+/// The 塔: where it stands in the yard, its square, the height of one course and how many, how far each course draws in, the
+/// wall inside it and the platform it rises from.
+const STUPA_AT: [f32; 2] = [10.40, 5.20];
+const STUPA: f32 = 2.90;
+const STUPA_COURSE: f32 = 0.95;
+const STUPA_COURSES: usize = 4;
+const STUPA_BATTER: f32 = 0.21;
+const STUPA_WALL: f32 = 0.34;
+const STUPA_PLINTH: f32 = 0.32;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the temple: from the porch's corner, so the pitch and the platform's height are both seen.
@@ -405,6 +415,80 @@ pub fn document() -> Building {
     }
     if let Some(roof) = skeleton.roofs.last() {
         derive::crown_gables(&mut skeleton.masses[uposatha_id.0], roof);
+    }
+
+    // **The 塔: the stupa, which is the wat's landmark.** This crate has no solid of revolution, and a 塔 is round — but a Dai
+    // stupa is **built in square courses that batter inward**, and that is a stack of masses this crate already has a word for:
+    // `derive::stepped_courses` lays exactly that, each course carried by the one below through `Join::Storey` and sharing an
+    // edge with it and no volume.
+    //
+    // The square base, four courses narrowing by `STUPA_BATTER` each, then the bell and the spire on top: eight masses from the
+    // yard to `STUPA_TOP`. **A square stupa is not a compromise**, it is the form a brick 塔 of the upper Mekong actually takes.
+    let stupa = STUPA_AT;
+    let half_stupa = STUPA * 0.5;
+    let base = [
+        [stupa[0] - half_stupa, stupa[1] - half_stupa],
+        [stupa[0] + half_stupa, stupa[1] - half_stupa],
+        [stupa[0] + half_stupa, stupa[1] + half_stupa],
+        [stupa[0] - half_stupa, stupa[1] + half_stupa],
+    ];
+    // **The platform it stands on**: a square two steps up, so the 塔 has a base to rise from.
+    skeleton.slabs.push(building::Slab::floor(
+        ops::wound(vec![
+            [base[0][0] - 0.85, base[0][1] - 0.85],
+            [base[1][0] + 0.85, base[1][1] - 0.85],
+            [base[2][0] + 0.85, base[2][1] + 0.85],
+            [base[3][0] - 0.85, base[3][1] + 0.85],
+        ]),
+        0.0,
+        STUPA_PLINTH,
+    ));
+    let courses = derive::stepped_courses(
+        &mut skeleton,
+        base,
+        STUPA_COURSE,
+        STUPA_PLINTH + STUPA_COURSE * STUPA_COURSES as f32,
+        STUPA_COURSES,
+        STUPA_BATTER,
+        STUPA_WALL,
+        0.16,
+    );
+    // **The bell and the spire**, each a mass carried by the one under it: the bell tapers to the spire's foot, and the spire is
+    // a third of the whole — which is what a 塔 is: a base, a bell, and a needle.
+    if let Some(top) = courses.last() {
+        // **The bands stand on the courses' nominal top and each on the one before it.** `Mass::highest` reads the wall's own crown
+        // and not the stack's summit, so the first band's foot is the height the courses were laid to; and **each band names the one
+        // under it**, because a chain of nested plans is a chain and not a pile — naming the bottom course for all three left every
+        // pair unrelated, which is `UnattachedOverlap { 14, 15 }`, `{ 14, 16 }`, `{ 15, 16 }` and three `StoreyNotOnTop`.
+        let mut foot = STUPA_PLINTH + STUPA_COURSE * STUPA_COURSES as f32;
+        let mut host = *top;
+        // **A band's plan sets its wall.** A wall wider than half the plan folds the inner loop (`OffsetEdgeFolded`) and a plan that
+        // shrinks past nothing gives a negative wall (`MassThickness { wall: -0.0102 }`, measured here) — so the bell and the spire
+        // are `0.62`, `0.46` and `0.30` across their half, and their wall is a fraction of that and never a number of its own.
+        for (index, high) in [(0usize, 0.95_f32), (1, 1.55), (2, 1.30)] {
+            let size = [0.62_f32, 0.46, 0.30][index];
+            let mut band = Mass::new(
+                ops::wound(vec![
+                    [stupa[0] - size, stupa[1] - size],
+                    [stupa[0] + size, stupa[1] - size],
+                    [stupa[0] + size, stupa[1] + size],
+                    [stupa[0] - size, stupa[1] + size],
+                ])
+                .into_iter()
+                .map(|at| PlanNode::new(at, foot))
+                .collect(),
+                foot + high,
+            );
+            band.wall = size * 0.34;
+            band.slab = 0.14;
+            band.attachment = Some(building::Attachment {
+                host,
+                join: building::Join::Storey,
+            });
+            host = MassId(skeleton.masses.len());
+            skeleton.masses.push(band);
+            foot += high;
+        }
     }
 
     Building::new(skeleton)

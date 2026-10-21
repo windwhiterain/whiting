@@ -2678,3 +2678,29 @@ in it.
 
 **Identity: 38 scenes, 131 366 rows**; `dai_temple` 1 773 → **2 292** — a second platform, a second hall with its crowned gable,
 and its own roof and covering. The document is 7.6 MB.
+## Round 116: the 塔
+
+This crate has no **solid of revolution**, and a 塔 is round — but a Dai stupa is **built in square courses that batter inward**, and
+that is a stack of masses the crate already has a word for. `derive::stepped_courses` lays exactly that, each course carried by the
+one below through `Join::Storey` and sharing an edge with it and no volume; on its top stand the **bell** and the **spire**, each
+carried by the one before. Four courses, three bands, `7.4 m` to the spire's point: a base, a bell and a needle, which is what a 塔
+is.
+
+**A square stupa is not a compromise**: it is the form a brick 塔 of the upper Mekong takes, and the crate's own batter is the
+reason it can be drawn at all.
+
+Two refusals worth the record, both from the bell's first version:
+
+- `OffsetEdgeFolded` — a wall wider than half the band's plan folds its inner loop;
+- `MassThickness { wall: -0.0102 }` — a plan computed to shrink by a fraction of the base went **through** zero and came out
+  negative. The bands now have their own half-widths, and their wall is a fraction of that width and never a number of its own.
+
+And one chain: naming the **bottom course** as host for all three bands left every pair unrelated — `UnattachedOverlap { 14, 15 }`,
+`{ 14, 16 }`, `{ 15, 16 }` and three `StoreyNotOnTop`, because a `Storey` mass must stand with its base at its host's top. Each band
+names the one under it.
+
+**Where it stands was decided by the plate again**: built in the yard's far corner it was behind the hall's roof and invisible. It
+stands in the near corner now, where a wat's 塔 actually is — the first thing you see at the gate.
+
+**Identity: 38 scenes, 131 463 rows**; `dai_temple` 2 292 → **2 389** — four courses' faces, three bands' and the platform's. The
+document is 7.79 MB.
