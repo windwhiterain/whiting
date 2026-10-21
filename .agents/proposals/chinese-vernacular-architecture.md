@@ -1514,3 +1514,25 @@ Identity: **25 scenes, 105 876 rows, unchanged** — a role is not geometry, and
 and a screen wall on the fourth. The court frame came back **black**: a 一颗印's court is 3 × 3 m, and a 0.85 m gallery on
 each side leaves a 1.3 m slot, so the posts stood in the middle of the well. The premise was the 三坊一照壁's, not the
 seal's — **a 一颗印 has one 厦子, on the 正房** — and this scene already had it. The change was reverted whole.
+## Round 50: the 傣族竹楼, the gallery's tenth type
+
+**A 竹楼 is a floor, not a wall.** The other nine types in this crate are enclosed boxes standing on the ground; this one
+is a platform lifted `1.95 m` on piles with a room on part of it, a veranda along the front, a drying deck at the gable
+end, a steep thatched hip over all three, and a stair of ten treads up to the veranda. Its ground floor is open air, and
+that is the type.
+
+Two facts, and both of them are machinery this crate already had:
+
+- **The floor is the building.** The room is seated `FLOOR` above the ground, the veranda and the deck are slabs at the
+  room's own floor level hosted by it — so the seat moves them with the room — and `site::posts` fills the gap the seat
+  opened under all of them. Nothing touches the ground but the piles.
+- **The roof sheds by slope.** `RISE` is 2.70 m over a 4.2 m room, the eaves run 1.35 m past the wall and the corner is
+  cut as a **hip**, because a thatched roof with a gable end would tear in the first storm.
+
+**What it cannot draw yet**: the thatch itself. A hip's two **corner rolls** leave their own plane by `1.10e-3`, against a
+tolerance of `1e-3` — **the same millimetre that kept the 蘑菇房's straw out of the village in round 45**. Two types, two
+hip roofs, the same two corner rolls: the fault is in `covering`, and it is now recorded twice at the place the roll is
+built. The roof in this document is bare, and it should not be.
+
+Identity: 26 scenes, **106 060 rows**, of which `bamboo_house` is **184** — a small house, and the type's cost is in its
+decks and its stair rather than its walls.
