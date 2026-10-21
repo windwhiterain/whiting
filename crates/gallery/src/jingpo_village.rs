@@ -42,6 +42,15 @@ const SKULL_GAP: f32 = 2.80;
 const SKULL_POST: f32 = 0.20;
 const SKULL_HIGH: f32 = 2.35;
 
+/// The 谷仓 beside the lane: where it stands, its plan, how high its floor is posted and how tall the store is, a posts section and how far
+/// its cap stands out.
+const GRANARY_AT: [f32; 2] = [7.40, -6.20];
+const GRANARY: [f32; 2] = [2.60, 2.10];
+const GRANARY_UP: f32 = 0.95;
+const GRANARY_HIGH: f32 = 1.85;
+const GRANARY_POST: f32 = 0.16;
+const GRANARY_EAVE: f32 = 0.42;
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.58;
 
 /// Builds the scene: from the lane's mouth, so the gate frames the two long roofs and the third behind them.
@@ -186,6 +195,64 @@ pub fn document() -> Building {
             SKULL_POST,
         ));
     }
+
+    // **The 谷仓: the granary beside the lane.** A hill village keeps its rice out of the house: a **small boxed store raised on posts**, its floor
+    // off the ground so the damp and the rats cannot reach it, with a stone cap over it. It is the 侗寨's granary in a second village — the same
+    // four posts, the same raised floor, the same cap.
+    let [granary_x, granary_z] = GRANARY_AT;
+    for bay in 0..2 {
+        for side in 0..2 {
+            let x = granary_x + (bay as f32 - 0.5) * GRANARY[0] * 0.72;
+            let z = granary_z + (side as f32 - 0.5) * GRANARY[1] * 0.72;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x, 0.0, z] },
+                building::Anchor::Free {
+                    at: [x, GRANARY_UP, z],
+                },
+                [1.0, 0.0],
+                GRANARY_POST,
+                GRANARY_POST,
+            ));
+        }
+    }
+    let mut store = Mass::new(
+        ops::wound(vec![
+            [granary_x - GRANARY[0] * 0.5, granary_z - GRANARY[1] * 0.5],
+            [granary_x + GRANARY[0] * 0.5, granary_z - GRANARY[1] * 0.5],
+            [granary_x + GRANARY[0] * 0.5, granary_z + GRANARY[1] * 0.5],
+            [granary_x - GRANARY[0] * 0.5, granary_z + GRANARY[1] * 0.5],
+        ])
+        .into_iter()
+        .map(|at| building::PlanNode::new(at, GRANARY_UP))
+        .collect(),
+        GRANARY_UP + GRANARY_HIGH,
+    );
+    // **The ring's offset stays under half the narrow side** (rounds 74, 144, 171).
+    store.wall = GRANARY[1] * 0.26;
+    store.slab = 0.16;
+    skeleton.masses.push(store);
+    skeleton.slabs.push(building::Slab::roof(
+        ops::wound(vec![
+            [
+                granary_x - GRANARY[0] * 0.5 - GRANARY_EAVE,
+                granary_z - GRANARY[1] * 0.5 - GRANARY_EAVE,
+            ],
+            [
+                granary_x + GRANARY[0] * 0.5 + GRANARY_EAVE,
+                granary_z - GRANARY[1] * 0.5 - GRANARY_EAVE,
+            ],
+            [
+                granary_x + GRANARY[0] * 0.5 + GRANARY_EAVE,
+                granary_z + GRANARY[1] * 0.5 + GRANARY_EAVE,
+            ],
+            [
+                granary_x - GRANARY[0] * 0.5 - GRANARY_EAVE,
+                granary_z + GRANARY[1] * 0.5 + GRANARY_EAVE,
+            ],
+        ]),
+        GRANARY_UP + GRANARY_HIGH,
+        GRANARY_UP + GRANARY_HIGH + 0.14,
+    ));
 
     Building::new(skeleton)
 }

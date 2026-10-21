@@ -3484,3 +3484,15 @@ author, and the stripes the earlier plates showed were the roof's own profile st
 roof**, and no one could have known from the frame — the table is what said so.
 
 **Identity: 46 scenes, 159 300 rows**; `longhouse` 221 → **721** and `jingpo_village` three longhouses the same way. The document is 7.30 MB.
+## Round 180: the 谷仓
+
+A hill village keeps its rice **out of the house**: a small boxed store raised on posts, its floor off the ground so the damp and the rats cannot
+reach it, with a stone cap over it. It is the **侗寨's granary in a second village** — the same four posts, the same raised floor, the same cap —
+and the round adds only the numbers.
+
+**The table also settled round 179's account**: `jingpo_village` reads **2 299** here, not 756. Round 179's thatch reached the three longhouses this
+village is made of, and round 179 recorded the type's own scene without re-measuring this one. **The granary's own rows are the difference**:
+2 256 after the thatch, 43 for the store. A settlement's table moves when a **type** changes, and a round that changes a type owes every scene that
+composes it.
+
+**Identity: 46 scenes, 159 343 rows**; `jingpo_village` **2 299** (2 256 from the thatch, 43 from the granary). The document is 7.74 MB.
