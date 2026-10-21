@@ -102,6 +102,13 @@ const GUARD: f32 = 0.62;
 const GRANARY_EAVE: f32 = 0.55;
 const GRANARY_RISE: f32 = 1.15;
 
+/// The 猪栏: where it stands, its plan, its height, how many bays its rail has and a rails section.
+const PEN_AT: [f32; 2] = [-16.40, -19.40];
+const PEN: [f32; 2] = [2.90, 2.10];
+const PEN_HIGH: f32 = 1.45;
+const PEN_BAYS: usize = 4;
+const PEN_RAIL: f32 = 0.10;
+
 const SUN: [f64; 3] = [-26.0, 30.0, 20.0];
 const SUN_IRRADIANCE: f64 = 3.3;
 const SHADOW_EXTENT: f64 = 52.0;
@@ -443,6 +450,65 @@ pub fn document() -> Building {
         0.13,
     ) {
         skeleton.roofs.push(roof.with_covering(TILES));
+    }
+
+    // **The 猪栏: the pig pen at the house's foot.** A 干栏 house keeps its animals under it, and the pen is the smallest building the
+    // village makes: three low walls, a rail across the open side, and a lean-to over it. It is the second object at the granary's own
+    // scale — between a house and a fence — and a village with only houses and ground has no such scale at all.
+    let [pen_x, pen_z] = PEN_AT;
+    let mut pen = Mass::new(
+        ops::wound(vec![
+            [pen_x - PEN[0] * 0.5, pen_z - PEN[1] * 0.5],
+            [pen_x + PEN[0] * 0.5, pen_z - PEN[1] * 0.5],
+            [pen_x + PEN[0] * 0.5, pen_z + PEN[1] * 0.5],
+            [pen_x - PEN[0] * 0.5, pen_z + PEN[1] * 0.5],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, 0.0))
+        .collect(),
+        PEN_HIGH,
+    );
+    pen.wall = PEN[1] * 0.22;
+    pen.slab = 0.14;
+    let pen_id = building::MassId(skeleton.masses.len());
+    skeleton.masses.push(pen);
+    // **The lean-to** off the pen's high side, and **the rail** across its open one.
+    let eave = [
+        [pen_x - PEN[0] * 0.5 - 0.35, pen_z - PEN[1] * 0.5 - 0.30],
+        [pen_x + PEN[0] * 0.5 + 0.35, pen_z - PEN[1] * 0.5 - 0.30],
+        [pen_x + PEN[0] * 0.5 + 0.35, pen_z + PEN[1] * 0.5 + 0.30],
+        [pen_x - PEN[0] * 0.5 - 0.35, pen_z + PEN[1] * 0.5 + 0.30],
+    ];
+    if let Some(roof) = derive::lean_to(pen_id, eave, PEN_HIGH - 0.10, PEN_HIGH + 0.42, 0.11) {
+        skeleton.roofs.push(roof.with_covering(TILES));
+    }
+    let rail_z = pen_z + PEN[1] * 0.5 + 0.06;
+    for index in 0..=PEN_BAYS {
+        let x = pen_x - PEN[0] * 0.5 + PEN[0] * index as f32 / PEN_BAYS as f32;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, 0.0, rail_z],
+            },
+            building::Anchor::Free {
+                at: [x, PEN_HIGH * 0.72, rail_z],
+            },
+            [1.0, 0.0],
+            PEN_RAIL,
+            PEN_RAIL,
+        ));
+    }
+    for high in [PEN_HIGH * 0.62, PEN_HIGH * 0.30] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [pen_x - PEN[0] * 0.5, high, rail_z],
+            },
+            building::Anchor::Free {
+                at: [pen_x + PEN[0] * 0.5, high, rail_z],
+            },
+            [0.0, 1.0],
+            PEN_RAIL * 0.7,
+            PEN_RAIL * 0.9,
+        ));
     }
 
     Building::new(skeleton)

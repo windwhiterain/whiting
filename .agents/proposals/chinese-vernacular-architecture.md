@@ -3042,3 +3042,14 @@ between the tower, the houses and the racks until it had one.
 
 **Identity: 40 scenes, 146 147 rows**; `dong_village` 8 098 → **8 369** — a box's faces and top, four posts, four guards and a roof
 with its gables. The document is 9.90 MB.
+## Round 146: the 猪栏
+
+A 干栏 house keeps its animals under it, and the pen is the **smallest building the village makes**: three low walls, a rail across the
+open side, and a lean-to over it. It is the second object at the granary's own scale — between a house and a fence — and a village with
+only houses and ground has no such scale at all.
+
+**Set off the lane, not on it**: the first placement put the pen in the lane's own band and the plate showed a pig sty in the road. The
+village's life happens beside the lane, not in it.
+
+**Identity: 40 scenes, 146 298 rows**; `dong_village` 8 369 → **8 520** — three walls, a lean-to, five rail posts and two rails. The
+document is 9.94 MB.
