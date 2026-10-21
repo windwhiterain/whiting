@@ -2988,3 +2988,18 @@ they run across the square's **west half** now, which is the side the camera loo
 
 **Identity: 40 scenes, 145 642 rows**; `dong_village` 7 738 → **7 864** — six posts, three beams and twelve sheaves. The document is
 9.74 MB.
+## Round 141: the 寨门
+
+A 侗寨 has a gate over its lane — two stone wings with a lintel across the gap and a roof over it, and a **bench** under the roof where
+the old men sit and watch who comes in. The gate house took **three refusals** and one design change:
+
+1. `OpeningOutsideWall { past: 0.78 }` — the doorway was cut in the box's short side;
+2. `past: 7.58`, then `past: 4.51` — a hole in a `6.2 m` face on a one-bay grid, then on a three-bay one: the crate's hole and the
+   face's mitred ends never agreed;
+3. `MemberDegenerate { length: 6.0 }` — the bench's `across` written as its own run, the same mistake round 134's bench paid for.
+
+**So the doorway is the gap between two masses** and not an opening cut in one. Two wings with a lintel over them is the pattern rounds
+89, 114 and 125 all landed on, and the gap it leaves *is* the door: it cost no grid, no bay and no mitre.
+
+**Identity: 40 scenes, 145 783 rows**; `dong_village` 7 864 → **8 005** — two wings, a lintel, a roof and the bench. The document is
+9.79 MB.

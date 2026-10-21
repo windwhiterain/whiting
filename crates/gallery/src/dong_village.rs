@@ -22,7 +22,7 @@
 //! - **the 禾晾**: the rice-drying racks that stand at a Dong village's edge are open frames, and this crate's members can draw them —
 //!   but a frame of five members with nothing on it reads as scaffolding, so they wait for the harvest-arc's own decision.
 
-use building::{Building, BuildingSkeleton, ops};
+use building::{Building, BuildingSkeleton, Covering, Mass, PlanNode, derive, ops};
 use definition::Value;
 
 /// The square: its half width either way, and how far the tower's plinth stands inside it.
@@ -59,6 +59,22 @@ const RACK_POST: f32 = 0.14;
 const RACK_SHEAVES: usize = 4;
 const SHEAF_WIDE: f32 = 0.58;
 const SHEAF_FOOT: f32 = 0.55;
+
+/// The 寨门 over the lane: where it stands, its depth, how much it reaches past the lane either side, its wall and height, and its
+/// roofs pitch.
+const GATE_AT: f32 = LANE_TO - 3.20;
+const GATE_DEEP: f32 = 2.40;
+const GATE_WING: f32 = 1.60;
+const GATE_WALL: f32 = 0.22;
+const GATE_HIGH: f32 = 3.05;
+const GATE_ROOF: f32 = 0.72;
+const GATE_ROOF_RISE: f32 = 1.65;
+/// The tiles the gate and the tower's neighbours wear.
+const TILES: Covering = Covering {
+    period: 0.19,
+    fill: 0.72,
+    height: 0.045,
+};
 
 const SUN: [f64; 3] = [-26.0, 30.0, 20.0];
 const SUN_IRRADIANCE: f64 = 3.3;
@@ -133,6 +149,96 @@ pub fn document() -> Building {
             PAVING,
         ));
     }
+
+    // **The 寨门: the village's own gate, where the lane leaves it.** A 侗寨 has a gate house over its lane — a small box with a
+    // doorway and a roof, and a bench under the roof where the old men sit and watch who comes in. It is the same construction the
+    // 本主庙's 山门 used: a mass with an opening cut in one face and a gable roof over it.
+    // **Two stone wings and a lintel over them.** The doorway is the **gap between two masses** and not an opening cut in one: a wall
+    // with a hole needs a grid, a bay and a mitre, and three attempts at that answered `OpeningOutsideWall`; two masses with a lintel
+    // is the pattern rounds 89, 114 and 125 all landed on, and the gap it leaves is the door.
+    let mut lintel = Mass::new(
+        ops::wound(vec![
+            [GATE_AT - GATE_DEEP * 0.5, LANE_Z - LANE_HALF - GATE_WING],
+            [GATE_AT + GATE_DEEP * 0.5, LANE_Z - LANE_HALF - GATE_WING],
+            [GATE_AT + GATE_DEEP * 0.5, LANE_Z + LANE_HALF + GATE_WING],
+            [GATE_AT - GATE_DEEP * 0.5, LANE_Z + LANE_HALF + GATE_WING],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, GATE_HIGH))
+        .collect(),
+        GATE_HIGH + 0.55,
+    );
+    lintel.wall = 0.26;
+    lintel.slab = 0.20;
+    let gate_id = building::MassId(skeleton.masses.len());
+    skeleton.masses.push(lintel);
+    for across in [-1.0_f32, 1.0] {
+        let mut wing = Mass::new(
+            ops::wound(vec![
+                [GATE_AT - GATE_DEEP * 0.5, LANE_Z + across * LANE_HALF],
+                [GATE_AT + GATE_DEEP * 0.5, LANE_Z + across * LANE_HALF],
+                [
+                    GATE_AT + GATE_DEEP * 0.5,
+                    LANE_Z + across * (LANE_HALF + GATE_WING),
+                ],
+                [
+                    GATE_AT - GATE_DEEP * 0.5,
+                    LANE_Z + across * (LANE_HALF + GATE_WING),
+                ],
+            ])
+            .into_iter()
+            .map(|at| PlanNode::new(at, 0.0))
+            .collect(),
+            GATE_HIGH,
+        );
+        wing.wall = GATE_WALL;
+        wing.slab = 0.18;
+        wing.attachment = Some(building::Attachment {
+            host: gate_id,
+            join: building::Join::Under,
+        });
+        skeleton.masses.push(wing);
+    }
+    // **Its roof**: a lean-to over the lintel, shedding into the village.
+    let plan = [
+        [
+            GATE_AT - GATE_DEEP * 0.5 - 0.55,
+            LANE_Z + LANE_HALF + GATE_WING + 0.45,
+        ],
+        [
+            GATE_AT + GATE_DEEP * 0.5 + 0.55,
+            LANE_Z + LANE_HALF + GATE_WING + 0.45,
+        ],
+        [
+            GATE_AT + GATE_DEEP * 0.5 + 0.55,
+            LANE_Z - LANE_HALF - GATE_WING - 0.45,
+        ],
+        [
+            GATE_AT - GATE_DEEP * 0.5 - 0.55,
+            LANE_Z - LANE_HALF - GATE_WING - 0.45,
+        ],
+    ];
+    if let Some(roof) = derive::lean_to(
+        gate_id,
+        plan,
+        GATE_HIGH + 0.55,
+        GATE_HIGH + 0.55 + GATE_ROOF_RISE,
+        0.14,
+    ) {
+        skeleton.roofs.push(roof.with_covering(TILES));
+    }
+    // **The bench**: a plank between the gate's walls, on the village side, where the old men sit.
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [GATE_AT - GATE_DEEP * 0.5 - 0.42, 0.46, LANE_Z - LANE_HALF],
+        },
+        building::Anchor::Free {
+            at: [GATE_AT - GATE_DEEP * 0.5 - 0.42, 0.46, LANE_Z + LANE_HALF],
+        },
+        [1.0, 0.0],
+        0.32,
+        0.07,
+    ));
 
     // **The 禾晾: the rice-drying racks at the square's east edge.** This module said they wait "because a frame with nothing on it
     // reads as scaffolding" — so they are drawn **loaded**: two posts and a head beam, and four bundles of rice hanging from the beam,
