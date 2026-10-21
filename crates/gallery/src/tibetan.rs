@@ -429,25 +429,40 @@ pub fn document() -> Building {
         .with_host(upper_id),
     );
 
-    // **A parapet round each roof, with the gallery's bay left open on the top one.** A parapet you cannot step over
-    // from the gallery is a parapet and not a fence, so the front side of the top roof is two pieces with the balcony's
-    // width between them.
-    for (level, x, z, gap) in [
-        (lower_top + 0.02, half, deep, None),
-        (top + 0.02, inner, deep_in, Some(balcony_width())),
+    // **A parapet round each roof, with a gap on the top one for the gallery and another for the stair.** Each side is built
+    // once: the south and west whole, the east in two pieces with the second flight's landing between them, and the north in
+    // two pieces with the balcony's bay between them.
+    //
+    // # The fault this replaces
+    //
+    // The version before this one popped **the west side** — the last entry of a four-sided list — and pushed **two north
+    // pieces** in addition to the north side it already had: the top roof's parapet was missing its whole west edge and had its
+    // north edge drawn three times, one full length and two pieces over it. The stair, meanwhile, climbed through the east
+    // parapet rather than into a gap in it.
+    let run = TREAD * SECOND_STEPS as f32;
+    for (level, x, z, balcony, stair) in [
+        (lower_top + 0.02, half, deep, 0.0, false),
+        (top + 0.02, inner, deep_in, balcony_width() * 0.5, true),
     ] {
-        let mut sides = vec![
-            ([-x, -z], [x, -z]),
-            ([x, -z], [x, z]),
-            ([x, z], [-x, z]),
-            ([-x, z], [-x, -z]),
-        ];
-        if let Some(width) = gap {
-            sides.retain(|(_, _)| true);
-            sides.pop();
-            sides.push(([-x, z], [-width * 0.5, z]));
-            sides.push(([width * 0.5, z], [x, z]));
+        let mut sides: Vec<([f32; 2], [f32; 2])> = Vec::with_capacity(6);
+        // The south side, whole.
+        sides.push(([-x, -z], [x, -z]));
+        // The east side: the stair's landing is a gap at its south end.
+        if stair {
+            sides.push(([x, -z], [x, -z + run]));
+            sides.push(([x, -z + run], [x, z]));
+        } else {
+            sides.push(([x, -z], [x, z]));
         }
+        // The north side: the gallery's bay is a gap at its middle.
+        if balcony > 0.0 {
+            sides.push(([x, z], [balcony, z]));
+            sides.push(([-balcony, z], [-x, z]));
+        } else {
+            sides.push(([x, z], [-x, z]));
+        }
+        // The west side, whole.
+        sides.push(([-x, z], [-x, -z]));
         for (from, to) in sides {
             skeleton.members.push(building::Member::new(
                 building::Anchor::Free {

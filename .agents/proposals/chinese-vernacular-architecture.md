@@ -2229,3 +2229,18 @@ a scripted edit in an earlier round had collapsed into a NUL. Both are `0` again
 scene source finds **no file carrying a NUL byte**.
 
 `cargo build --workspace --examples` clean, **35 scenes / 124 089 rows** unchanged — a comment repair owes a measurement too.
+## Round 84: the parapet's gaps, and the side that had none
+
+Round 83 left the second flight climbing **through** the top roof's parapet, and fixing that turned up a worse fault underneath it.
+
+The parapet was built by listing four sides, then — for the top roof only — **popping the west side** and pushing **two north
+pieces** in addition to the north side already in the list. So the top roof's parapet had **no west edge at all** and its north
+edge was drawn three times: one full length and two pieces over it. The stair climbed through the east side because there was no
+gap to land in.
+
+Each side is built once now: south and west whole, east in two pieces with the second flight's landing between them, north in two
+pieces with the balcony's bay between them. The gaps are the two ways onto the roof, and the parapet is complete round the rest
+of it.
+
+**Identity: 35 scenes, 124 119 rows**; `tibetan_house` 385 → **391** (the west edge restored, the east edge split), and
+`plateau_village` 3 185 → **3 209** — four towers, each with a parapet that goes all the way round.
