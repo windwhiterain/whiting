@@ -49,6 +49,25 @@ const STORE_HEAD: f32 = 0.55;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
+/// The **works plate**: the boiling house from a few metres off, with its pans, its windlass and the yard behind it.
+///
+/// # Why a second camera and not a second document
+///
+/// Round 224's own plate is the works **standing in a field** — that was what the type was before it had a village. In the village the works is a corner of
+/// a yard, and the wide plate puts it at the head of a thirteen-metre axis, where the pans are a few pixels. Round 172's rule, applied for the sixth time:
+/// **a document can be photographed twice, and the second camera is the cheaper answer.**
+pub fn salt_yard() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [-8.4, 4.6, -6.2],
+        [1.2, 1.4, -13.4],
+        FIELD_OF_VIEW * 0.78,
+        "salt_yard",
+    )
+}
+
 /// Builds the scene: from the south, down the yard, with the works at its head.
 pub fn salt_village() -> Value {
     crate::village::scene_of(

@@ -4141,3 +4141,17 @@ header about its bench: **an opening is oriented by its building and not by the 
 
 **The village is now four sides and a process**: works at the head, two 土掌房 along the sides, the store at the foot, the retaining wall behind. **It is
 the first complete courtyard in this gallery whose corners are three different types.**
+## Round 227: the works at close range
+
+Round 224's plate is the salt works **standing in a field** — that is what the type was before it had a village. In the village the works is a corner of a
+yard, and the wide plate puts it at the head of a thirteen-metre axis where **the pans are a few pixels**. `salt_yard` stands four and a half metres off:
+the bench with **its three pans**, the shed's posts and cap, **the windlass beam and its drum** and the **卤池** in the foreground, all in one frame.
+
+**It is the same document** — 737 rows — and the difference is only where the camera stands, which round 172 established as the cheaper of the two
+answers and this is the sixth time it has been taken.
+
+**Identity: 65 scenes, 243 116 rows**; `salt_village` and `salt_yard` both 737.
+
+**What the close plate proves that the wide one could not**: the pans are **solids standing in the bench's own top**, not drawn lines on a floor, and the
+卤池 is a **box with an inside** — the well-head's cap and the shed's cap are two separate roofs at two heights, which the wide plate merges into one
+silhouette.
