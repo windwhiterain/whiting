@@ -4214,3 +4214,21 @@ village**, as they are at 黑井 for salt, and this is the second settlement her
 **And the registration failed silently for the fourth time** (rounds 207, 221, 223 and this one): the scene went into `Gallery::names`, `build` and the probe,
 **and the `naming` replacement missed** — a scripted `Replace` against a CRLF line. The document built, the plate rendered, and the probe would have reported
 sixty-seven scenes with no error. The count check caught it: **68 in `SCENES`, 68 row-lines out.**
+## Round 232: the gate's leaves, and the silent registration made loud
+
+**The gate hangs now.** A 马店's gate is **not shut against the road, it is shut against the night**, so its two leaves stand open against the walls all day — the
+same `derive::leaf` the Dai hamlet's gate uses. `caravan_inn` 178 → **190**.
+
+**And the round's real work is the instrument, not the building.** The registration that fails silently has now happened **four times** (rounds 207, 221, 223,
+231): a scene goes into `Gallery::names`, `build` and the probe's `SCENES`, the fourth list is missed, `naming::building_of` answers `None`, and the probe's
+loop **`continue`s** — one scene fewer in the report, no error anywhere. This round made both silence-failures loud, in the probe itself:
+
+- `building_of(scene)` returning `None` now prints **`{scene}: NOT NAMED`** and clears the clean flag instead of skipping;
+- the run prints **`the walk asked for N scene(s) and N printed a table: true`** and fails when they differ;
+- and the list is checked **against the gallery's own**: *81 names, 68 of them buildings, 68 listed, unmeasured `[]`, unknown `[]`*.
+
+**The check had to be about buildings and not about scenes**: the gallery also publishes thirteen **studies** — `dunes`, `stilllife`, `tiles` and their
+siblings — which are not architecture and carry no `naming` arm by design. A naive "the two lists must be equal" failed on the first run with those thirteen
+named, and the corrected form is *every name the gallery publishes **and `naming` answers for** must be measured here.*
+
+**Identity: 68 scenes, 243 590 rows.**

@@ -326,5 +326,19 @@ pub fn document() -> Building {
         LINTEL,
     ));
 
+    // **The two leaves**, swung open against the yard's walls — which is how a 马店's gate stands all day: **an inn's gate is not shut against the road, it is
+    // shut against the night**, and the trade comes in through it. Same `derive::leaf` the Dai hamlet's gate uses.
+    for side in [-1.0_f32, 1.0] {
+        if let Some(leaf) = building::derive::leaf(
+            [side * GATE_WIDE * 0.5, 0.06, YARD_DEEP + GATE_POST * 0.5],
+            GATE_WIDE * 0.5 - 0.06,
+            PAVING + GATE_HIGH - 0.18,
+            0.07,
+            [-side, 0.0],
+        ) {
+            skeleton.members.push(leaf);
+        }
+    }
+
     Building::new(skeleton)
 }

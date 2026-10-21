@@ -153,8 +153,42 @@ fn main() {
     let mut clean = shape && !authored.is_empty() && !plain.is_empty();
 
     println!("\n# every scene's table, both ways");
+    // **A scene the gallery names but this list does not is a scene no instrument measures**, and the same is true the other way round: the list is a
+    // second register of the gallery and the two are checked against each other here, because rounds 207, 221, 223 and 231 each added a scene to three of
+    // the four registrations and **the fourth one failed silently** — `building_of` answered `None`, the loop below `continue`d, and the run reported one
+    // scene fewer with no error at all.
+    // **The check is about buildings and not about scenes**: the gallery also publishes studies — `dunes`, `stilllife`, `tiles` and their siblings — which
+    // are not architecture and carry no `naming` arm by design. What must hold is that **every name the gallery publishes and `naming` answers for is
+    // measured here**, and that every name listed here is one the gallery publishes.
+    let published = whiting_gallery::Gallery::names();
+    let buildable: Vec<&str> = published
+        .iter()
+        .copied()
+        .filter(|name| whiting_gallery::naming::building_of(name).is_some())
+        .collect();
+    let missing_from_probe: Vec<&&str> = buildable
+        .iter()
+        .filter(|name| !SCENES.contains(name))
+        .collect();
+    let unknown_to_gallery: Vec<&&str> = SCENES
+        .iter()
+        .filter(|name| !published.contains(name))
+        .collect();
+    println!(
+        "  the gallery names {} scene(s), {} of them buildings; this probe lists {}: unmeasured {:?}, unknown {:?}",
+        published.len(),
+        buildable.len(),
+        SCENES.len(),
+        missing_from_probe,
+        unknown_to_gallery
+    );
+    clean &= missing_from_probe.is_empty() && unknown_to_gallery.is_empty();
+    let asked_for = walk.len();
+    let mut measured = 0_usize;
     for scene in walk {
         let Some(building) = whiting_gallery::naming::building_of(scene) else {
+            clean = false;
+            println!("  {scene}: NOT NAMED — `naming::building_of` has no arm for it");
             continue;
         };
         // **The document is built once and the table read from it.** `locate_in` and `id_in` are the
@@ -180,6 +214,7 @@ fn main() {
             .iter()
             .all(|(held, name)| by_name.get(name.as_str()) == Some(held));
         clean &= !rows.is_empty() && contiguous && named && round_trips;
+        measured += 1;
         println!(
             "  {:<13} {:>4} row(s), ids 1..={}, contiguous {}, every name non-empty {}, every name round-trips {}",
             scene,
@@ -196,6 +231,16 @@ fn main() {
             }
         }
     }
+
+    // **Every scene the walk asked for printed a table, or the run failed.** This is the count that catches a silently skipped registration, and it is the
+    // one number that must be read beside the gallery's own.
+    println!(
+        "  the walk asked for {} scene(s) and {} printed a table: {}",
+        asked_for,
+        measured,
+        measured == asked_for
+    );
+    clean &= measured == asked_for;
 
     println!("\n# and the readings the reports quote");
     for (scene, id, expected) in [
