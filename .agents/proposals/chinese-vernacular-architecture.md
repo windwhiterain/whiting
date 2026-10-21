@@ -2919,3 +2919,14 @@ was for.
 
 **Identity: 39 scenes, 137 716 rows**; `benzu_miao` 1 893 → **1 911** — a plaque and two couplet boards with their sections and ends.
 The document is 7.65 MB.
+## Round 136: the 门簪, and the board turned to the lane
+
+Four **门簪** now pin the 题额 to the lintel — the gate's one purely ornamental joint, two either side of its middle, a hand apart. They
+cost nothing to draw and they are what a 白族 gate is recognised by.
+
+**But the first attempt put them, and the board they pin, on the face the plate cannot see.** Round 90 hung the 题额 on the gate's
+`+z` side; this scene's camera stands at the lane's north end and looks south, so the lane's own face is the `-z` one. Both moved —
+**round 97's lesson read a second time**: *which face an object belongs on is decided by which side the view is.*
+
+**Identity: 39 scenes, 137 740 rows**; `bai_lane` 5 744 → **5 768** — four studs with their sections and ends. The document is
+20.41 MB.

@@ -315,15 +315,35 @@ pub fn document() -> building::Building {
     // hand's height, standing `0.06 m` proud of the stone.
     skeleton.members.push(building::Member::new(
         building::Anchor::Free {
-            at: [-BOARD_HALF, GATE_FOOT + 0.26, GATE_AT + GATE_DEEP + 0.03],
+            at: [-BOARD_HALF, GATE_FOOT + 0.26, GATE_AT - GATE_DEEP - 0.03],
         },
         building::Anchor::Free {
-            at: [BOARD_HALF, GATE_FOOT + 0.26, GATE_AT + GATE_DEEP + 0.03],
+            at: [BOARD_HALF, GATE_FOOT + 0.26, GATE_AT - GATE_DEEP - 0.03],
         },
         [0.0, 1.0],
         0.12,
         0.52,
     ));
+
+    // **The 门簪: the four studs that pin the 题额 to the lintel.** They are the gate's one purely ornamental joint — a head at each
+    // end of the board that says the board is fixed and not hung — and they are members because a stud is a short square stick and
+    // nothing more. Two either side of the board's middle, a hand apart.
+    for across in [-1.0_f32, 1.0] {
+        for offset in [0.42_f32, 1.06] {
+            let x = across * offset;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [x, GATE_FOOT + 0.50, GATE_AT - GATE_DEEP - 0.05],
+                },
+                building::Anchor::Free {
+                    at: [x, GATE_FOOT + 0.70, GATE_AT - GATE_DEEP - 0.05],
+                },
+                [1.0, 0.0],
+                0.13,
+                0.13,
+            ));
+        }
+    }
 
     // **The 石敢当: the stone at the lane's mouth.** Where a lane meets a wider way, a 白族 village sets a small stone stele at the
     // corner — 石敢当, "the stone that dares" — and it is the one object in the street that is *written* and stands alone. It is a
