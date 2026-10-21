@@ -33,7 +33,13 @@ const LANE_Z: f32 = 0.0;
 /// **A plot is wider than a house**, because a 竹楼`s eaves are the house: with `OVERHANG` at 1.35 m and the drying
 /// deck on one side, a house is eleven metres across and two of them at nine metres would share a roof.
 const PLOT: f32 = 12.0;
-const HOUSES: [f32; 3] = [-12.0, 0.0, 12.0];
+/// The plots, and how far each house is turned: the middle house faces the lane, the two outer ones a quarter turn
+/// towards the well.
+const HOUSES: [(f32, f32); 3] = [
+    (-13.0, -core::f32::consts::FRAC_PI_2),
+    (0.0, 0.0),
+    (13.0, core::f32::consts::FRAC_PI_2),
+];
 
 /// The well: a stone ring two metres across, standing in the open ground in front of the row.
 const WELL_AT: [f32; 2] = [0.0, 9.5];
@@ -76,8 +82,14 @@ fn distance_to_origin(position: [f64; 3]) -> f64 {
 /// Returns the document: three houses and the well.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
-    for at in HOUSES {
+    for (at, turn) in HOUSES {
         let mut part = crate::bamboo_house::document().skeleton;
+        // **A house turns about its own plan centre and then takes its plot.** The two outer houses are turned a quarter
+        // turn, so all three verandas face the well rather than the lane: a hamlet is a group round the water, and a row
+        // that all faces one way is a street.
+        if turn.abs() > 1.0e-3 {
+            building::ops::rotate(&mut part, [0.0, 0.0], turn);
+        }
         building::ops::translate(&mut part, [at, LANE_Z]);
         // **Each house is seated on the ground under it**, and `site::posts` fills the gap the seat opens under its
         // deck: the same pair of calls the single-house scene makes, read once per house.

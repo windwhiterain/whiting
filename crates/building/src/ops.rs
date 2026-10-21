@@ -504,9 +504,16 @@ pub fn translate(skeleton: &mut BuildingSkeleton, offset: Vec2) {
         node.position[0] += offset[0];
         node.position[1] += offset[1];
     };
+    // **Every section of a mass moves, not only its foot.** A mass drawn in several bands carries one loop per level, and
+    // `Mass::outline_mut` is the foot's: a translation that used it would move the bottom of a battered or stepped mass
+    // and leave the top where it was authored, which is a wall standing over a plan it does not share. Nothing in the
+    // gallery translated such a mass when this was written, so the defect was invisible; the Dai hamlet turns houses,
+    // and the rotation below is its twin.
     for mass in &mut skeleton.masses {
-        for node in mass.outline_mut() {
-            shift(node);
+        for level in &mut mass.levels {
+            for node in &mut level.outline {
+                shift(node);
+            }
         }
     }
     for roof in &mut skeleton.roofs {
@@ -533,6 +540,72 @@ pub fn translate(skeleton: &mut BuildingSkeleton, offset: Vec2) {
         };
         free(&mut member.from);
         free(&mut member.to);
+    }
+    for wall in &mut skeleton.walls {
+        shift(&mut wall.from);
+        shift(&mut wall.to);
+    }
+}
+
+/// Turns a whole document about a plan point, by `radians`, leaving every elevation where it is.
+///
+/// # Invariants
+///
+/// **It is [`translate`]'s twin and moves exactly the same fields**, for the same reason: a document whose parts were
+/// turned and whose roofs were not is two documents. A plan point goes `(x, z) -> about + R (x - about)`, and an
+/// elevation is untouched.
+///
+/// **Nothing that names a list changes.** A host is the same mass, a rhythm the same face, a member's `along` the same
+/// distance from the same edge's start — a rotation turns an edge and keeps its index and its winding — so the two ops
+/// commute with everything the expansion reads.
+///
+/// **A member's `up` is an elevation and does not turn**, which is what keeps a stair a stair: its two ends are two
+/// heights, and turning the plan under them turns treads and stringer together.
+pub fn rotate(skeleton: &mut BuildingSkeleton, about: Vec2, radians: f32) {
+    let (sine, cosine) = radians.sin_cos();
+    let turn = |at: &mut [f32; 2]| {
+        let across = at[0] - about[0];
+        let along = at[1] - about[1];
+        at[0] = about[0] + across * cosine - along * sine;
+        at[1] = about[1] + across * sine + along * cosine;
+    };
+    let shift = |node: &mut PlanNode| turn(&mut node.position);
+    for mass in &mut skeleton.masses {
+        for level in &mut mass.levels {
+            for node in &mut level.outline {
+                shift(node);
+            }
+        }
+    }
+    for roof in &mut skeleton.roofs {
+        for node in &mut roof.eaves {
+            shift(node);
+        }
+        for point in &mut roof.crest {
+            turn(&mut point.position);
+        }
+    }
+    for slab in &mut skeleton.slabs {
+        for corner in &mut slab.outline {
+            turn(corner);
+        }
+    }
+    for member in &mut skeleton.members {
+        let free = |anchor: &mut Anchor| {
+            if let Anchor::Free { at } = anchor {
+                let mut plan = [at[0], at[2]];
+                turn(&mut plan);
+                at[0] = plan[0];
+                at[2] = plan[1];
+            }
+        };
+        free(&mut member.from);
+        free(&mut member.to);
+        // **A member's `across` is a plan direction and turns with the body.** It is the direction its width is measured
+        // along, so leaving it in the world frame turns every member's section against its own axis: measured on a
+        // turned 竹楼 as `MemberDegenerate { length: 1.1 }` from the stairs, whose `across` then lay along the run it was
+        // meant to be across.
+        turn(&mut member.across);
     }
     for wall in &mut skeleton.walls {
         shift(&mut wall.from);

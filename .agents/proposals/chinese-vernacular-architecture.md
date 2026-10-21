@@ -1683,3 +1683,26 @@ and the extra meshes.
 - **no fences or gardens**;
 - **the three houses all face the same way**, because the scene transforms are translations and this crate has no rotation
   for a skeleton. A hamlet of houses at right angles needs one.
+## Round 58: a skeleton turns, and `translate` had been moving only the foot
+
+**`ops::rotate`** turns a whole document about a plan point: every section of every mass, a roof's eaves and crest, a
+slab's outline, a member's free ends **and its `across` direction**, and the site's walls. Elevations never move, which is
+what keeps a stair a stair.
+
+Two defects came out of building it, both of them older than the rotation:
+
+- **`ops::translate` moved only a mass's foot.** It called `Mass::outline_mut`, which is `levels[0].outline`, so a mass
+  drawn in several bands would have had its bottom moved and its top left where it was authored. No scene translated such a
+  mass when the op was written — the village's houses were one band each — so the defect was invisible until the hamlet
+  turned houses, and the fix is to walk every level.
+- **A member's `across` is a plan direction**, so a rotated body whose members keep a world-frame `across` has every
+  section turned against its own axis: measured on a turned 竹楼 as `MemberDegenerate { length: 1.1 }` from the stairs.
+
+### The hamlet round the water
+
+The Dai hamlet's three houses no longer all face the lane: the middle one faces the road and the two outer ones turn a
+quarter turn round the well, stairs inward. **A row that all faces one way is a street; three houses whose stairs come
+down toward the same well is a hamlet** — and it took a rotation to say so.
+
+Identity: **27 scenes, 110 005 rows, unchanged** — a turn moves geometry and not a single element's name, which is exactly
+what the identity table is supposed to be blind to.
