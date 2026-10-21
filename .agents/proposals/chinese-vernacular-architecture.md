@@ -3590,3 +3590,14 @@ not one composition, and the three cameras cover its middle, its east end and it
 what this project has been slowest to admit**.
 
 **Identity: 49 scenes, 163 252 rows**; `lisu_yard` **1 255** (the same document). The document is 7.52 MB.
+## Round 189: the 晒台
+
+A 景颇 household's grain is dried on a **deck of split bamboo raised on posts** — high enough for the air to move under it and for the fowls not to
+reach it — and it stands **beside** the house rather than behind it, because it is used every fine day. A deck, six posts and a rail on the lane's
+side.
+
+**The plate does not isolate it**: at `14.60` it stands beyond the north longhouse's own end, and a camera composed for three roofs and a lane
+shows it as a pale patch at the frame's edge. **The evidence is the table**, and this village has now joined the list of scenes owing a close plate
+— which is where the 土掌房 village (round 172) and the 傈僳 village (rounds 186, 188) already are.
+
+**Identity: 49 scenes, 163 300 rows**; `jingpo_village` 2 407 → **2 455** — a deck, six posts and a rail. The document is 7.79 MB.

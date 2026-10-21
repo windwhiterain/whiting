@@ -42,6 +42,16 @@ const SKULL_GAP: f32 = 2.80;
 const SKULL_POST: f32 = 0.20;
 const SKULL_HIGH: f32 = 2.35;
 
+/// The 晒台 beside a longhouse: where it stands, its plan, how high its deck is raised, its deck's thickness, how many post pairs and a posts
+/// section, and the rails height above the deck.
+const PLATFORM_AT: [f32; 2] = [14.60, -9.20];
+const PLATFORM: [f32; 2] = [3.60, 3.00];
+const PLATFORM_UP: f32 = 1.15;
+const PLATFORM_DECK: f32 = 0.14;
+const PLATFORM_POSTS: usize = 3;
+const PLATFORM_POST: f32 = 0.14;
+const PLATFORM_RAIL: f32 = 0.80;
+
 /// The 谷仓 beside the lane: where it stands, its plan, how high its floor is posted and how tall the store is, a posts section and how far
 /// its cap stands out.
 const GRANARY_AT: [f32; 2] = [7.40, -6.20];
@@ -252,6 +262,70 @@ pub fn document() -> Building {
         ]),
         GRANARY_UP + GRANARY_HIGH,
         GRANARY_UP + GRANARY_HIGH + 0.14,
+    ));
+
+    // **The 晒台: the drying platform beside the longhouse.** A 景颇 household's grain is dried on a **deck of split bamboo raised on posts** — high
+    // enough for the air to move under it and for the fowls not to reach it — and it stands beside the house rather than behind it, because it is
+    // used every fine day. A deck, six posts and a rail on the lane's side.
+    for post in 0..PLATFORM_POSTS {
+        let along = post as f32 / (PLATFORM_POSTS - 1) as f32;
+        for z in [
+            PLATFORM_AT[1] - PLATFORM[1] * 0.5,
+            PLATFORM_AT[1] + PLATFORM[1] * 0.5,
+        ] {
+            let x = PLATFORM_AT[0] - PLATFORM[0] * 0.5 + PLATFORM[0] * along;
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free { at: [x, PAVING, z] },
+                building::Anchor::Free {
+                    at: [x, PAVING + PLATFORM_UP, z],
+                },
+                [1.0, 0.0],
+                PLATFORM_POST,
+                PLATFORM_POST,
+            ));
+        }
+    }
+    skeleton.slabs.push(building::Slab::paving(
+        ops::wound(vec![
+            [
+                PLATFORM_AT[0] - PLATFORM[0] * 0.5,
+                PLATFORM_AT[1] - PLATFORM[1] * 0.5,
+            ],
+            [
+                PLATFORM_AT[0] + PLATFORM[0] * 0.5,
+                PLATFORM_AT[1] - PLATFORM[1] * 0.5,
+            ],
+            [
+                PLATFORM_AT[0] + PLATFORM[0] * 0.5,
+                PLATFORM_AT[1] + PLATFORM[1] * 0.5,
+            ],
+            [
+                PLATFORM_AT[0] - PLATFORM[0] * 0.5,
+                PLATFORM_AT[1] + PLATFORM[1] * 0.5,
+            ],
+        ]),
+        PAVING + PLATFORM_UP - PLATFORM_DECK,
+        PAVING + PLATFORM_UP,
+    ));
+    // **The rail on the lane's side**, a member with both ends at the deck's own height.
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [
+                PLATFORM_AT[0] - PLATFORM[0] * 0.5,
+                PAVING + PLATFORM_UP + PLATFORM_RAIL,
+                PLATFORM_AT[1] + PLATFORM[1] * 0.5,
+            ],
+        },
+        building::Anchor::Free {
+            at: [
+                PLATFORM_AT[0] + PLATFORM[0] * 0.5,
+                PAVING + PLATFORM_UP + PLATFORM_RAIL,
+                PLATFORM_AT[1] + PLATFORM[1] * 0.5,
+            ],
+        },
+        [0.0, 1.0],
+        PLATFORM_POST * 0.75,
+        PLATFORM_POST * 0.8,
     ));
 
     Building::new(skeleton)
