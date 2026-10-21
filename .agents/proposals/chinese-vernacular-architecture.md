@@ -3245,3 +3245,21 @@ record's evidence for it is that the frame the round before it could not compose
 
 **And it settles a rule this project keeps re-learning**: when a small object cannot be seen, the first question is **where the camera stands**,
 not where the object goes. Rounds 123, 130, 137 and 155 all moved the object; this one moved the view, and it was cheaper.
+## Round 162: the 纳西院落, the gallery's eighteenth type
+
+**The first type from the northwest of Yunnan.** The 白族 build the same three-sided court across the mountain and the gallery has theirs
+(`bai_court`); the 纳西's differs in what shows: the houses stand on **three sides of a paved court**, and the fourth side is a **照壁** — a
+flat white wall with a tiled cap — and not a gate.
+
+Three `chuandou::document()`s round a `23.2 × 18.8 m` paved court, each turned so its porch faces in; the screen wall on the near side with
+its cap proud of it; and two lengths closing the rest of that side out to the corners, stopping at the screen's ends so no wall shares a
+corner square with it (round 113).
+
+**The composition is the point**: three houses and a wall are four documents the gallery already had, and a court is what the *arrangement*
+makes — the same move as the 侗寨 (a tower and three 穿斗 houses) and the 羌寨 (a tower and a 碉房).
+
+**What it still owes**: the **丽江 gate house**, which is a small roofed house of its own and is why this court's south side is a wall with a
+gap and not a gate.
+
+**Identity: 42 scenes, 151 069 rows**; `naxi_court` **3 522** — three houses, the court, the screen wall and two lengths. The document is
+8.15 MB.

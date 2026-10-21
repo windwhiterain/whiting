@@ -101,6 +101,7 @@ mod lanterns;
 pub mod log_house;
 mod monoliths;
 pub mod mushroom_house;
+pub mod naxi_court;
 pub mod plateau;
 pub mod qiang_tower;
 pub mod rain_bridge;
@@ -239,6 +240,7 @@ impl Gallery {
             "village_square",
             "hillside_village",
             "mushroom_house",
+            "naxi_court",
             "plateau_village",
             "qiang_tower",
             "rain_bridge",
@@ -366,6 +368,7 @@ impl Gallery {
             "village_square" => village::village_square(),
             "hillside_village" => village::hillside_village(),
             "mushroom_house" => mushroom_house::mushroom_house(),
+            "naxi_court" => naxi_court::naxi_court(),
             "plateau_village" => plateau::plateau_village(),
             "qiang_tower" => qiang_tower::qiang_tower(),
             "rain_bridge" => rain_bridge::rain_bridge(),
