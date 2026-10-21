@@ -195,3 +195,26 @@ no longer decides which ends of a ring it closes.
 | **D** | the 骑楼's projecting upper floor: foot plan, a horizontal soffit band, then a vertical band with the shop's windows |
 
 Until C lands, a banded mass still answers `BandedMassCut` by name.
+## Stage B landed: the crown flag is real
+
+`cut_edge` now carries the ring's crown flag, and the strip of wall top is drawn **only on a crown**. Before this, the
+cut path drew that strip unconditionally — which is right for a mass's whole wall and wrong for any band that has a
+section above it: the strip would be a face inside the solid.
+
+**All twenty-four scenes unchanged to the row — 85 489** — because every ring walked before this has both ends.
+
+### Why stage C is not a walk through a leaning band
+
+The next stage was to route each band of a mass through `ring_walk`, and it found the real blocker, which is not the
+walk but the **identity of a face**.
+
+`FaceRef { mass, edge, loop_side, void }` names a face by its edge. A banded mass has **one face per band** over one
+edge, and a face's openings and grids are keyed by that reference — so an opening written against a banded mass would
+be cut on **every** band with that edge, at whichever elevation each band happens to have. On the 骑楼 that means one
+drawing of a window cut twice, once in the shopfront's plan and once in the projecting floor's.
+
+So the change that unlocks the 骑楼 is `FaceRef` gaining the band it belongs to, and that is a different kind of round
+from this one: it is not a walk, it is the **identity** of every face, grid and opening in the crate. Stages A and B
+stand on their own as the parts of the walk that were wrong; C waits for that identity.
+
+**What is not blocked**: everything with one band per edge — which is every type in the gallery today.

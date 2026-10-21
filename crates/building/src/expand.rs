@@ -1999,6 +1999,7 @@ pub(crate) fn ring_walk(
             &CutEdge {
                 surfaces: &surfaces,
                 ring,
+                crown: ends.crown,
                 authored_is_outer,
                 edge,
                 wall: &faces[edge],
@@ -3226,6 +3227,9 @@ struct CutEdge<'a> {
     near: EdgeNode,
     /// The point table at the next node round, which is this edge's far end.
     far: EdgeNode,
+    /// Whether this edge is on the ring's crown: the strip of wall top is drawn only there, because an interior band
+    /// of a mass is covered by the section above it.
+    crown: bool,
 }
 
 /// Cuts one wall into the complement of its holes, and returns the stations it split.
@@ -3266,6 +3270,7 @@ fn cut_edge(
     let CutEdge {
         surfaces,
         ring,
+        crown,
         authored_is_outer,
         edge,
         wall,
@@ -3428,18 +3433,22 @@ fn cut_edge(
                 }
             }
         }
-        solid.quad(
-            wound(
-                authored_is_outer,
-                [
-                    points[band].authored[1],
-                    points[band].offset[1],
-                    points[band + 1].offset[1],
-                    points[band + 1].authored[1],
-                ],
-            ),
-            Element::Mass(mass, surfaces.top),
-        );
+        // **The strip of wall top belongs to the ring's crown and to nothing else.** An interior band of a mass is
+        // covered by the section above it, so drawing its strip would put a face inside the solid.
+        if crown {
+            solid.quad(
+                wound(
+                    authored_is_outer,
+                    [
+                        points[band].authored[1],
+                        points[band].offset[1],
+                        points[band + 1].offset[1],
+                        points[band + 1].authored[1],
+                    ],
+                ),
+                Element::Mass(mass, surfaces.top),
+            );
+        }
     }
 
     for hole in holes {
