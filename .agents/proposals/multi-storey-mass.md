@@ -353,3 +353,33 @@ The street's conversion — four sections, shopfront in band `0`, window in band
 came back `SolidOpen { loops: 4 }`: the **uncut** band walk now closes, and the **cut** one does not. The next
 instrument is the probe with one opening in band `0` and one in band `2`, which is a two-line change to a file that
 already reports exactly this.
+## Round 43: the cut band, measured
+
+The probe grew a second mode — `-- cut` — that opens a shopfront in the foot's band and a window in the projecting one,
+and it answers the question the plain mode could not:
+
+| mode | faces | unbalanced |
+| --- | --- | --- |
+| plain | 64 | **0** (holes 0, doubled 0) |
+| cut | 116 | **16, all holes** |
+
+Both seams are at the foot's crown and at the soffit's crown (`y = 3.00` and `y = 3.16`), and the hole edges name the
+reason: `[-0.55, 3.0, 2.5] -> [-3.0, 3.0, 2.5]`. **A cut subdivides the band's top row into stations, and the band
+above starts from one straight edge per side.** The two do not meet, so the wall's top is open over every span the cut
+touched — not a subtle defect, a missing face with a name.
+
+`validate` reports it (`SolidOpen { loops: 4 }`), which is the repository's rule holding: a wrong shape is named and not
+silently drawn. What is *not* yet built is the thing that would close it — **the cut's stations have to reach the
+section above**, which means the band walk subdividing the loop it hands upward. That is a real piece of work and it is
+the whole of what stands between this crate and a multi-storey mass with openings.
+
+### The alternative, and the second gap it found
+
+A 骑楼 can also be **two masses**: the ground floor carrying the projecting upper floor through `Join::Under`, both of
+them single-band walls whose holes are cut the way every hole in this gallery is cut. It was built and it is blocked by
+**`site::seat`**, which moves *every* mass onto the ground under it: an upper mass authored at the floor's elevation is
+seated onto the bank, so `UnderNotCarrying { top: 3.33, foot: 0.33 }` names a carrier three metres above the mass it
+claims to carry. So the seat's contract — "each mass stands on the ground under it" — needs to say "**a mass joined to
+a host takes the host's shift**", which is a change to `site` and not to the street.
+
+Both gaps are now written down with the measurement that found them.
