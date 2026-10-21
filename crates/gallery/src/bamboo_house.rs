@@ -21,7 +21,7 @@
 //!
 //! - **the bamboo**: a 竹楼's walls are woven bamboo on a timber frame, and a wall here is one thickness of plaster;
 //! - **the open ground floor's uses**: the loom, the store, the animals are the interior arc's work;
-//! - **the 火塘**: the hearth in the middle of the room, which needs a hole in the floor this crate does not cut.
+//! - **the 火塘's ash pit**: the three stones round the fire are drawn since round 220, and the pit they stand over is not — a hole in the room's ground
 
 use building::{Building, BuildingSkeleton, Covering, Mass, MassId, PlanNode, derive, site};
 use definition::Value;
@@ -46,6 +46,11 @@ const FLOOR: f32 = 1.95;
 const WALL_HEIGHT: f32 = 2.45;
 
 /// How far the veranda runs past the front wall, and the drying deck past the gable end.
+/// The 火塘's three stones: how far they stand from the room's middle, how big one is and how high.
+const HEARTH: f32 = 0.62;
+const HEARTH_STONE: f32 = 0.22;
+const HEARTH_HIGH: f32 = 0.30;
+
 const VERANDA: f32 = 1.8;
 const DECK: f32 = 1.5;
 
@@ -495,5 +500,24 @@ pub fn document() -> Building {
             door: true,
         },
     );
+    // **The 火塘: three stones round the fire.** This file said the hearth *"needs a hole in the floor this crate does not cut"* — **the hole is the
+    // refinement and the hearth is the object**: a 火塘 is **three stones** (锅庄石) set in a triangle at the room's middle, and three stones are three
+    // members. The floor under them is still whole, which is recorded rather than hidden: what is drawn is the hearth and not its ash pit.
+    for stone in 0..3 {
+        let angle = core::f32::consts::TAU * stone as f32 / 3.0;
+        let at = [HEARTH * angle.cos(), HEARTH * angle.sin()];
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [at[0], 0.0, at[1]],
+            },
+            building::Anchor::Free {
+                at: [at[0], HEARTH_HIGH, at[1]],
+            },
+            [1.0, 0.0],
+            HEARTH_STONE,
+            HEARTH_STONE,
+        ));
+    }
+
     Building::new(skeleton)
 }

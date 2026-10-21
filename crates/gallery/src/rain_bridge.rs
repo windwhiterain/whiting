@@ -22,7 +22,7 @@
 //!
 //! - **the water**: the ground under the bridge is the harness's own plane, and a river is a surface this scene
 //!   does not author;
-//! - **the benches**: a 风雨桥's two long benches are where the village sits, and they are not drawn;
+//! - **the benches are drawn**: two planks the length of the gallery at a seats height, and this bullet said they were not until round 220 read line 533;
 //! - **the banks**: the abutments are plate ends and nothing more.
 
 use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, derive, ops};

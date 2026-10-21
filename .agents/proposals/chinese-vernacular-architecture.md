@@ -4026,3 +4026,27 @@ plate shows.
 **Four notes in five rounds that were wrong** (穿枋, 玛尼堆, culvert mouths, the hamlet's fences and its rotation). All four are corrected in their files,
 and the rule is no longer a suspicion: **a "what it does not draw" bullet is a hypothesis that nothing in this repository re-measures — read the code
 below it before believing it.**
+## Round 220: the 火塘, and five stale bullets
+
+Two failed additions first, both refused by **reading**: a duplicate pair of benches on the 风雨桥 (they have been drawn since line 533 — the bullet that
+said *"they are not drawn"* was stale), and a duplicate well in the 侗寨 (round 214's story, repeated because the note was still there).
+
+**What the village's own notes were wrong about, collected and corrected this round:**
+
+| file | the bullet said | the code says |
+| --- | --- | --- |
+| `rain_bridge.rs` | the benches are not drawn | they are, at line 533 |
+| `chuandou.rs` | a member cannot be laid through another | the 挑枋 has always started inside a post (round 215) |
+| `slate_street.rs` | culverts need "a word for a mouth" | an `Opening` is that word (round 218) |
+| `plateau.rs` | the 玛尼堆 and flags need a decorator | they need a mass and members (round 217) |
+| `bamboo_house.rs` | the 火塘 needs a hole in the floor | the hole is the refinement; **the hearth is three stones** |
+
+**And the 火塘 is drawn**: three stones (锅庄石) in a triangle at the room's middle, `0.62 m` from the centre and `0.30 m` high. The floor under them is
+still whole — **the ash pit is what is owed, and the hearth is what a 竹楼 is built round.**
+
+**Identity: 60 scenes, 229 750 rows**; `bamboo_house` 920 → **938**, `dai_hamlet` 5 635 → **5 689** — three stones per house and three houses in the
+hamlet, which is the composition check again.
+
+**Six bullets in six rounds that were false, and every one of them was falsified by reading the file it was written in.** The proposal now carries the
+table above; the rule it implies is the one this half of the gallery needed: **the "what it does not draw" section is the least maintained part of every
+file, and it is the part a reader trusts most.**
