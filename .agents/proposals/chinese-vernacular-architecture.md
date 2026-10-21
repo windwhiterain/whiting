@@ -3053,3 +3053,15 @@ village's life happens beside the lane, not in it.
 
 **Identity: 40 scenes, 146 298 rows**; `dong_village` 8 369 → **8 520** — three walls, a lean-to, five rail posts and two rails. The
 document is 9.94 MB.
+## Round 147: the 水井, the third well
+
+The 石板街's well and the 白族巷's established the parts — a rim that is a mass whose wall is thick enough to be a ring, a **井台** under
+it, and a **辘轳** of two posts and a beam above — and the 侗寨's is the same well in a third scene. **A vocabulary that works twice
+should be used a third time unchanged**, or it was never a vocabulary: this round added no new shape, only a third placement.
+
+**Five placements, three of them invisible.** Inside a `26 m` square a well and its windlass are twenty pixels wide and vanish into the
+paving; the fourth placement overlapped the south house (`UnattachedOverlap { mass: 11, other: 21 }`); the fifth stands in the
+foreground beside the pond, where a rim on its platform and a frame over it read in one glance.
+
+**Identity: 40 scenes, 146 335 rows**; `dong_village` 8 520 → **8 557** — a rim's four faces, its top and inner loop, a platform and
+three windlass members. The document is 9.96 MB.

@@ -109,6 +109,13 @@ const PEN_HIGH: f32 = 1.45;
 const PEN_BAYS: usize = 4;
 const PEN_RAIL: f32 = 0.10;
 
+/// The 水井: where it stands, the rims half width, its wall and its height, and the 井台 under it.
+const WELL_AT: [f32; 2] = [-19.40, -18.60];
+const WELL_HALF: f32 = 0.72;
+const WELL_WALL: f32 = 0.24;
+const WELL_HIGH: f32 = 0.85;
+const WELL_PLINTH: f32 = 0.24;
+
 const SUN: [f64; 3] = [-26.0, 30.0, 20.0];
 const SUN_IRRADIANCE: f64 = 3.3;
 const SHADOW_EXTENT: f64 = 52.0;
@@ -510,6 +517,71 @@ pub fn document() -> Building {
             PEN_RAIL * 0.9,
         ));
     }
+
+    // **The 水井: the village well, the third in this project.** The 石板街's and the 白族巷's wells established the two parts — a rim a
+    // mass whose wall is thick enough to be a ring, a 井台 under it, and a **windlass** of two posts, a beam and a drum above it — and
+    // this is the same well in a third scene. **A vocabulary that works twice should be used a third time unchanged**, or it was never a
+    // vocabulary.
+    let [well_x, well_z] = WELL_AT;
+    skeleton.slabs.push(building::Slab::floor(
+        ops::wound(vec![
+            [well_x - WELL_HALF - 0.55, well_z - WELL_HALF - 0.55],
+            [well_x + WELL_HALF + 0.55, well_z - WELL_HALF - 0.55],
+            [well_x + WELL_HALF + 0.55, well_z + WELL_HALF + 0.55],
+            [well_x - WELL_HALF - 0.55, well_z + WELL_HALF + 0.55],
+        ]),
+        0.0,
+        WELL_PLINTH,
+    ));
+    let mut ring = Mass::new(
+        ops::wound(vec![
+            [well_x - WELL_HALF, well_z - WELL_HALF],
+            [well_x + WELL_HALF, well_z - WELL_HALF],
+            [well_x + WELL_HALF, well_z + WELL_HALF],
+            [well_x - WELL_HALF, well_z + WELL_HALF],
+        ])
+        .into_iter()
+        .map(|at| PlanNode::new(at, WELL_PLINTH))
+        .collect(),
+        WELL_PLINTH + WELL_HIGH,
+    );
+    ring.wall = WELL_WALL;
+    ring.slab = 0.18;
+    skeleton.masses.push(ring);
+    // **The 辘轳**: two posts either side of the rim and a beam across them.
+    for across in [-1.0_f32, 1.0] {
+        let x = well_x + across * (WELL_HALF + 0.18);
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, WELL_PLINTH, well_z],
+            },
+            building::Anchor::Free {
+                at: [x, WELL_PLINTH + WELL_HIGH + 0.95, well_z],
+            },
+            [1.0, 0.0],
+            0.13,
+            0.13,
+        ));
+    }
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [
+                well_x - WELL_HALF - 0.18,
+                WELL_PLINTH + WELL_HIGH + 0.95,
+                well_z,
+            ],
+        },
+        building::Anchor::Free {
+            at: [
+                well_x + WELL_HALF + 0.18,
+                WELL_PLINTH + WELL_HIGH + 0.95,
+                well_z,
+            ],
+        },
+        [0.0, 1.0],
+        0.11,
+        0.15,
+    ));
 
     Building::new(skeleton)
 }
