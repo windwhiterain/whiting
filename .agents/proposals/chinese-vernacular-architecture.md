@@ -3977,3 +3977,18 @@ one rows fewer**. Every range's inner edge moved outward by `0.55 m`, the four r
 grating and panel rows: **widening a room is the only change in this gallery that takes rows away and gives light back.**
 
 **Identity: 60 scenes, 229 449 rows**.
+## Round 217: the 玛尼堆 and the prayer flags, and a second note that was wrong
+
+This file said they *"need a decorator this crate does not have."* **They need no decorator at all**, and round 215 found the same shaped mistake in
+`chuandou.rs`. A 玛尼堆 is **a pile of stones** — a low mass with seven stones standing on its own top, one per supplicant — and prayer flags are **a rope
+between two poles with cloth tied along it** — two poles, one rope and nine cloths. Both are drawn in this village's own vocabulary and neither asked the
+crate for anything it did not have.
+
+**Two notes, two rounds, the same error**: a limitation written into a file's header is a **claim** and nothing in this repository re-measures claims. The
+proposal now carries both, and the standing rule is: **when a note says this crate cannot draw something, look at how the file already draws something
+like it.**
+
+**At this camera the pile is a small white block and the flags are a wire** — the honest note is that both are drawn and neither is isolated, which is the
+same thing rounds 189 and 199 recorded about small objects in a village plate.
+
+**Identity: 60 scenes, 229 576 rows**; `plateau_village` 3 449 → **3 576** — a heap, seven stones, two poles, a rope and nine cloths.
