@@ -70,6 +70,26 @@ pub fn miao_village() -> Value {
     )
 }
 
+/// The **close plate**: the lowest terrace from the dancing ground, where the 花杆 stands at the frame's edge and the stilt houses' own **posts**
+/// stand above the retaining face at eye height.
+///
+/// # Why a second camera and not a second document
+///
+/// The wide plate looks down from twenty-six metres and every house in the village is a roof; the thing this type is made of — **a house hung off a
+/// bank on a wall of posts** — is under those roofs, above the terrace's face, and no plate in the gallery has ever shown it. Rounds 190, 194, 195
+/// and 196 are the same move.
+pub fn miao_stilts() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [3.4, 2.1, 15.0],
+        [-1.0, 3.4, 3.0],
+        FIELD_OF_VIEW * 1.05,
+        "miao_stilts",
+    )
+}
+
 /// Returns the document: three terraces, their faces, six stilt houses and the flights.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());

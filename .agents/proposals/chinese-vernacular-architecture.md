@@ -3719,3 +3719,26 @@ the houses need a slope**, which is why a 苗寨 is built as a stair.
 without a caption.
 
 **Identity: 56 scenes, 200 605 rows**; `miao_village` 13 119 → **13 179** — a court, a pole, two arms and two streamers. The document is 11.05 MB.
+## Round 200: the 苗寨's close plate, and two hundred rounds
+
+`miao_stilts` stands on the dancing ground at eye height: the **花杆** fills the frame with its two cross-arms and their streamers, and behind it the
+lowest terrace's houses rise above the retaining face. **The posts are not in it** — the terrace's own face is between the lens and the underfloor of
+each house — so the plate that this round set out to make (a house hung off a bank on a wall of posts) is **still owed**, and it is now recorded as
+the village's third debt rather than paid.
+
+**Identity: 57 scenes, 213 784 rows**; `miao_stilts` **13 179** (the same document as `miao_village`). The document is 11.05 MB.
+
+### What two hundred rounds hold
+
+- **nineteen types**: 一颗印, 石板房, 石板街, 白族院落, 白族巷, 屯堡, 羌碉, 纳西院落, 干栏长屋, 景颇寨, 傈僳木楞房, 缅寺, 侗寨 (with its 鼓楼), 苗吊脚楼,
+  土掌房, 蘑菇房, 井干房, 穿斗房, and the halls, sheds, wings and yards under them;
+- **twelve settlements**: 侗寨, 羌寨, 傣寨, 白族巷, 石板街, 屯堡村, 彝族土掌房聚落, 纳西院落, 景颇寨, 傈僳木楞房聚落, 苗寨, and the plateau's villages;
+- **fifty-seven scenes** and **213 784 rows** of geometry, every one of them a document a CPU path tracer can draw.
+
+**And the rules the rounds paid for, in the order they were paid**: the ring's offset is a fraction of the **narrow** side; a member's `across` is the
+run turned a quarter; a wall length starts at the inner face of the one it meets; a slab's corners wind counter-clockwise in `(x, z)`; a crowned face
+cannot take a grid; an opening needs a bay; a gate's head spans **exactly** the gap and rests on its neighbours; `ops::raise` moves **every** mass;
+a plate is a **line of sight**, not a document; and **a change that moves neither the frame nor the table is not a change**.
+
+**The next fifty-six rounds have one obvious shape**: the debts this catalogue has written down. A third plate for the 傈僳 village's west end is paid;
+the 苗寨's posts, the 侗寨's own wares, the 土掌房's racks seen close, and the longhouse's thatch being wool rather than grass are not.
