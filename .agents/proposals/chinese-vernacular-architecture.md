@@ -4098,3 +4098,18 @@ pavilion roof in the same picture. It is the one plate in this gallery that show
 `build`'s match and to the probe's `SCENES` — **and not to `naming::building_of`**, so the probe **silently skipped it** and reported sixty-one scenes with
 no error at all. Three of the four lists were right, the fourth defaulted to "no such building", and a scene that is not in `naming` is a scene **no
 instrument measures**. The check that catches it is the count: **62 scenes in `SCENES` and 62 row-lines in the output**, never one without the other.
+## Round 224: the 盐井与盐灶, the twenty-second type
+
+滇南's villages were built on brine. At 黑井 and 盐津 the well is the reason for the settlement, and the works round it are **a well, a boiling house and a
+store**, because salt is not grown and not quarried — it is **drawn and boiled**, and the two halves of that are two buildings. It is the second type here
+whose subject is a **process** (the 水碾房 is the first), and the first whose product is not for the household that makes it.
+
+**Four parts, each the simplest thing that is what it says**: a wellhead of four posts with **a windlass beam, a drum and two cranks**; a stone **卤池**
+the bucket is emptied into; **a bench with three pans set in it**, which is a boiling house's whole fabric; and an **open shed** over the bench, open on
+both long sides so the steam leaves.
+
+**Identity: 63 scenes, 241 642 rows**; `saltworks` **128** — the second smallest type in the gallery, because a works is four objects and no ornament.
+
+**What it does not draw, and this type's version of it is the sharpest**: **the fire and the steam**. They are the two things that make a boiling house a
+boiling house, and this crate draws **solids** — the fire is not a solid and the steam is not one either. So the plate shows the works **between two
+firings**, which is the same compromise round 221 made with the wheel that cannot turn.

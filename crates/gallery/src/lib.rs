@@ -110,8 +110,9 @@ pub mod naxi_court;
 pub mod plateau;
 pub mod qiang_tower;
 pub mod rain_bridge;
-pub mod settlement_plants;
 /// The shed scene: the facade — a rhythm, holes cut in it, and parts standing in the bays.
+pub mod saltworks;
+pub mod settlement_plants;
 pub mod shed;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
 pub mod slate_court;
@@ -232,6 +233,7 @@ impl Gallery {
             "landscape",
             "lanterns",
             "monoliths",
+            "saltworks",
             "shed",
             "stilt",
             "dai_temple",
@@ -378,6 +380,7 @@ impl Gallery {
             "landscape" => landscape(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
+            "saltworks" => saltworks::saltworks(),
             "shed" => shed::shed(),
             "street" => street::street(),
             "street_arcade" => street::street_arcade(),

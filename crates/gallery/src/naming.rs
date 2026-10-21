@@ -393,6 +393,7 @@ pub fn handles_of(scene: &str) -> Option<Table> {
 pub fn building_of(scene: &str) -> Option<Building> {
     Some(match scene {
         "identity" => crate::authored::document(),
+        "saltworks" => crate::saltworks::document(),
         "shed" => crate::shed::document(),
         "chuandou_house" => crate::chuandou::document(),
         "compound" => crate::compound::document(),
