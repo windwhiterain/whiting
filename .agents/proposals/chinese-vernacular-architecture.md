@@ -1952,3 +1952,26 @@ are crowned, because a split moves every station after it.
 `slate_house` **252 → 260 rows**: two windows of four reveal faces each.
 
 **Identity: 30 scenes, 112 226 rows**, the other twenty-nine unchanged.
+## Round 70: the 屯堡村, the gallery's fourth settlement
+
+**One street, four of the same house, a wall and a 朝门.** The mountain village is walled houses round a square, the Dai
+hamlet is a row on a valley floor, the plateau village is four towers on one shelf — a 屯堡 is a **garrison's compound**, and
+its one building that is not a house is the gate at the lane's end.
+
+- **four `tunpu::document()`s** in a row, all facing the lane, so their yards are the lane's edge;
+- **the compound's wall in two lengths** with the gate's gap between them — a wall with a gap is two walls;
+- **the 朝门**: two stone piers and a lean-to roof over the gap, `2.7 m` clear, which is the one place a 屯堡's lane is a
+  door.
+
+Two refusals came from the model, and both are about a mass's own thickness:
+
+- **a wall's wall must be thinner than half the wall's depth.** The first draft was 0.9 m of stone with a 0.55 m wall and the
+  crate answered `OffsetEdgeFolded { edge: 1 }` and `OffsetInverted { area: -4.02 }` for each length: the inner loop is
+  offset inward by the wall's own thickness, and two of those fold through each other. The wall is 1.1 m deep with a 0.40 m
+  wall now, and each pier is 0.45 m square with a 0.18 m wall for the same reason;
+- **the piers stand in the gap and not on the wall's line**: on the line they are masses inside masses
+  (`UnattachedOverlap { mass: 4, other: 6 }` and `{ mass: 5, other: 7 }`), and set back by their own width they touch the
+  wall's end without sharing any area with it.
+
+**Identity: 31 scenes, 113 324 rows**, of which `tunpu_village` is **1 098** — four houses at 260 rows, the two walls, the
+two piers and the gate's roof. The document is 7.10 MB.
