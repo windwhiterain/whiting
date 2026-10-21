@@ -3532,3 +3532,13 @@ numbers and the placement.
 mistaken for next to a village that has a fence. At `0.26 × 1.20` on a `2.85 m` beam they hang free of the head and read as bunches.
 
 **Identity: 47 scenes, 160 549 rows**; `lisu_village` 936 → **1 062** — three racks, their posts and twelve sheaves. The document is 7.47 MB.
+## Round 184: the slope
+
+Round 182 recorded this as owed: *a 怒江 village is cut into a hillside and this one is flat.* It is **two benches** now — the lower row at `0`, the
+upper row one rise higher on its own paved shelf, with a retaining face between them — and the whole of the slope is **one call per house**:
+`ops::raise(&mut part, RISE)` before the part is merged, which is round 169's helper in its third use.
+
+**The type needed nothing.** A log house raised by a rise is the same log house on a higher bench: its logs, its roof, its door and its gable all
+arrive with it, because `ops::raise` moved every part and round 181's porch came along unchanged.
+
+**Identity: 47 scenes, 160 568 rows**; `lisu_village` 1 062 → **1 081** — a second bench and its retaining face. The document is 7.48 MB.

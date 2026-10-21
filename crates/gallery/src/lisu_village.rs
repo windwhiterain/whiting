@@ -25,6 +25,10 @@ const BENCH_HALF: f32 = 22.0;
 const BENCH_FROM: f32 = -24.0;
 const BENCH_TO: f32 = 20.0;
 const PAVING: f32 = 0.05;
+/// The village's **slope**: the upper bench's front edge, the rise between the two benches, and how deep the retaining face is.
+const UPPER_EDGE: f32 = 1.80;
+const RISE: f32 = 1.40;
+const RETAIN: f32 = 0.50;
 /// The lane: its half width, which is the gap the two rows of houses face each other across.
 const LANE_HALF: f32 = 3.60;
 /// The five houses: where each stands and which way it is turned. The two rows face across the lane.
@@ -78,20 +82,53 @@ pub fn document() -> Building {
         ops::wound(vec![
             [BENCH_FROM, -BENCH_HALF],
             [BENCH_TO, -BENCH_HALF],
-            [BENCH_TO, BENCH_HALF],
-            [BENCH_FROM, BENCH_HALF],
+            [BENCH_TO, UPPER_EDGE],
+            [BENCH_FROM, UPPER_EDGE],
         ]),
         0.0,
         PAVING,
     ));
+    // **And the second bench, one rise higher.** A 怒江 village is cut into a hillside in **steps**, and the upper row stands on the second —
+    // which is what round 182 recorded as owed and round 169's `ops::raise` is for.
+    skeleton.slabs.push(building::Slab::paving(
+        ops::wound(vec![
+            [BENCH_FROM, UPPER_EDGE + RETAIN],
+            [BENCH_TO, UPPER_EDGE + RETAIN],
+            [BENCH_TO, BENCH_HALF],
+            [BENCH_FROM, BENCH_HALF],
+        ]),
+        RISE,
+        RISE + PAVING,
+    ));
+    // **The retaining face between them**, drawn as a wall of the rise's height and no more.
+    let mut face = Mass::new(
+        ops::wound(vec![
+            [BENCH_FROM, UPPER_EDGE],
+            [BENCH_TO, UPPER_EDGE],
+            [BENCH_TO, UPPER_EDGE + RETAIN],
+            [BENCH_FROM, UPPER_EDGE + RETAIN],
+        ])
+        .into_iter()
+        .map(|at| building::PlanNode::new(at, 0.0))
+        .collect(),
+        RISE + PAVING,
+    );
+    // **The ring's offset stays under half the wall's depth** (round 144).
+    face.wall = RETAIN * 0.34;
+    face.slab = 0.14;
+    skeleton.masses.push(face);
 
-    // **The five houses**, each the type's own document, turned so the two rows face across the lane.
+    // **The five houses**, each the type's own document, turned so the two rows face across the lane, and each on its own bench's level.
     for (across, along, turn) in HOUSES {
         let mut part = crate::log_house::document().skeleton;
         if turn.abs() > 1.0e-3 {
             ops::rotate(&mut part, [0.0, 0.0], turn);
         }
         ops::translate(&mut part, [across, along]);
+        // **Up onto the upper bench**, which is the whole of the slope: one call, and the house arrives with its logs, its roof and its door.
+        if along > 0.0 {
+            ops::raise(&mut part, RISE);
+        }
         assert!(
             ops::merge(&mut skeleton, part),
             "a log house places no parts, so the merge always happens"
