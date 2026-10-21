@@ -16,8 +16,8 @@
 //!
 //! # What it does not draw
 //!
-//! - **the 穿枋**: the tie beams that run *through* the posts, which are the detail the tradition is named for — a member laid
-//!   through another member's own section is not something this crate's members can say;
+//! - **the 穿枋 are drawn** (round 215): two rows of tie beam through the colonnade, standing proud past the end posts. This bullet used to say a member
+//!   could not be laid through another member's own section, and the 挑枋 had been doing exactly that since it was written;
 //! - **the interior**: a 穿斗 frame's posts continue up through the floors, and this crate has no interior.
 
 use building::{Building, BuildingSkeleton, Covering, Mass, MassId, PlanNode, derive, ops};

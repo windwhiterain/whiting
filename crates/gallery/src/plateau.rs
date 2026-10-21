@@ -19,7 +19,7 @@
 //! # What it does not draw
 //!
 //! - **the fields**: a plateau village's barley is the agricultural arc's work;
-//! - **the 玛尼堆 and the prayer flags**, which need a decorator this crate does not have.
+//! - **the 玛尼堆 and the prayer flags are drawn** (round 217): a stone heap and a rope of cloths, out of masses and members. This bullet said they
 
 use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, ops, site};
 use definition::Value;

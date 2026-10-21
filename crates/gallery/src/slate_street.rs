@@ -18,7 +18,7 @@
 //!
 //! - **the gate towers**: a 屯堡 street's 碉楼 stands at the village's corner and not on its street, and the compound scene has
 //!   it;
-//! - **the culverts** the channel would empty into: a slab drains to its lowest edge and this crate has no word for a mouth.
+//! - **the culverts are drawn** (round 218): two stone boxes with a low `Opening` cut in the face that looks down the lane. This bullet said the
 
 use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, ops};
 use definition::Value;
