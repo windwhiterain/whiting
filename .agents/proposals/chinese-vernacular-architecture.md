@@ -4387,3 +4387,19 @@ assert!(cut.is_some(), "the counter mouth is a hole the face accepts");
 `wing:129` — and `market_town:140`, which is the one that now asserts.
 
 **Identity: 74 scenes, 257 225 rows.**
+## Round 243: every swallowed opening made loud — and two real defects found inside the first minute
+
+Round 242 measured the debt: **sixteen** `let _ = ops::add_opening(...)` sites where a refused hole was discarded in silence. Round 243 converted **all**
+remaining fifteen into assertions, and the sweep paid at once:
+
+1. **`drum_tower.rs:437` — `storey 5 edge 1 column 0`.** The tower's plan is **chamfered**, and the topmost storey's chamfer edge is **narrower than one
+   window**: that edge had been refusing its bays since the tower was built, silently. The rule is now **a face takes all `BAYS` of its bays or none**, which
+   lets a chamfer skip and still fails on a half-cut face;
+2. **`slate_street.rs:344` — the culvert mouths had never been cut.** The face is split into **one column** and the opening asked for **column 1**: `bay()`
+   answered `None` every time since round 218 and the error went into the `let _`. They ask for column `0` now, and the street gained **8 rows** (`slate_street`
+   3 023 → **3 031**, `slate_gate` with it) because two mouths that were only ever drawn as faces finally have their holes.
+
+**This is the round's whole argument**: two defects that four rounds of plates walked past were found by **making silence impossible**, not by looking harder. The
+first was invisible because a chamfer edge *should* be blank; the second was invisible because a culvert mouth *looks* like a recessed panel either way.
+
+**Identity: 74 scenes, 257 241 rows**; the gallery has **no swallowed opening left** (`grep 'let _ = ops::add_opening'` returns nothing).

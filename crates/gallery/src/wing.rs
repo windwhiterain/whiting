@@ -126,10 +126,11 @@ pub fn document_at(width: f32, depth: f32, wing_depth: f32) -> Building {
                 &Rhythm::Even { count: 1 },
             );
             for column in 0..bays {
-                let _ = ops::add_opening(
+                let opening = ops::add_opening(
                     &mut skeleton,
                     Opening::new(front, 0, column, Inset::new(left, right, sill, height)),
                 );
+                assert!(opening.is_some(), "the opening is one the face accepts");
             }
         }
     }

@@ -424,8 +424,12 @@ pub fn document() -> Building {
             {
                 continue;
             }
+            // **A face takes all its bays or none of them.** The tower's plan has **chamfered corners**, and the topmost storey`s chamfer is narrower than one
+            // window: that edge refuses every bay and is skipped, while a face that refuses **one** bay of three would be a defect. Round 243 made every
+            // swallowed opening in this gallery loud, and this is where the first one was found: the top storey had been cutting its chamfers silently open.
+            let mut cut = 0_usize;
             for column in 0..BAYS {
-                let _ = ops::add_opening(
+                if ops::add_opening(
                     &mut skeleton,
                     building::openings::Opening::new(
                         face,
@@ -433,8 +437,16 @@ pub fn document() -> Building {
                         column,
                         building::openings::Inset::new(BAY_MARGIN, BAY_MARGIN, BAY_SILL, BAY_HEAD),
                     ),
-                );
+                )
+                .is_some()
+                {
+                    cut += 1;
+                }
             }
+            assert!(
+                cut == 0 || cut == BAYS,
+                "storey {storey} edge {edge}: a face takes all {BAYS} of its bays or none, and this one took {cut}"
+            );
         }
     }
 

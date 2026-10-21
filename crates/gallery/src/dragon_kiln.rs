@@ -90,7 +90,7 @@ pub fn document() -> Building {
     )
     .is_some()
     {
-        let _ = ops::add_opening(
+        let opening = ops::add_opening(
             &mut skeleton,
             building::Opening::new(
                 face,
@@ -99,6 +99,7 @@ pub fn document() -> Building {
                 building::Inset::new(MOUTH_JAMB, MOUTH_JAMB, 0.10, MOUTH_HEAD),
             ),
         );
+        assert!(opening.is_some(), "the opening is one the face accepts");
     }
 
     // **The chimney** above the topmost chamber's head.

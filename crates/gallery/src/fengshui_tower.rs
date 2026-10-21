@@ -128,7 +128,7 @@ pub fn document() -> Building {
             {
                 // The door fills its bay to within `DOOR_JAMB`, from the storey's own base up to `DOOR_HEAD` below its head.
                 let bay = 2.0 * half / 3.0;
-                let _ = ops::add_opening(
+                let opening = ops::add_opening(
                     &mut skeleton,
                     building::Opening::new(
                         face,
@@ -137,6 +137,7 @@ pub fn document() -> Building {
                         building::Inset::new(DOOR_JAMB, DOOR_JAMB, 0.0, STOREY_HIGH - DOOR_HEAD),
                     ),
                 );
+                assert!(opening.is_some(), "the opening is one the face accepts");
                 let _ = bay;
             }
         }

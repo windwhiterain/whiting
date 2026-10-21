@@ -519,10 +519,11 @@ pub fn document() -> Building {
     let columns = building::Rhythm::Even { count: 3 };
     let rows = building::Rhythm::Even { count: 1 };
     if ops::split_face(&mut skeleton, gate_face, &columns, &rows).is_some() {
-        let _ = ops::add_opening(
+        let opening = ops::add_opening(
             &mut skeleton,
             building::Opening::new(gate_face, 0, 1, building::Inset::new(0.30, 0.30, 0.0, 0.90)),
         );
+        assert!(opening.is_some(), "the opening is one the face accepts");
     }
     // **The gate's two leaves, swung out into the lane, and its threshold.** A 山门 is a gate and not an arch: the plates stand
     // open, one against each jamb, and a foot steps over the threshold between them. The leaves are `derive::leaf`'s panels —

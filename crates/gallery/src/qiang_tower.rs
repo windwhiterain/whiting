@@ -413,7 +413,7 @@ fn tower_part() -> BuildingSkeleton {
         .is_some()
         {
             let sill = DOOR_SILL - (PLINTH + COURSE * DOOR_COURSE as f32);
-            let _ = ops::add_opening(
+            let opening = ops::add_opening(
                 &mut part,
                 building::Opening::new(
                     face,
@@ -422,6 +422,7 @@ fn tower_part() -> BuildingSkeleton {
                     building::Inset::new(0.80, 0.80, sill.max(0.0), 0.75),
                 ),
             );
+            assert!(opening.is_some(), "the opening is one the face accepts");
         }
     }
 

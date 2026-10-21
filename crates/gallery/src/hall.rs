@@ -61,10 +61,11 @@ pub fn document_at(width: f32, depth: f32, storeys: usize) -> Building {
     let (left, right, sill, height) = HALL.glazing(plan.width / bays as f32, plan.height);
     for face in skeleton.faces_of(mass) {
         for column in 0..bays {
-            let _ = ops::add_opening(
+            let opening = ops::add_opening(
                 &mut skeleton,
                 Opening::new(face, 0, column, Inset::new(left, right, sill, height)),
             );
+            assert!(opening.is_some(), "the opening is one the face accepts");
         }
     }
     Building::new(skeleton)

@@ -331,15 +331,22 @@ pub fn document() -> Building {
         )
         .is_some()
         {
-            // **A mouth is wider than it is high and sits at the channel's floor**, so its inset is deep at the head and shallow at the sill.
-            let _ = ops::add_opening(
+            // **A mouth is wider than it is high and sits at the channel`s floor**, so its inset is deep at the head and shallow at the sill.
+            //
+            // The face is split into **one bay**, so the mouth asks for **column 0**: round 243 made every swallowed opening loud and this is the
+            // second defect it found — the mouths had asked for column 1 of a single-column grid since round 218 and were refused every time.
+            let opening = ops::add_opening(
                 &mut skeleton,
                 building::Opening::new(
                     face,
                     0,
-                    1,
+                    0,
                     building::Inset::new(CULVERT_JAMB, CULVERT_JAMB, 0.04, CULVERT_HEAD),
                 ),
+            );
+            assert!(
+                opening.is_some(),
+                "the mouth is a hole the culvert face accepts"
             );
         }
     }

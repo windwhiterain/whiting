@@ -190,7 +190,7 @@ pub fn document() -> Building {
     )
     .is_some()
     {
-        let _ = ops::add_opening(
+        let opening = ops::add_opening(
             &mut skeleton,
             building::Opening::new(
                 face,
@@ -199,6 +199,7 @@ pub fn document() -> Building {
                 building::Inset::new(STORE_JAMB, STORE_JAMB, 0.0, STORE_HEAD),
             ),
         );
+        assert!(opening.is_some(), "the opening is one the face accepts");
     }
 
     Building::new(skeleton)

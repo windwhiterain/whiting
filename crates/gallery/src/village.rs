@@ -878,7 +878,7 @@ pub fn compose(ground: impl Fn(f64, f64) -> f64, lane: bool, platform: f32) -> B
             )
             .is_some()
             {
-                let _ = ops::add_opening(
+                let opening = ops::add_opening(
                     &mut skeleton,
                     building::openings::Opening::new(
                         face,
@@ -892,6 +892,7 @@ pub fn compose(ground: impl Fn(f64, f64) -> f64, lane: bool, platform: f32) -> B
                         ),
                     ),
                 );
+                assert!(opening.is_some(), "the opening is one the face accepts");
             }
         }
         if let Some(roof) =

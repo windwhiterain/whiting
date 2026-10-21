@@ -435,7 +435,7 @@ pub fn document() -> Building {
         .is_some()
         {
             for column in 0..BAYS {
-                let _ = ops::add_opening(
+                let opening = ops::add_opening(
                     &mut skeleton,
                     building::openings::Opening::new(
                         face,
@@ -444,6 +444,7 @@ pub fn document() -> Building {
                         building::openings::Inset::new(BAY_MARGIN, BAY_MARGIN, BAY_SILL, BAY_HEAD),
                     ),
                 );
+                assert!(opening.is_some(), "the opening is one the face accepts");
             }
         }
     }
