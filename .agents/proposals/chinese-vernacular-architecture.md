@@ -3872,3 +3872,14 @@ which is the check that the composition is exact and not approximate.
 
 **Still owed on this type**: the **door at its foot**, which is a real opening and wants a grid and a bay on the plinth's mass — the niches were the frame
 this round could draw honestly, and the door is the one it could not.
+## Round 210: the 塔门
+
+Round 209 recorded this as the one thing the type still owed: *"the door at its foot, which is a real opening and wants a grid and a bay on the mass."*
+It is there now — **the crate's own opening machinery, used exactly as the 羌碉 uses it**: the lowest storey's `+z` face is split into three bays and
+one level, and a `0.77 × 1.88` door is cut in the middle bay from the storey's base. **The niches above it are frames and the door is a hole**, which is
+the difference between an ornament and an entrance.
+
+**Three rows.** `fengshui_tower` 500 → **503**, `slate_street` 2 658 → **2 661**: an opening in a face costs the mesh three rows and changes what the
+building *is* — **the cheapest change in this gallery's history and the only one in two hundred rounds that turned a wall into a way in**.
+
+**Identity: 60 scenes, 223 392 rows**.

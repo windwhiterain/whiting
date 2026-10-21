@@ -35,6 +35,9 @@ const SPIRE_WIDE: f32 = 0.34;
 /// The blind niche on each storey's two faces: its frame's section and how far the frame stands proud of the wall.
 const NICHE: f32 = 0.075;
 const NICHE_PROUD: f32 = 0.035;
+/// The 塔门: its jamb inset and the depth of wall above its head.
+const DOOR_JAMB: f32 = 0.155;
+const DOOR_HEAD: f32 = 0.42;
 
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.52;
 
@@ -103,6 +106,34 @@ pub fn document() -> Building {
         });
         host = building::MassId(skeleton.masses.len());
         skeleton.masses.push(body);
+
+        // **The 塔门 at the foot.** Round 209 recorded this as the one thing the type still owed: a pagoda's lowest storey has a **door** on the side
+        // that faces the village, and it is a real opening — a grid on the face and a bay for the door to sit in — where the niches above it are only
+        // frames. Face 2 is the `+z` side of a square wound from `[-h, -h]`, which is the side the plate looks at.
+        if storey == 0 {
+            let face = building::FaceRef::new(host, 2);
+            if ops::split_face(
+                &mut skeleton,
+                face,
+                &building::Rhythm::Even { count: 3 },
+                &building::Rhythm::Even { count: 1 },
+            )
+            .is_some()
+            {
+                // The door fills its bay to within `DOOR_JAMB`, from the storey's own base up to `DOOR_HEAD` below its head.
+                let bay = 2.0 * half / 3.0;
+                let _ = ops::add_opening(
+                    &mut skeleton,
+                    building::Opening::new(
+                        face,
+                        0,
+                        1,
+                        building::Inset::new(DOOR_JAMB, DOOR_JAMB, 0.0, STOREY_HIGH - DOOR_HEAD),
+                    ),
+                );
+                let _ = bay;
+            }
+        }
 
         // **The blind niche on each of the two faces the camera sees.** A 风水塔's walls are not blank: every storey carries a shallow **niche** on its
         // faces, and the village reads the tower's height by counting them. The crate has no recess, so the niche is drawn as its **frame** — four
