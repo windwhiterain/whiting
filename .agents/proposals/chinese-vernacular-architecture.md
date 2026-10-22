@@ -4494,3 +4494,19 @@ and the second this pair has needed (the guild's own actor's plate is the first)
 
 **Identity: 78 scenes, 262 250 rows**; `market_town` and `market_guild` both 977. **The market town now carries five composed things**: the stage, the arch, the
 tower, ten shopfronts with their counters and a guild hall.
+## Round 250: the 马店 at the town's west side, and a town that has outgrown its plate
+
+A road town keeps an inn that takes **mules as well as men**, and it stands on the **far side of the square from the guild hall** because the two answer
+different travellers: the guild takes the merchant, the inn takes the carter. It stands at `[-30.6, 30.5]`, past the tower.
+
+`market_town` 977 → **1 167**, the inn's **190 rows**.
+
+**Two refusals**: `UnattachedOverlap` against the tower's own plinth at the first site, and the inn's galleried front reaching the shop row at the second; it
+moved six metres west and four north.
+
+**And the round`s real finding is about plates, not buildings.** Rounds 238 to 250 have put **six things** on this square — stage, arch, ten shopfronts, tower,
+guild hall, inn — and **the town`s own plate, framed in round 240 to hold the tower, now has the guild hall and the inn both outside its edges**. A plate carries
+a **view** and not a **town**. `market_west` is the fourth camera this square has needed, and the proposal records the cost of composing as a real one: **a
+settlement that keeps growing keeps needing new views, and a plate per two buildings is the honest rate.**
+
+**Identity: 79 scenes, 263 987 rows**; `market_town` and `market_west` both 1 167 — the second-largest composed scene after the 侗寨.

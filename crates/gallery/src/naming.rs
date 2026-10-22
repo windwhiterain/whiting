@@ -425,7 +425,9 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "village_square" => crate::village::document(),
         "hillside_village" => crate::village::hillside_document(),
         "longhouse" => crate::longhouse::document(),
-        "market_guild" | "market_shops" | "market_town" => crate::market_town::document(),
+        "market_guild" | "market_shops" | "market_town" | "market_west" => {
+            crate::market_town::document()
+        }
         "miao_stilts" | "miao_village" => crate::miao_village::document(),
         "mushroom_house" => crate::mushroom_house::document(),
         "opera_stage" => crate::opera_stage::document(),

@@ -54,6 +54,9 @@ const TOWER_AT: [f32; 2] = [-19.6, 17.6];
 /// The 会馆 on the square's east side, behind the shop row and facing the road that passes south of it.
 const GUILD_AT: [f32; 2] = [24.6, 27.6];
 
+/// The 马店 on the square's west side, beyond the tower: a road town's inn takes mules as well as men.
+const INN_AT: [f32; 2] = [-30.6, 30.5];
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// Builds the scene: from behind the arch, down the square, with the stage at its far end — the way a market day is entered.
@@ -104,6 +107,25 @@ pub fn market_guild() -> Value {
         [24.6, 4.6, 19.0],
         FIELD_OF_VIEW * 0.80,
         "market_guild",
+    )
+}
+
+/// The **west plate**: the tower and the 马店 on the square`s far side, which the town`s own plate has outgrown.
+///
+/// # Why the town needs a fourth camera
+///
+/// Rounds 238 to 250 put six things on this square — the stage, the arch, ten shopfronts, the tower, the guild hall and now the inn — and **the town`s own
+/// plate, framed in round 240 to hold the tower, now has the guild hall and the inn both outside its edges**. That is the honest cost of composing: a plate
+/// carries a **view** and not a **town**, and a town that grows needs a second view. Round 172`s rule, eleventh application.
+pub fn market_west() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [-46.0, 8.6, 9.0],
+        [-24.0, 3.2, 26.0],
+        FIELD_OF_VIEW * 0.96,
+        "market_west",
     )
 }
 
@@ -283,6 +305,16 @@ pub fn document() -> Building {
     assert!(
         ops::merge(&mut skeleton, guild),
         "the 会馆 places no parts, so the merge always happens"
+    );
+
+    // **The 马店 on the square`s west side, beyond the tower.** A road town keeps an inn that takes **mules as well as men**, and it stands on the far side of
+    // the square from the guild hall because the two answer different travellers: the guild takes the merchant, the inn takes the carter. Round 228`s
+    // document, translated, with none of its numbers restated.
+    let mut inn = crate::caravan_inn::document().skeleton;
+    ops::translate(&mut inn, INN_AT);
+    assert!(
+        ops::merge(&mut skeleton, inn),
+        "the inn places no parts, so the merge always happens"
     );
 
     Building::new(skeleton)
