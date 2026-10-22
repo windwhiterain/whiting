@@ -66,6 +66,24 @@ pub fn guild_hall() -> Value {
     )
 }
 
+/// The **actor`s plate**: from the stage over the gate, looking down the court at the hall.
+///
+/// # Why this camera and not another
+///
+/// The type`s own plate stands on the road and shows the order a stranger arrives in. **The stage is the one place in the building where a person stands and
+/// looks the other way** — the audience in the court, the galleries either side, and the god`s hall at the end. Round 172`s rule, ninth application.
+pub fn guild_stage() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [0.0, 7.0, -9.2],
+        [0.4, 2.0, 6.4],
+        FIELD_OF_VIEW * 0.92,
+        "guild_stage",
+    )
+}
+
 /// Returns the document: the court, the gate house, the stage over it, the two galleries and the hall.
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());

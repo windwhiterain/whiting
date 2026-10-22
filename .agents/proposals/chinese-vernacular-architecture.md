@@ -4469,3 +4469,13 @@ the other**, which is `Join::Storey` and not two masses side by side. That is th
 order a stranger arrives in — gate, stage above it, court, galleries, hall.
 
 **Identity: 76 scenes, 260 790 rows**; `guild_hall` **161**.
+## Round 248: the actor's plate
+
+The 会馆's own plate stands on the road and shows **the order a stranger arrives in**. The stage is the one place in the building where a person stands and
+**looks the other way** — and that view is the plan's whole argument: the court floor, **the two galleries' posts and decks either side**, and the god's hall at
+the end with **its door in the middle bay and a window in each** — the three openings round 247 cut, seen from the only place they were cut for.
+
+**This is the ninth plate taken of an existing document** (rounds 161, 172, 237 and the six between), and it is the one that **proves a circulation**: gate,
+stage, court, galleries, hall — the five things a 会馆 is — in the order the audience and the god occupy them.
+
+**Identity: 77 scenes, 260 951 rows**; `guild_hall` and `guild_stage` both 161.
