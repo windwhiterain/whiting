@@ -85,6 +85,36 @@ A form is a building, a street or a town; several forms are also settlements, wh
 | 14 | 陶村 | `pottery_village.rs` | the kiln, the throwing shed, the woodpile, the drying floor |
 | 15 | 场镇 | `market_town.rs` | stage, arch, ten shopfronts, tower, 会馆, 马店 |
 
+## What is not drawn
+
+Every form's own file says what it does not draw, and those bullets are **hypotheses until something re-measures them** — round 219 found six of them false and
+corrected the files. This table is the same list at the catalogue's scale: **the things the gallery is missing on purpose**, with the reason each one has.
+
+| # | missing | where | why |
+|---|---|---|---|
+| 1 | **interiors** | every form | this crate draws solids and there is no interior light; a room is a hole with a building round it, not a mass |
+| 2 | **fire and steam** | `saltworks`, `dragon_kiln` | a firing is not a solid; the pans and the chambers are drawn empty and cold |
+| 3 | **water** | `slate_street`'s channel, `well_pavilion`, `watermill` | a channel and a well are holes; the crate draws their stone |
+| 4 | **the wheel turning** | `watermill` | a wheel at rest is the only wheel a static document has; the race is drawn and the wheel stands in it |
+| 5 | **the mill's stones** | `watermill` | they are inside the housing, and the interior is item 1 |
+| 6 | **mules, carts, crowds** | `caravan_inn`, `market_town`, `opera_stage` | an animal or a crowd is not architecture; the awnings, posts and troughs that **address** them are drawn |
+| 7 | **letters** | `paifang`, `benzu_miao`, `guild_hall` | an inscription is a text; the plaque and the board are the stone the text would be cut in |
+| 8 | **the god** | `guild_hall`, `benzu_miao` | an image is a carved solid of a kind this catalogue has no vocabulary for |
+| 9 | **the upstairs of a two-storey house** | `caravan_inn`, `fengshui_tower`, `watchtower` | the storey is drawn as an attached mass (rounds 169, 207, 229, 239); what is **inside** it is item 1 |
+| 10 | **a hip's end planes and their rolls** | `village.rs`, `hall.rs` | measured: an end plane carries no tiles, because the roll is a member along a slope and an end plane has none |
+
+## What is measured and still open
+
+These are defects or refusals that were **measured and not fixed**, kept so the next session does not re-derive them.
+
+| # | open item | measured as | state |
+|---|---|---|---|
+| 1 | 羌寨's miter at the wall's own corners | `MiterTooLong` | root cause not found; the scene is clean by keeping walls under the miter's limit |
+| 2 | a 腰檐 over the 穿斗 porch | refused twice | the eave's own overhang exceeds the wall it hangs on; not attempted again |
+| 3 | the 盐村's store door is on the yard side, away from every camera | round 226 | **correct by orientation and invisible by design**; recorded, not fixed |
+| 4 | the culvert mouths are 0.26 m high behind a gate pier | round 245 | three cameras tried and withdrawn; **a plate cannot carry them** |
+| 5 | the 场镇 needs a fifth view for anything else added | round 250 | a plate carries a view and not a town; **two buildings per plate is the honest rate** |
+
 ## The measured table
 
 Every scene and the rows its document holds.
