@@ -412,7 +412,14 @@ pub fn document() -> Building {
     // **The row is seated as one street**, so the houses take the hill's own levels rather than each
     // one's private average: `site::seat` moves every node of every mass to the highest ground it stands
     // on, and the roofs follow their masses.
-    let _ = site::seat(&mut skeleton, at_grade, 0.0);
+    // **The seat is asked what it did and not merely run.** `SeatReport` says how many masses it seated and how many walls it gave
+    // ground under; `let _ =` would have thrown that away, which is the same silence rounds 243 and 244 spent two rounds finding.
+    let seated = site::seat(&mut skeleton, at_grade, 0.0);
+    assert_eq!(
+        seated.len(),
+        skeleton.masses.len(),
+        "every mass of the street is seated on the street`s own grade"
+    );
 
     // **The 骑楼 goes up after the seat**, because a walk is at the street's own level and the street
     // is what the seat reads: five canopies, one to a plot, each shedding away from the shop, and the

@@ -124,13 +124,14 @@ pub fn document() -> Building {
             "a 碉房 is at least one stone mass, and this one seated {}",
             seated.len()
         );
-        let _ = site::posts(
+        let stilts = site::posts(
             &mut part,
             &|at: building::math::Vec2| grade(at[0] as f64, at[1] as f64) as f32,
             2.0,
             0.18,
             0.06,
         );
+        assert_eq!(stilts.refused, 0, "every post finds the ground under it");
         assert!(
             building::ops::merge(&mut skeleton, part),
             "a house of the plateau places no parts, so the merge always happens"

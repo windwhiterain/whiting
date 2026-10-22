@@ -576,7 +576,12 @@ pub fn document() -> Building {
     // paving: they stand on a stone platform — the 台明 — and the court is the floor below it, which is what makes
     // the court a room and the ranges its walls. The offset is the seat's own argument and the platform is what
     // fills the gap it opens.
-    let _ = site::seat(&mut skeleton, |_| 0.0, TAI_MING);
+    let seated = site::seat(&mut skeleton, |_| 0.0, TAI_MING);
+    assert_eq!(
+        seated.len(),
+        skeleton.masses.len(),
+        "the four ranges of the 一颗印 are seated on its own court"
+    );
     // The four platforms, one under each range: the range's own plan proud of it by `TAI_MING_PROUD`, from the
     // court's own level up to the seat.
     for index in 0..4 {

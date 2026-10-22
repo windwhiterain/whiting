@@ -323,22 +323,24 @@ pub fn document() -> Building {
         let id = building::MassId(skeleton.masses.len());
         skeleton.masses.push(culvert);
         let face = building::FaceRef::new(id, face);
-        if ops::split_face(
-            &mut skeleton,
-            face,
-            &building::Rhythm::Even { count: 1 },
-            &building::Rhythm::Even { count: 1 },
-        )
-        .is_some()
-        {
-            // **A mouth is wider than it is high and sits at the channel`s floor**, so its inset is deep at the head and shallow at the sill.
-            //
-            // The face is split into **one bay**, so the mouth asks for **column 0**: round 243 made every swallowed opening loud and this is the
-            // second defect it found — the mouths had asked for column 1 of a single-column grid since round 218 and were refused every time.
+        // **A culvert is a passage and not a niche: it opens at both ends.** Round 243 found that the single mouth it had was never cut — the opening asked
+        // for column 1 of a one-column grid — and this cuts **both ends of the channel**, which is what the water does and what makes the mouth visible from
+        // the road's side as well as the street's.
+        for end in [face, building::FaceRef::new(id, 2 - face.edge)] {
+            if ops::split_face(
+                &mut skeleton,
+                end,
+                &building::Rhythm::Even { count: 1 },
+                &building::Rhythm::Even { count: 1 },
+            )
+            .is_none()
+            {
+                continue;
+            }
             let opening = ops::add_opening(
                 &mut skeleton,
                 building::Opening::new(
-                    face,
+                    end,
                     0,
                     0,
                     building::Inset::new(CULVERT_JAMB, CULVERT_JAMB, 0.04, CULVERT_HEAD),

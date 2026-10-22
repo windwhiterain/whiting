@@ -4421,3 +4421,16 @@ warning about, and both now assert.
 
 **Identity: 74 scenes, 257 241 rows** — unchanged, which is the point: the three defects were **silences, not geometries**, and nothing was lost by making them
 speak. `grep 'let _ = (ops::\|building::ops::\|facade::open)'` over the gallery now returns **nothing**.
+## Round 245: the site reports made loud, and the culverts opened at both ends
+
+The two rounds before this one closed the openings' silences. This one closed the **site** ones: `site::seat` answers a `SeatReport` and `site::posts` a
+`StiltReport` — which carries **`refused`, how many post positions were dropped because the ground did not answer under them** — and all three call sites in the
+gallery wrapped them in `let _ =`. They now assert: **every mass of the street is seated** (`seated.len() == skeleton.masses.len()`), **the 一颗印's four ranges
+are seated**, and **`stilts.refused == 0`** on the plateau. All three pass — no defect this time, three silences closed.
+
+**And one real change came out of trying to photograph the round-243 culverts.** A culvert is **a passage and not a niche**, so it opens at **both ends of the
+channel**; it had been cut at one end only. `slate_gate` 3 031 → **3 039** and `slate_street` with it — **eight rows**, the second mouth of each culvert.
+
+**Three cameras were tried to show that mouth and all three were withdrawn**: the near one stands behind the gate's own pier, the low one looks into the
+culvert's blind side, and the axis one faces the mouth that was already there. **A hole 0.26 m high, in the kerb's line, behind a gate pier, is not a subject a
+plate can carry** — and the record says so rather than shipping a picture of a pier.
