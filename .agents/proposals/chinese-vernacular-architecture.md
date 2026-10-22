@@ -4524,3 +4524,27 @@ is what the rope runs over, and the trough is where the water goes first.
 **And the index from round 251 was refreshed in the same commit**: `29 forms, 15 settlements, 80 scenes`, its measured table extended, and the row inserted where
 the name sorts — **a table generated from the probe is only worth keeping if it is regenerated when the gallery moves**, and the round that adds a form is the
 round that owes it.
+## Round 254: the final verification
+
+Everything this catalogue claims was re-read from the instruments on the merged tip, in one pass, with nothing edited:
+
+| check | result |
+|---|---|
+| `cargo build -q -j 2 --workspace --examples` | **exit 0, 0 warnings** |
+| `cargo fmt --all -- --check` | **exit 0, no diff** |
+| `scene_identity_probe`: the gallery's registers | **93 names, 80 of them buildings, 80 listed, unmeasured `[]`, unknown `[]`** |
+| `scene_identity_probe`: the walk | **80 asked, 80 printed a table: true** |
+| `scene_identity_probe`: the table | **80 scenes, 264 061 rows** |
+| `audit/audit.ps1` twice | **0.62 s and 0.57 s, both exit 0** |
+| `git status --short` on `main` | **0 tracked changes**; no worktree of this session left behind |
+| `chinese-vernacular-index.md` | 203 lines, 7 sections — forms, settlements, verdicts, the two debts tables and the measured table |
+| `chinese-vernacular-architecture.md` | 4 526 lines, 202 round sections |
+| `crates/gallery/src` | 91 files |
+
+**What the number 80 means**: eighty scenes over **twenty-nine forms** and **fifteen settlements**, every one of them built by `village::scene_of` from a document that
+`building` checked, every one of them photographed on the CPU, and every one of them present in all four registers — which the probe now **fails** on rather than
+skipping (rounds 232, 243 and 244 turned four classes of silence into failures, and found **three real defects** in doing it).
+
+**What was paid to get here**, in the four currencies this work always costs: the **ring offset** under half the narrow side (fifteen rounds), the **member's
+`across`** being the run turned a quarter (thirteen), **masses may not overlap in plan** and a plan that nests is an attachment (six), and **a plate carries a
+view and not a town** (eleven).
