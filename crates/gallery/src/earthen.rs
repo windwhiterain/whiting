@@ -557,8 +557,13 @@ pub fn document() -> Building {
     // reveal is the wall, and that is what the type's windows look like from outside.
     // **The lower floor is opened onto its porch and the upper room onto its terrace**, each in its own mass: a
     // 竹楼 opens onto its veranda, a 土掌房 onto its 厦子 and its 晒场, and the two storeys are two masses here.
-    let _ = facade::open_court_face(&mut skeleton, id, deep, true, Front::RANGE);
-    let _ = facade::open_court_face(
+    // **Both ranges answer loudly.** The lower range`s face and the upper storey`s are two different masses, so both calls do work here — the 藏房`s
+    // duplicate (round 244) named the same mass twice and had never done anything.
+    assert!(
+        facade::open_court_face(&mut skeleton, id, deep, true, Front::RANGE),
+        "the lower range`s face is one the wall accepts"
+    );
+    let opened = facade::open_court_face(
         &mut skeleton,
         upper_id,
         deep - SETBACK,
@@ -569,6 +574,7 @@ pub fn document() -> Building {
             door: true,
         },
     );
+    assert!(opened, "the upper storey`s face is one the wall accepts");
     let _ = Bar::NONE;
     Building::new(skeleton)
 }

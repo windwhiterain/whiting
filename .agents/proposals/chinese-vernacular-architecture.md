@@ -4403,3 +4403,21 @@ remaining fifteen into assertions, and the sweep paid at once:
 first was invisible because a chamfer edge *should* be blank; the second was invisible because a culvert mouth *looks* like a recessed panel either way.
 
 **Identity: 74 scenes, 257 241 rows**; the gallery has **no swallowed opening left** (`grep 'let _ = ops::add_opening'` returns nothing).
+## Round 244: the same sweep, the other spelling — and a third defect
+
+Round 243 fixed `let _ = ops::add_opening(...)` and **missed the fully-qualified spelling**: `let _ = building::ops::add_opening(...)` held **six** more sites
+(`bai_court` 3, `benzu_miao` 3). All six now assert, and **all six were already succeeding** — no defect there, but nobody was watching.
+
+**The facade's helpers were the richer vein.** `facade::open_court_face` and `facade::open_with_bars` answer **`bool`** and every call site wrapped them in
+`let _ =` — six more silent sites. With them loud, the third real defect fell out at once:
+
+**`tibetan.rs` had a call that had never done anything.** The 碉房 opened its court face twice: once with `Front::RANGE` (two storeys, three bays, a door) and
+again on `upper_id` at `deep - SETBACK` asking for one storey and a door. Both calls resolved to **the same mass and the same edge** — the print of the helper
+said `mass MassId(0) line 2.1 -> edge Some(2)` for both — so the second was refused because **the face was already split**, and its `let _ =` swallowed the
+answer. It is deleted, with the reason written where it stood: **a call that had never done anything, wearing the comment of one that had.**
+
+`earthen.rs` had the same two-call shape and there both calls are real (two different masses); its first result was simply unused, which `cargo` had been
+warning about, and both now assert.
+
+**Identity: 74 scenes, 257 241 rows** — unchanged, which is the point: the three defects were **silences, not geometries**, and nothing was lost by making them
+speak. `grep 'let _ = (ops::\|building::ops::\|facade::open)'` over the gallery now returns **nothing**.

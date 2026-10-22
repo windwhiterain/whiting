@@ -489,7 +489,7 @@ pub fn document() -> Building {
 
     // **A door and two windows in the front wall**, which is the wall the veranda is in front of: a 竹楼 opens onto
     // its veranda and not onto its yard.
-    let _ = facade::open_court_face(
+    let opened = facade::open_court_face(
         &mut skeleton,
         id,
         deep,
@@ -500,6 +500,7 @@ pub fn document() -> Building {
             door: true,
         },
     );
+    assert!(opened, "the opening is one the wall accepts");
     // **The 火塘: three stones round the fire.** This file said the hearth *"needs a hole in the floor this crate does not cut"* — **the hole is the
     // refinement and the hearth is the object**: a 火塘 is **three stones** (锅庄石) set in a triangle at the room's middle, and three stones are three
     // members. The floor under them is still whole, which is recorded rather than hidden: what is drawn is the hearth and not its ash pit.

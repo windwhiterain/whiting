@@ -533,7 +533,7 @@ pub fn document() -> Building {
         )
         .is_some()
         {
-            let _ = facade::open_with_bars(
+            let opened = facade::open_with_bars(
                 &mut skeleton,
                 gate_face,
                 0,
@@ -544,6 +544,7 @@ pub fn document() -> Building {
                 Inset::new(0.50, 0.50, GATE_SILL, 0.9),
                 GATE_BOARDS,
             );
+            assert!(opened, "the opening is one the wall accepts");
         }
         // **The 门罩**: a small shed over the door, hosted by the gate house, shedding away from the wall.
         // Its crest stands on the wall above the door's head and its eave reaches out over the step, which is

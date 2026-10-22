@@ -382,7 +382,7 @@ pub fn document() -> Building {
 
     // **A door in the middle bay of the one storey**, and a small window in a side bay: the type's front is
     // its door, and a 木楞房's window is a pane set between two courses.
-    let _ = facade::open_court_face(
+    let opened = facade::open_court_face(
         &mut skeleton,
         id,
         deep,
@@ -393,8 +393,9 @@ pub fn document() -> Building {
             door: true,
         },
     );
+    assert!(opened, "the opening is one the wall accepts");
     if let Some(face) = facade::edge_on(&skeleton.masses[id.0], deep, true) {
-        let _ = facade::open_with_bars(
+        let opened = facade::open_with_bars(
             &mut skeleton,
             building::grid::FaceRef::new(id, face),
             0,
@@ -402,6 +403,7 @@ pub fn document() -> Building {
             building::openings::Inset::new(0.55, 0.55, 1.30, 0.60),
             Bar::NONE,
         );
+        assert!(opened, "the opening is one the wall accepts");
     }
     Building::new(skeleton)
 }

@@ -337,10 +337,11 @@ pub fn document() -> Building {
     {
         for column in 0..3 {
             let inset = building::Inset::new(0.62, 0.62, 0.0, 1.10);
-            let _ = building::ops::add_opening(
+            let opening = building::ops::add_opening(
                 &mut skeleton,
                 building::Opening::new(front, 0, column, inset),
             );
+            assert!(opening.is_some(), "the opening is one the face accepts");
         }
     }
 
@@ -384,10 +385,11 @@ pub fn document() -> Building {
     )
     .is_some()
     {
-        let _ = building::ops::add_opening(
+        let opening = building::ops::add_opening(
             &mut skeleton,
             building::Opening::new(mouth, 0, 0, building::Inset::new(0.62, 0.62, 0.0, 0.70)),
         );
+        assert!(opening.is_some(), "the opening is one the face accepts");
     }
 
     // **The 上下场门: the two doors in the stage's back wall.** An actor enters by one and leaves by the other — 出将 and 入相 — and a
@@ -404,7 +406,7 @@ pub fn document() -> Building {
     .is_some()
     {
         for column in [0usize, 2] {
-            let _ = building::ops::add_opening(
+            let opening = building::ops::add_opening(
                 &mut skeleton,
                 building::Opening::new(
                     back,
@@ -413,6 +415,7 @@ pub fn document() -> Building {
                     building::Inset::new(0.55, 0.55, 0.0, 1.35),
                 ),
             );
+            assert!(opening.is_some(), "the opening is one the face accepts");
         }
     }
 

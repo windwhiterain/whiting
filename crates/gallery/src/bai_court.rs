@@ -223,10 +223,11 @@ pub fn document() -> Building {
             } else {
                 building::Inset::new(0.60, 0.60, 1.00, 1.30)
             };
-            let _ = building::ops::add_opening(
+            let opening = building::ops::add_opening(
                 &mut skeleton,
                 building::Opening::new(front, 0, column, inset),
             );
+            assert!(opening.is_some(), "the opening is one the face accepts");
         }
     }
     // **Each 厢房 has one door facing the court**, on the face that looks across it.
@@ -240,10 +241,11 @@ pub fn document() -> Building {
         )
         .is_some()
         {
-            let _ = building::ops::add_opening(
+            let opening = building::ops::add_opening(
                 &mut skeleton,
                 building::Opening::new(face, 0, 0, building::Inset::new(1.10, 1.10, 0.0, 1.30)),
             );
+            assert!(opening.is_some(), "the opening is one the face accepts");
         }
     }
 
@@ -281,10 +283,11 @@ pub fn document() -> Building {
     )
     .is_some()
     {
-        let _ = building::ops::add_opening(
+        let opening = building::ops::add_opening(
             &mut skeleton,
             building::Opening::new(approach, 0, 0, building::Inset::new(0.50, 0.50, 0.0, 1.05)),
         );
+        assert!(opening.is_some(), "the opening is one the face accepts");
     }
 
     // **The door's own frame**: a threshold, two jambs, a lintel and a 门罩 over it. A 白族 gate is framed in stone and wood

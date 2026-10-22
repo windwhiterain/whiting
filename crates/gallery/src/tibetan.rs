@@ -606,17 +606,11 @@ pub fn document() -> Building {
 
     // **The openings: a door and two windows below, two windows above.** A 碉房's window is a hole in a wall that
     // carries, so they are small: the bays are three to a face and the openings take half a bay.
-    let _ = facade::open_court_face(&mut skeleton, id, deep, true, Front::RANGE);
-    let _ = facade::open_court_face(
-        &mut skeleton,
-        upper_id,
-        deep - SETBACK,
-        true,
-        Front {
-            storeys: 1,
-            bays: 3,
-            door: true,
-        },
-    );
+    // **One call and not two.** A second `open_court_face` used to ask this same mass and this same face for the upper storey's windows — and it was refused
+    // every time, because the face it named was **already split by this call**: `Front::RANGE` is two storeys, so the call below had cut a window in every bay
+    // of the upper storey already. Round 244 made the facade's answer loud and this is the third defect it found: **a call that had never done anything,
+    // wearing the comment of one that had**.
+    let opened = facade::open_court_face(&mut skeleton, id, deep, true, Front::RANGE);
+    assert!(opened, "the opening is one the wall accepts");
     Building::new(skeleton)
 }
