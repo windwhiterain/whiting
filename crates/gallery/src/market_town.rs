@@ -51,6 +51,9 @@ const ARCH_AT: [f32; 2] = [0.0, SQUARE_DEEP + 2.10];
 /// The 碉楼 at the square's south-west corner, which is where a 屯堡 market's tower stands: at the corner it can watch the road in and the square at once.
 const TOWER_AT: [f32; 2] = [-19.6, 17.6];
 
+/// The 会馆 on the square's east side, behind the shop row and facing the road that passes south of it.
+const GUILD_AT: [f32; 2] = [24.6, 27.6];
+
 const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 
 /// Builds the scene: from behind the arch, down the square, with the stage at its far end — the way a market day is entered.
@@ -82,6 +85,25 @@ pub fn market_shops() -> Value {
         [-14.6, 2.1, 6.6],
         FIELD_OF_VIEW * 0.72,
         "market_shops",
+    )
+}
+
+/// The **guild plate**: the 会馆`s gate house from the street south of the square.
+///
+/// # Why a second camera
+///
+/// Round 249 set the 会馆 behind the shop row, where the town`s own plate cannot see it — that plate looks down the square from the south-west and the guild is
+/// **outside the frame`s right edge**. A gate house is read from the street in front of it, which is where this one stands. Round 172`s rule, tenth
+/// application.
+pub fn market_guild() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [24.6, 3.6, 4.6],
+        [24.6, 4.6, 19.0],
+        FIELD_OF_VIEW * 0.80,
+        "market_guild",
     )
 }
 
@@ -251,6 +273,16 @@ pub fn document() -> Building {
     assert!(
         ops::merge(&mut skeleton, tower),
         "the tower places no parts, so the merge always happens"
+    );
+
+    // **The 会馆 on the square`s east side.** A 场镇 on a trade road is full of men from elsewhere and each group built one of these; it stands **behind the
+    // shop row**, on the ground the shops leave, with its gate on the road that passes south of the square. Round 247`s document, translated, with none of its
+    // numbers restated.
+    let mut guild = crate::guild_hall::document().skeleton;
+    ops::translate(&mut guild, GUILD_AT);
+    assert!(
+        ops::merge(&mut skeleton, guild),
+        "the 会馆 places no parts, so the merge always happens"
     );
 
     Building::new(skeleton)

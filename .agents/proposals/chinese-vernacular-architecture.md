@@ -4479,3 +4479,18 @@ the end with **its door in the middle bay and a window in each** — the three o
 stage, court, galleries, hall — the five things a 会馆 is — in the order the audience and the god occupy them.
 
 **Identity: 77 scenes, 260 951 rows**; `guild_hall` and `guild_stage` both 161.
+## Round 249: the 会馆 in the 场镇, and the plate that has the theatre over the door
+
+Round 247 built the guild hall and left it in a field; a 场镇 on a trade road is exactly the town that has one. It stands **behind the shop row on the square's
+east side**, with its gate on the road that passes south of the square — the one piece of ground the town's shops, its stage, its arch and its tower leave free.
+
+`market_town` 816 → **977**, the guild's **161 rows**.
+
+**One refusal**: `UnattachedOverlap { 9, 22 }` at the first site — the guild's plinth reached into the last east shop's plot. It moved five metres south.
+
+**And a second camera again, because the town's own plate cannot see it**: `market_guild` stands on the street in front of the gate, and its frame holds **the
+door and the stage over it** — which is the type's whole argument in one picture: **the entrance is also the theatre**. Round 172's rule, tenth application,
+and the second this pair has needed (the guild's own actor's plate is the first).
+
+**Identity: 78 scenes, 262 250 rows**; `market_town` and `market_guild` both 977. **The market town now carries five composed things**: the stage, the arch, the
+tower, ten shopfronts with their counters and a guild hall.
