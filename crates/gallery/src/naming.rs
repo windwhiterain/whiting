@@ -456,6 +456,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "yikeyin_court" => crate::yikeyin::document(),
         "house" => crate::house::document(),
         "fengshui_tower" => crate::fengshui_tower::document(),
+        "guild_hall" => crate::guild_hall::document(),
         "hall" => crate::hall::document(),
         "dai_hamlet" => crate::hamlet::document(),
         "hall_large" => crate::hall::document_at(14.0, 20.0, 1),

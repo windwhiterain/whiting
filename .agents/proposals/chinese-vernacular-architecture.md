@@ -4451,3 +4451,21 @@ show this.
 mid-height, which is where a tower is read rather than a wall.
 
 **Identity: 75 scenes, 260 629 rows.**
+## Round 247: the 会馆, the twenty-eighth type
+
+A trade-road 场镇 is full of men from elsewhere, and each group of them built one of these: 湖广会馆, 江西会馆, 万寿宫. A 会馆 is **a home for people who have
+none** — where a stranger sleeps, hears his own dialect, settles a debt and buries a corpse — and its plan says so:
+
+- **the gate house** across the street's front, with the door in its middle bay and **the stage over it**, because the audience stands in the court and looks
+  **back** at the entrance;
+- **two galleries** down the court's sides on posts, where a man waits out a rain;
+- **the hall** at the back on its own plinth, **furthest from the street, because the god is the last thing you come to** — with a door in its middle bay and a
+  window in each end.
+
+**One refusal, named**: `UnattachedOverlap { 1, 2 }` — the hall stands **inside** its plinth's plan, and two masses whose plans nest are **one mass standing on
+the other**, which is `Join::Storey` and not two masses side by side. That is the fifth round to re-pay round 169's rule (207, 229, 239 and 246 are the others).
+
+**The first camera stood behind the hall** and photographed the back of the block for the god; the second stands **on the road outside the gate**, which is the
+order a stranger arrives in — gate, stage above it, court, galleries, hall.
+
+**Identity: 76 scenes, 260 790 rows**; `guild_hall` **161**.

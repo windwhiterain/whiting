@@ -93,6 +93,7 @@ pub mod earthen;
 pub mod facade;
 pub mod fengshui_tower;
 mod foldyard;
+pub mod guild_hall;
 pub mod hall;
 pub mod hamlet;
 pub mod house;
@@ -230,6 +231,7 @@ impl Gallery {
             "hermite",
             "hermite_massif",
             "fengshui_tower",
+            "guild_hall",
             "hall",
             "dai_hamlet",
             "hall_large",
@@ -393,6 +395,7 @@ impl Gallery {
             "compound" => compound::compound(),
             "compound_court" => compound::compound_court(),
             "fengshui_tower" => fengshui_tower::fengshui_tower(),
+            "guild_hall" => guild_hall::guild_hall(),
             "hall" => hall::hall(),
             "dai_hamlet" => hamlet::hamlet(),
             "hall_large" => hall::hall_large(),
