@@ -4434,3 +4434,20 @@ channel**; it had been cut at one end only. `slate_gate` 3 031 → **3 039** and
 **Three cameras were tried to show that mouth and all three were withdrawn**: the near one stands behind the gate's own pier, the low one looks into the
 culvert's blind side, and the axis one faces the mouth that was already there. **A hole 0.26 m high, in the kerb's line, behind a gate pier, is not a subject a
 plate can carry** — and the record says so rather than shipping a picture of a pier.
+## Round 246: the 碉楼 at the 屯堡 street's west mouth
+
+Round 239 built the tower and round 240 gave it to the market town; its **true home** is a 屯堡 street, because a 屯堡 is a garrison that became a village and its
+tower stands **where it can see the road**. The street's own ground leaves exactly one place for it — **outside the west mouth**, past the kerb's culvert and the
+gate's own stones — and it stands at `[-32.0, 0.0]`.
+
+`slate_street` and `slate_gate` 3 039 → **3 150**, the tower's **111 rows**.
+
+**And a fourth plate carries it**, which the street did not have: `slate_end` stands **inside the lane and looks west through the gate**, so the frame has the
+flags running out, the gate's piers and lintel in the middle, and the tower's four battered storeys and timber top rising behind them — **the way a traveller
+coming up the road sees a 屯堡**. The street's own plate looks **east** from the west end and the gate's plate looks at the gate **from** the east; neither could
+show this.
+
+**The first camera was two metres from the gate and the tower filled the sky, cropped**: the second steps back six metres, up two and turns towards the tower's
+mid-height, which is where a tower is read rather than a wall.
+
+**Identity: 75 scenes, 260 629 rows.**

@@ -33,6 +33,8 @@ const LANE_HALF: f32 = 3.10;
 const TOWER_AT: [f32; 2] = [31.0, 12.0];
 
 const LANE_FROM: f32 = -26.0;
+/// The 碉楼 outside the west mouth: where it stands, far enough out to clear the kerb's culvert and the gate's own stones.
+const WATCH_AT: [f32; 2] = [-32.0, 0.0];
 const LANE_TO: f32 = 26.0;
 /// How many flags it is laid in, the joint between them, and how thick a flag is.
 const LANE_FLAGS: usize = 18;
@@ -98,6 +100,25 @@ pub fn slate_gate() -> Value {
         [25.0, 2.2, -1.4],
         FIELD_OF_VIEW * 1.15,
         "slate_gate",
+    )
+}
+
+/// The **west end plate**: out through the street's own gate to the 碉楼 that watches the road.
+///
+/// # Why a fourth camera
+///
+/// Round 246 set the 屯堡's watchtower **outside the west mouth**, which is where a garrison's tower stands — and the street`s own plate looks east from the
+/// west end, so the tower is behind it and the gate`s plate looks at the gate from the east. **This is the plate that has the gate in the middle and the tower
+/// behind it**, which is how a traveller coming up the road sees the two.
+pub fn slate_end() -> Value {
+    crate::village::scene_of(
+        &document(),
+        &crate::settlement_plants::Extra::none(),
+        &|_, _| 0.0,
+        [-8.6, 2.9, 1.6],
+        [-31.0, 4.6, -0.4],
+        FIELD_OF_VIEW * 0.98,
+        "slate_end",
     )
 }
 
@@ -352,6 +373,16 @@ pub fn document() -> Building {
             );
         }
     }
+
+    // **The 碉楼 outside the west mouth.** A 屯堡 is a garrison that became a village, and its tower stands **where it can see the road** — outside the gate,
+    // on the approach, which is also the only ground in this scene the street`s own buildings leave free. Round 239`s document, translated, with none of its
+    // numbers restated.
+    let mut tower = crate::watchtower::document().skeleton;
+    ops::translate(&mut tower, WATCH_AT);
+    assert!(
+        ops::merge(&mut skeleton, tower),
+        "the tower places no parts, so the merge always happens"
+    );
 
     Building::new(skeleton)
 }
