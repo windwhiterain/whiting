@@ -173,6 +173,7 @@ pub mod village;
 /// The workshop scene: two storeys with a floor between them.
 pub mod watchtower;
 pub mod watermill;
+pub mod well_pavilion;
 pub mod wing;
 pub mod workshop;
 /// The yard scene: a site on a slope, with a courtyard and a gate.
@@ -307,6 +308,7 @@ impl Gallery {
             "wing",
             "watchtower",
             "watermill",
+            "well_pavilion",
             "workshop",
             "yard",
             "yikeyin_gable",
@@ -470,6 +472,7 @@ impl Gallery {
             "wing" => wing::wing(),
             "watchtower" => watchtower::watchtower(),
             "watermill" => watermill::watermill(),
+            "well_pavilion" => well_pavilion::well_pavilion(),
             "workshop" => workshop::workshop(),
             "yard" => yard::yard(),
             "yikeyin_gable" => yikeyin::yikeyin_gable(),

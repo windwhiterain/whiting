@@ -1,10 +1,10 @@
 # 中国西南传统建筑 · 索引
 
-This file is the **index** of the catalogue: **28 types**, **15 settlements**, and **79 scenes** measured by
+This file is the **index** of the catalogue: **29 forms**, **15 settlements**, and **80 scenes** measured by
 `cargo run -p whiting-gallery --example scene_identity_probe`. Every number below was read from that run, not typed by hand.
 
-**Established**: 251 rounds of work; the gallery's own registers agree (`79 names, 79 of them buildings, 79 listed, unmeasured [], unknown []`;
-`the walk asked for 79 scene(s) and 79 printed a table: true`).
+**Established**: 252 rounds of work; the gallery's own registers agree (`80 names, 80 of them buildings, 80 listed, unmeasured [], unknown []`;
+`the walk asked for 80 scene(s) and 80 printed a table: true`).
 
 ## How a scene is registered
 
@@ -63,6 +63,7 @@ A form is a building, a street or a town; several forms are also settlements, wh
 | 26 | 碉楼 | `watchtower.rs` | `watchtower` |
 | 27 | 会馆 | `guild_hall.rs` | `guild_hall`, `guild_stage` |
 | 28 | 场镇 (the market town) | `market_town.rs` | `market_town`, `market_shops`, `market_guild`, `market_west` |
+| 29 | 井亭 (the covered well) | `well_pavilion.rs` | `well_pavilion` |
 
 ## The settlements
 
@@ -166,6 +167,7 @@ Every scene and the rows its document holds.
 | `tibetan_house` | 451 |
 | `watchtower` | 111 |
 | `watermill` | 339 |
+| `well_pavilion` | 74 |
 | `workshop` | 162 |
 | `wing` | 99 |
 | `yard` | 108 |

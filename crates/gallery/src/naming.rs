@@ -450,6 +450,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "wing" => crate::wing::document(),
         "watchtower" => crate::watchtower::document(),
         "watermill" => crate::watermill::document(),
+        "well_pavilion" => crate::well_pavilion::document(),
         "workshop" => crate::workshop::document(),
         "yard" => crate::yard::document(),
         "yikeyin" => crate::yikeyin::document(),

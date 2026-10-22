@@ -4510,3 +4510,17 @@ a **view** and not a **town**. `market_west` is the fourth camera this square ha
 settlement that keeps growing keeps needing new views, and a plate per two buildings is the honest rate.**
 
 **Identity: 79 scenes, 263 987 rows**; `market_town` and `market_west` both 1 167 — the second-largest composed scene after the 侗寨.
+## Round 252: the 井亭, the twenty-ninth form
+
+A village's well is the one place where **every household comes to the same spot every day**, and in the south-west it is roofed: the water is not deep and the
+rain is heavy, so the mouth is kept covered and the drawing is done under a **square cap on four posts**. It is **the smallest public building there is** — and
+the only one whose plan is determined by **a hole in the ground**.
+
+**The kerb, the cap, the beam and the windlass, the trough**: four posts and a cap are the smallest roof this crate can make that is still a building, the beam
+is what the rope runs over, and the trough is where the water goes first.
+
+**Identity: 80 scenes, 264 061 rows**; `well_pavilion` **74** — the cheapest form in the gallery after the 龙窑.
+
+**And the index from round 251 was refreshed in the same commit**: `29 forms, 15 settlements, 80 scenes`, its measured table extended, and the row inserted where
+the name sorts — **a table generated from the probe is only worth keeping if it is regenerated when the gallery moves**, and the round that adds a form is the
+round that owes it.
