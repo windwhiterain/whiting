@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "outputs": [
+    {
+      "scene": "alpine_oak",
+      "camera": 0,
+      "time": null,
+      "document": "d2139a459c99faa912c91fb69e2659d25edf081a71c0c9215afe4d7727d008f8",
+      "image": "77b331f2f9a13f79fff9564126f59daa97b6e5b0d5d2787bc1ade8cf83659ddd",
+      "passes": 21,
+      "build": "e36486b6b756cf0e5304c10fada2ca874629290db8b9ebb6b54efa40cf0fadcd"
+    }
+  ]
+}
